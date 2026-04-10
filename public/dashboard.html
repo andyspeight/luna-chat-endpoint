@@ -1032,10 +1032,9 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
 
     // Agent presence
     presenceChannel = ably.channels.get(CONFIG.PRESENCE_CHANNEL);
-    presenceChannel.presence.enter({ name: CONFIG.AGENT_NAME, status: 'online' }, function() {
-      // Get presence list after we've entered
-      presenceChannel.presence.get((err, members) => { if (!err) renderPresence(members); });
-    });
+    presenceChannel.presence.enter({ name: CONFIG.AGENT_NAME, status: 'online' }).then(function() {
+      presenceChannel.presence.get().then(function(members) { renderPresence(members); });
+    }).catch(function(e) { console.warn('Presence enter failed:', e); });
     presenceChannel.presence.subscribe(updatePresenceList);
   }
 
@@ -1051,7 +1050,7 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
   // ─── PRESENCE ───
   function updatePresenceList() {
     if (!presenceChannel) return;
-    presenceChannel.presence.get((err, members) => { if (!err) renderPresence(members); });
+    presenceChannel.presence.get().then(function(members) { renderPresence(members); }).catch(function(){});
   }
 
   function renderPresence(members) {
