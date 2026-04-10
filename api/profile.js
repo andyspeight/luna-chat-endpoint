@@ -65,6 +65,9 @@ module.exports = async function handler(req, res) {
           widgetHints: fields.WidgetHints || '',
           widgetBotName: fields.WidgetBotName || 'Luna AI',
           widgetSize: fields.WidgetSize || 'standard',
+          widgetPosition: fields.WidgetPosition ? (typeof fields.WidgetPosition === 'object' ? fields.WidgetPosition.name : fields.WidgetPosition) : 'right',
+          mobileBubble: fields.MobileBubble ? (typeof fields.MobileBubble === 'object' ? fields.MobileBubble.name : fields.MobileBubble) : 'normal',
+          searchTypes: Array.isArray(fields.SearchTypes) ? fields.SearchTypes.map(function(t) { return typeof t === 'object' ? t.name : t; }) : [],
           cannedResponses: fields.CannedResponses || ''
         }
       });
@@ -92,6 +95,9 @@ module.exports = async function handler(req, res) {
       if (body.widgetHints !== undefined) updateFields.WidgetHints = body.widgetHints;
       if (body.widgetBotName !== undefined) updateFields.WidgetBotName = body.widgetBotName;
       if (body.widgetSize !== undefined) updateFields.WidgetSize = body.widgetSize;
+      if (body.widgetPosition !== undefined) updateFields.WidgetPosition = body.widgetPosition;
+      if (body.mobileBubble !== undefined) updateFields.MobileBubble = body.mobileBubble;
+      if (body.searchTypes !== undefined) updateFields.SearchTypes = body.searchTypes;
 
       // Canned responses
       if (body.cannedResponses !== undefined) updateFields.CannedResponses = body.cannedResponses;
