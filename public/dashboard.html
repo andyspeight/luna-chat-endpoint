@@ -604,8 +604,10 @@
   <div class="login-box">
     <div class="login-logo" id="loginLogo">Luna Live Chat</div>
     <div class="login-title" id="loginTitle">Agent Dashboard</div>
-    <div class="login-sub">Agent Dashboard</div>
-    <input type="password" class="login-input" id="loginPass" placeholder="Enter password" autofocus>
+    <div class="login-sub">Sign in to your dashboard</div>
+    <input type="text" class="login-input" id="loginCompany" placeholder="Company name" autofocus>
+    <input type="text" class="login-input" id="loginName" placeholder="Your name (e.g. Sarah)" style="margin-top:8px">
+    <input type="password" class="login-input" id="loginPass" placeholder="Password" style="margin-top:8px">
     <button class="login-btn" id="loginBtn">Sign In</button>
     <div class="login-error" id="loginError"></div>
   </div>
@@ -809,44 +811,28 @@
 
 <script>
 (function() {
-  // ─── CONFIG (read from URL params) ───
-  const params = new URLSearchParams(window.location.search);
+  // ─── CONFIG (populated after login) ───
   const CONFIG = {
-    ABLY_KEY: params.get('ably') || '',
-    AGENT_NAME: 'Agent',
+    ABLY_KEY: '',
+    AGENT_NAME: '',
     AGENT_ID: 'agent-' + Date.now(),
     CHANNEL_PREFIX: 'luna-chat:',
     PRESENCE_CHANNEL: 'luna-agents',
     DASHBOARD_CHANNEL: 'luna-dashboard',
-    PASSWORD: params.get('pass') || '',
-    CLIENT_NAME: params.get('client') || 'Dashboard'
+    PASSWORD: '',
+    CLIENT_NAME: ''
   };
-
-  // Validate required params
-  if (!CONFIG.ABLY_KEY) {
-    document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#0B1D3A;color:#E8EDF5;font-family:sans-serif;flex-direction:column;gap:12px"><h2>Configuration Missing</h2><p style="color:#8899B3;font-size:14px">This dashboard requires an Ably key. Contact your administrator.</p></div>';
-    return;
-  }
-  if (!CONFIG.PASSWORD) {
-    document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#0B1D3A;color:#E8EDF5;font-family:sans-serif;flex-direction:column;gap:12px"><h2>Configuration Missing</h2><p style="color:#8899B3;font-size:14px">This dashboard requires a password. Contact your administrator.</p></div>';
-    return;
-  }
-
-  // Set dynamic client name in UI
-  document.title = 'Luna Live Chat — ' + CONFIG.CLIENT_NAME;
-  document.getElementById('loginLogo').textContent = CONFIG.CLIENT_NAME;
-  document.getElementById('topbarBrand').textContent = CONFIG.CLIENT_NAME;
 
   let ably = null;
   let dashboardChannel = null;
   let presenceChannel = null;
-  let conversations = {};  // convId -> { messages, visitor, channel, handler, ... }
+  let conversations = {};
   let activeConvId = null;
-  let activeTab = 'live';       // 'live' or 'history'
+  let activeTab = 'live';
   let activeHistoryId = null;
+  let STORAGE_PREFIX = 'luna_default_';
 
-  // ─── HISTORY STORAGE (client-specific) ───
-  const STORAGE_PREFIX = 'luna_' + (CONFIG.CLIENT_NAME || 'default').toLowerCase().replace(/[^a-z0-9]/g, '_') + '_';
+  // ─── HISTORY STORAGE (client-specific, set after login) ───
   function getHistory() {
     try { return JSON.parse(localStorage.getItem(STORAGE_PREFIX + 'history') || '[]'); } catch(e) { return []; }
   }
@@ -873,23 +859,80 @@
   // ─── LOGIN ───
   const loginScreen = document.getElementById('loginScreen');
   const app = document.getElementById('app');
+  const loginCompany = document.getElementById('loginCompany');
+  const loginName = document.getElementById('loginName');
   const loginPass = document.getElementById('loginPass');
   const loginBtn = document.getElementById('loginBtn');
   const loginError = document.getElementById('loginError');
 
-  function doLogin() {
-    if (loginPass.value === CONFIG.PASSWORD) {
+  async function doLogin() {
+    const company = loginCompany.value.trim();
+    const agentName = loginName.value.trim();
+    const password = loginPass.value;
+
+    if (!company) { loginError.textContent = 'Please enter your company name'; return; }
+    if (!agentName) { loginError.textContent = 'Please enter your name'; return; }
+    if (!password) { loginError.textContent = 'Please enter your password'; return; }
+
+    loginError.textContent = '';
+    loginBtn.disabled = true;
+    loginBtn.textContent = 'Signing in...';
+
+    try {
+      const res = await fetch('https://luna-chat-endpoint.vercel.app/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientName: company, password: password })
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        loginError.textContent = data.error || 'Login failed';
+        loginBtn.disabled = false;
+        loginBtn.textContent = 'Sign In';
+        loginPass.value = '';
+        loginPass.focus();
+        return;
+      }
+
+      // Populate CONFIG from auth response
+      CONFIG.CLIENT_NAME = data.config.clientName;
+      CONFIG.ABLY_KEY = data.config.ablyKey;
+      CONFIG.PASSWORD = password;
+      CONFIG.AGENT_NAME = agentName;
+      CONFIG.AGENT_ID = 'agent-' + agentName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+
+      // Set UI
+      document.title = 'Luna Live Chat — ' + CONFIG.CLIENT_NAME;
+      document.getElementById('topbarBrand').textContent = CONFIG.CLIENT_NAME;
+      document.getElementById('agentInitials').textContent = agentName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+
+      // Set client-specific storage
+      STORAGE_PREFIX = 'luna_' + (CONFIG.CLIENT_NAME || 'default').toLowerCase().replace(/[^a-z0-9]/g, '_') + '_';
+
+      // Show dashboard
       loginScreen.style.display = 'none';
       app.classList.add('active');
-      initAbly();
-    } else {
-      loginError.textContent = 'Incorrect password';
-      loginPass.value = '';
-      loginPass.focus();
+
+      // Connect
+      if (CONFIG.ABLY_KEY) {
+        initAbly();
+      } else {
+        updateConnection('disconnected');
+        document.getElementById('presenceList').innerHTML = '<div style="font-size:12px;color:var(--text-muted);">No Ably key configured. Contact your administrator.</div>';
+      }
+
+    } catch (e) {
+      loginError.textContent = 'Connection error. Please try again.';
+      loginBtn.disabled = false;
+      loginBtn.textContent = 'Sign In';
     }
   }
+
   loginBtn.addEventListener('click', doLogin);
   loginPass.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+  loginCompany.addEventListener('keydown', e => { if (e.key === 'Enter') loginName.focus(); });
+  loginName.addEventListener('keydown', e => { if (e.key === 'Enter') loginPass.focus(); });
 
   // ─── ABLY INIT ───
   function initAbly() {
