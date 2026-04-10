@@ -847,6 +847,27 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
     </div>
 
     <div class="settings-section">
+      <h4>Auto-Trigger</h4>
+      <div class="settings-hint" style="margin-bottom:8px">Automatically open the chat widget after a visitor has been on your page for a set time. Great for increasing engagement.</div>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="setAutoTriggerEnabled" style="width:18px;height:18px;accent-color:var(--teal)">
+          <span style="font-size:13px;font-weight:600">Enable auto-trigger</span>
+        </label>
+      </div>
+      <div class="settings-row">
+        <label class="settings-label">Delay (seconds)</label>
+        <input class="settings-input" id="setAutoTriggerDelay" type="number" min="5" max="300" value="30" style="width:100px">
+        <div class="settings-hint">How long to wait before opening the chat. We recommend 15-30 seconds.</div>
+      </div>
+      <div class="settings-row">
+        <label class="settings-label">Trigger Message</label>
+        <input class="settings-input" id="setAutoTriggerMessage" placeholder="Hi there! I noticed you've been browsing. Can I help you find anything?">
+        <div class="settings-hint">The message Luna displays when the chat auto-opens. Make it relevant and helpful.</div>
+      </div>
+    </div>
+
+    <div class="settings-section">
       <h4>Chat Settings</h4>
       <div class="settings-row">
         <label class="settings-label">Bot Name</label>
@@ -2093,6 +2114,9 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
       selectedPosition = p.widgetPosition || 'right';
       selectedMobileBubble = p.mobileBubble || 'normal';
       selectedSearchTypes = Array.isArray(p.searchTypes) ? p.searchTypes : [];
+      document.getElementById('setAutoTriggerEnabled').checked = !!p.autoTriggerEnabled;
+      document.getElementById('setAutoTriggerDelay').value = p.autoTriggerDelay || 30;
+      document.getElementById('setAutoTriggerMessage').value = p.autoTriggerMessage || '';
       document.getElementById('setBotName').value = p.widgetBotName || 'Luna AI';
       document.getElementById('setWelcome').value = p.widgetWelcome || '';
       document.getElementById('setHints').value = p.widgetHints || '';
@@ -2132,6 +2156,9 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
           widgetPosition: selectedPosition,
           mobileBubble: selectedMobileBubble,
           searchTypes: selectedSearchTypes,
+          autoTriggerEnabled: document.getElementById('setAutoTriggerEnabled').checked,
+          autoTriggerDelay: document.getElementById('setAutoTriggerDelay').value,
+          autoTriggerMessage: document.getElementById('setAutoTriggerMessage').value,
           widgetBotName: document.getElementById('setBotName').value,
           widgetWelcome: document.getElementById('setWelcome').value,
           widgetHints: document.getElementById('setHints').value
