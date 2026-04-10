@@ -470,6 +470,54 @@
     overflow-y:auto; padding:32px; z-index:10;
   }
   .analytics-overlay.active { display:block; }
+
+  /* ── SETTINGS PANEL ── */
+  .settings-overlay {
+    display:none; grid-column:2/4; grid-row:2; background:var(--navy);
+    overflow-y:auto; padding:32px; z-index:10;
+  }
+  .settings-overlay.active { display:block; }
+  .settings-title { font-size:20px; font-weight:700; margin-bottom:4px; }
+  .settings-sub { font-size:13px; color:var(--text-dim); margin-bottom:28px; }
+  .settings-section { margin-bottom:24px; }
+  .settings-section h4 {
+    font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px;
+    color:var(--text-muted); margin-bottom:14px;
+  }
+  .settings-row { margin-bottom:14px; }
+  .settings-label {
+    display:block; font-size:11px; font-weight:600; text-transform:uppercase;
+    letter-spacing:1px; color:var(--text-muted); margin-bottom:5px;
+  }
+  .settings-input {
+    width:100%; padding:10px 14px; background:var(--navy-mid); border:1px solid var(--border);
+    border-radius:8px; color:var(--text); font-family:var(--font); font-size:13px; outline:none;
+  }
+  .settings-input:focus { border-color:var(--teal); }
+  .settings-input::placeholder { color:var(--text-muted); }
+  .settings-textarea {
+    width:100%; padding:10px 14px; background:var(--navy-mid); border:1px solid var(--border);
+    border-radius:8px; color:var(--text); font-family:var(--font); font-size:13px;
+    outline:none; resize:vertical; min-height:80px; line-height:1.5;
+  }
+  .settings-textarea:focus { border-color:var(--teal); }
+  .settings-textarea::placeholder { color:var(--text-muted); }
+  .settings-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .settings-save {
+    padding:12px 28px; background:var(--teal); color:var(--navy); border:none;
+    border-radius:8px; font-family:var(--font); font-size:14px; font-weight:700;
+    cursor:pointer; margin-top:8px;
+  }
+  .settings-save:hover { opacity:0.9; }
+  .settings-save:disabled { opacity:0.4; cursor:not-allowed; }
+  .settings-saved {
+    display:inline-block; margin-left:12px; font-size:13px; color:var(--green);
+    font-weight:600; opacity:0; transition:opacity 0.3s;
+  }
+  .settings-saved.show { opacity:1; }
+  .settings-hint {
+    font-size:11px; color:var(--text-muted); margin-top:4px; line-height:1.4;
+  }
   .analytics-title { font-size:20px; font-weight:700; margin-bottom:4px; }
   .analytics-sub { font-size:13px; color:var(--text-dim); margin-bottom:28px; }
 
@@ -575,6 +623,7 @@
       <span id="connLabel">Connecting…</span>
     </div>
     <button class="topbar-stats-btn" id="statsToggle" onclick="window._toggleStats()">📊 Stats</button>
+    <button class="topbar-stats-btn" id="settingsToggle" onclick="window._toggleSettings()">⚙ Settings</button>
     <div class="topbar-controls">
       <button class="topbar-icon-btn active" id="btnSound" onclick="window._toggleSound()" title="Toggle sound">🔔</button>
       <button class="topbar-icon-btn" id="btnDesktop" onclick="window._toggleDesktopNotifs()" title="Desktop notifications">🖥</button>
@@ -686,6 +735,76 @@
 
   <!-- ANALYTICS OVERLAY -->
   <div class="analytics-overlay" id="analyticsPanel"></div>
+
+  <!-- SETTINGS OVERLAY -->
+  <div class="settings-overlay" id="settingsPanel">
+    <div class="settings-title">Business Profile</div>
+    <div class="settings-sub">This information helps Luna answer visitor questions about your business. The more you fill in, the better Luna can help your customers.</div>
+
+    <div class="settings-section">
+      <h4>About Your Business</h4>
+      <div class="settings-row">
+        <label class="settings-label">Business Description</label>
+        <textarea class="settings-textarea" id="setDescription" placeholder="Tell us about your travel business in a few sentences. What makes you special? Who do you serve?" rows="3"></textarea>
+        <div class="settings-hint">This is what Luna uses when someone asks "Tell me about your company"</div>
+      </div>
+      <div class="settings-grid">
+        <div class="settings-row">
+          <label class="settings-label">Specialisms</label>
+          <input class="settings-input" id="setSpecialisms" placeholder="e.g. Luxury, Family, Cruise, Adventure">
+        </div>
+        <div class="settings-row">
+          <label class="settings-label">Key Destinations</label>
+          <input class="settings-input" id="setDestinations" placeholder="e.g. Greece, Turkey, Maldives, Caribbean">
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h4>Contact Details</h4>
+      <div class="settings-grid">
+        <div class="settings-row">
+          <label class="settings-label">Phone Number</label>
+          <input class="settings-input" id="setPhone" placeholder="e.g. +44 1234 567890">
+        </div>
+        <div class="settings-row">
+          <label class="settings-label">Website</label>
+          <input class="settings-input" id="setWebsite" placeholder="e.g. https://www.yoursite.com">
+        </div>
+      </div>
+      <div class="settings-row">
+        <label class="settings-label">Business Address</label>
+        <textarea class="settings-textarea" id="setAddress" placeholder="Your full business address" rows="2"></textarea>
+      </div>
+      <div class="settings-row">
+        <label class="settings-label">Opening Hours</label>
+        <input class="settings-input" id="setHours" placeholder="e.g. Mon-Fri 9am-5:30pm, Sat 10am-2pm">
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h4>Licensing and Protection</h4>
+      <div class="settings-row">
+        <label class="settings-label">ATOL / ABTA / Bonding Details</label>
+        <input class="settings-input" id="setBonding" placeholder="e.g. ATOL 12345, ABTA member, PTS protected">
+        <div class="settings-hint">Customers often ask about financial protection. If you have ATOL, ABTA or other bonding, enter it here.</div>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h4>Custom Q&A</h4>
+      <div class="settings-row">
+        <label class="settings-label">Add your own questions and answers</label>
+        <textarea class="settings-textarea" id="setCustomQA" placeholder="Q: Do you offer payment plans?&#10;A: Yes, we offer 0% finance on holidays over £1,000. Spread the cost over 6 or 12 months.&#10;&#10;Q: What is your cancellation policy?&#10;A: We follow the supplier's cancellation terms. Most bookings can be cancelled within 24 hours for free." rows="8"></textarea>
+        <div class="settings-hint">Format: Q: followed by the question, then A: followed by the answer. Leave a blank line between each pair. Luna will use these when visitors ask similar questions.</div>
+      </div>
+    </div>
+
+    <div>
+      <button class="settings-save" id="settingsSaveBtn" onclick="window._saveSettings()">Save Profile</button>
+      <span class="settings-saved" id="settingsSaved">Saved!</span>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -1490,12 +1609,99 @@
     const chatPanel = document.getElementById('chatPanel');
     const infoPanel = document.querySelector('.info-panel');
 
+    // Close settings if open
+    if (statsOpen && settingsOpen) window._toggleSettings();
+
     btn.classList.toggle('active', statsOpen);
     panel.classList.toggle('active', statsOpen);
     chatPanel.style.display = statsOpen ? 'none' : '';
     infoPanel.style.display = statsOpen ? 'none' : '';
 
     if (statsOpen) renderAnalytics();
+  };
+
+  // ─── SETTINGS ───
+  let settingsOpen = false;
+  let profileLoaded = false;
+
+  window._toggleSettings = function() {
+    settingsOpen = !settingsOpen;
+    const panel = document.getElementById('settingsPanel');
+    const btn = document.getElementById('settingsToggle');
+    const chatPanel = document.getElementById('chatPanel');
+    const infoPanel = document.querySelector('.info-panel');
+
+    // Close stats if open
+    if (settingsOpen && statsOpen) window._toggleStats();
+
+    btn.classList.toggle('active', settingsOpen);
+    panel.classList.toggle('active', settingsOpen);
+    chatPanel.style.display = settingsOpen ? 'none' : '';
+    infoPanel.style.display = settingsOpen ? 'none' : '';
+
+    if (settingsOpen && !profileLoaded) loadProfile();
+  };
+
+  async function loadProfile() {
+    try {
+      const res = await fetch('https://luna-chat-endpoint.vercel.app/api/profile', {
+        headers: {
+          'X-Client-Name': CONFIG.CLIENT_NAME,
+          'X-Client-Pass': CONFIG.PASSWORD
+        }
+      });
+      if (!res.ok) { console.warn('Profile load failed:', res.status); return; }
+      const data = await res.json();
+      const p = data.profile || {};
+      document.getElementById('setDescription').value = p.description || '';
+      document.getElementById('setSpecialisms').value = p.specialisms || '';
+      document.getElementById('setDestinations').value = p.destinations || '';
+      document.getElementById('setPhone').value = p.phone || '';
+      document.getElementById('setWebsite').value = p.website || '';
+      document.getElementById('setAddress').value = p.address || '';
+      document.getElementById('setHours').value = p.hours || '';
+      document.getElementById('setBonding').value = p.bonding || '';
+      document.getElementById('setCustomQA').value = p.customQA || '';
+      profileLoaded = true;
+    } catch (e) {
+      console.warn('Profile load error:', e.message);
+    }
+  }
+
+  window._saveSettings = async function() {
+    const btn = document.getElementById('settingsSaveBtn');
+    const saved = document.getElementById('settingsSaved');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+
+    try {
+      const res = await fetch('https://luna-chat-endpoint.vercel.app/api/profile', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Client-Name': CONFIG.CLIENT_NAME,
+          'X-Client-Pass': CONFIG.PASSWORD
+        },
+        body: JSON.stringify({
+          description: document.getElementById('setDescription').value,
+          specialisms: document.getElementById('setSpecialisms').value,
+          destinations: document.getElementById('setDestinations').value,
+          phone: document.getElementById('setPhone').value,
+          website: document.getElementById('setWebsite').value,
+          address: document.getElementById('setAddress').value,
+          hours: document.getElementById('setHours').value,
+          bonding: document.getElementById('setBonding').value,
+          customQA: document.getElementById('setCustomQA').value
+        })
+      });
+      if (!res.ok) throw new Error('Save failed: ' + res.status);
+      saved.classList.add('show');
+      setTimeout(() => saved.classList.remove('show'), 2500);
+    } catch (e) {
+      alert('Failed to save: ' + e.message);
+    }
+    btn.disabled = false;
+    btn.textContent = 'Save Profile';
   };
 
   function renderAnalytics() {
