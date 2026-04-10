@@ -591,20 +591,39 @@ module.exports = async function handler(req, res) {
         const pData = await pRes.json();
         if (pData.records && pData.records.length > 0) {
           const f = pData.records[0].fields || {};
-          const profileParts = [];
-          if (f.BusinessDescription) profileParts.push('About us: ' + f.BusinessDescription);
-          if (f.BusinessAddress) profileParts.push('Address: ' + f.BusinessAddress);
-          if (f.BusinessPhone) profileParts.push('Phone: ' + f.BusinessPhone);
-          if (f.BusinessWebsite) profileParts.push('Website: ' + f.BusinessWebsite);
-          if (f.OpeningHours) profileParts.push('Opening hours: ' + f.OpeningHours);
-          if (f.Specialisms) profileParts.push('We specialise in: ' + f.Specialisms);
-          if (f.Destinations) profileParts.push('Key destinations: ' + f.Destinations);
-          if (f.BondingInfo) profileParts.push('Protection and bonding: ' + f.BondingInfo);
-          if (profileParts.length > 0) {
-            systemPrompt += '\n\n## Business profile\n' + profileParts.join('\n');
+          if (f.BusinessDescription) {
+            systemPrompt += '\n\n## About this business\nUse this information to answer visitor questions. It was written by the business owner:\n\n' + f.BusinessDescription;
           }
-          if (f.CustomQA) {
-            systemPrompt += '\n\n## Custom Q&A\nUse these answers when visitors ask related questions:\n' + f.CustomQA;
+          // Contact details kept separate for accuracy
+          const contactParts = [];
+          if (f.BusinessPhone) contactParts.push('Phone: ' + f.BusinessPhone);
+          if (f.BusinessWebsite) contactParts.push('Website: ' + f.BusinessWebsite);
+          if (f.BusinessAddress) contactParts.push('Address: ' + f.BusinessAddress);
+          if (f.OpeningHours) contactParts.push('Opening hours: ' + f.OpeningHours);
+          if (contactParts.length > 0) {
+            systemPrompt += '\n\n## Contact details\n' + contactParts.join('\n');
+          }
+
+          // Booking search integration
+          const siteId = f.DeepLinkSiteID;
+          if (siteId) {
+            systemPrompt += `\n\n## Holiday Search
+When a visitor expresses interest in booking or searching for a holiday to a specific destination, help them search by gathering these details conversationally (ask naturally, not all at once):
+1. Destination — match to the closest option from this list:
+Costa del Sol=AGP/Costa+Del+Sol/ES, Costa Blanca=ALC/Costa+Blanca/ES, Barcelona=BCN/Barcelona/ES, Tenerife=TFS/Tenerife/ES, Lanzarote=ACE/Lanzarote/ES, Gran Canaria=LPA/Gran+Canaria/ES, Mallorca=PMI/Mallorca/ES, Menorca=MAH/Menorca/ES, Ibiza=IBZ/Ibiza/ES, Crete=HER/Crete/GR, Rhodes=RHO/Rhodes/GR, Corfu=CFU/Corfu/GR, Zante=ZTH/Zante/GR, Kos=KGS/Kos/GR, Athens=ATH/Athens/GR, Santorini=JTR/Santorini/GR, Antalya=AYT/Antalya/TR, Dalaman=DLM/Dalaman/TR, Bodrum=BJV/Bodrum/TR, Istanbul=IST/Istanbul/TR, Algarve=FAO/Algarve/PT, Madeira=FNC/Madeira/PT, Lisbon=LIS/Lisbon/PT, Naples=NAP/Naples/IT, Rome=FCO/Rome/IT, Sicily=CTA/Sicily/IT, Venice=VCE/Venice/IT, Jamaica=MBJ/Jamaica/JM, Dominican Republic=PUJ/Dominican+Republic/DO, Cancun=CUN/Cancun/MX, Barbados=BGI/Barbados/BB, St Lucia=UVF/St+Lucia/LC, Antigua=ANU/Antigua/AG, Dubai=DXB/Dubai/AE, Maldives=MLE/Maldives/MV, Mauritius=MRU/Mauritius/MU, New York=JFK/New+York/US, Orlando=MCO/Orlando/US, Miami=MIA/Miami/US, Las Vegas=LAS/Las+Vegas/US, Bangkok=BKK/Bangkok/TH, Phuket=HKT/Phuket/TH, Bali=DPS/Bali/ID, Sharm el Sheikh=SSH/Sharm+el+Sheikh/EG, Hurghada=HRG/Hurghada/EG, Marrakech=RAK/Marrakech/MA
+2. Departure airport — ask where they want to fly from. Options: London (All)=LON, Manchester=MAN, Birmingham=BHX, Bristol=BRS, Edinburgh=EDI, Glasgow=GLA, Newcastle=NCL, Leeds Bradford=LBA, Liverpool=LPL, Belfast=BFS, East Midlands=EMA, Cardiff=CWL, Aberdeen=ABZ, Southampton=SOU, Exeter=EXT, Bournemouth=BOH
+3. Date — when they want to go (convert to YYYY-MM-DD)
+4. Duration — how many nights (common: 3,4,5,7,10,14)
+5. Travellers — adults (16+), children (2-15 with ages), infants (under 2)
+
+When you have ALL the details, generate the search link on its own line using this exact format:
+[✈️ Search for holidays to DESTINATION](https://dl.tvllnk.com/deeplink/${siteId}?st=Packages&org=AIRPORT&dst=IATA&loc=LOCATION&ctry=COUNTRY&fr=DATE&dur=NIGHTS&adt=ADULTS&chd=CHILDREN&inf=INFANTS)
+
+Replace the uppercase placeholders with actual values. Example:
+[✈️ Search for holidays to Mallorca](https://dl.tvllnk.com/deeplink/${siteId}?st=Packages&org=MAN&dst=PMI&loc=Mallorca&ctry=ES&fr=2026-08-15&dur=7&adt=2&chd=2&inf=0&chdage=8&chdage=5)
+
+If the destination isn't in the list, say you can still help but suggest they browse the website or speak to the team.
+Do NOT generate a search link until you have all 5 pieces of information.`;
           }
         }
       } catch (e) {
