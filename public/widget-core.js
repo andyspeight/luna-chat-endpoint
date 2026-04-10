@@ -110,6 +110,8 @@ var typingTimeout = null;
 var ably = null;
 var dashChannel = null;
 var chatChannel = null;
+var visitorCountry = "";
+var visitorId = "";
 
 /* ─── LOAD ABLY SDK ──────────────────────────────────────── */
 function loadAbly(cb) {
@@ -176,6 +178,8 @@ function injectCSS() {
   +'#tgx-cw .tgx-overlay textarea{height:80px!important;resize:none!important;font-family:inherit!important}'
   +'#tgx-cw .tgx-overlay .tgx-obtn{width:100%!important;padding:12px!important;border-radius:12px!important;background:'+C.accent+'!important;color:#fff!important;font-size:14px!important;font-weight:600!important;border:none!important;cursor:pointer!important;margin-bottom:8px!important}'
   +'#tgx-cw .tgx-overlay .tgx-olink{background:none!important;border:none!important;color:'+C.accentGlow+'!important;font-size:13px!important;cursor:pointer!important;text-decoration:underline!important}'
+  +'#tgx-cw .tgx-stars{display:flex!important;gap:8px!important;justify-content:center!important;margin-bottom:16px!important}'
+  +'#tgx-cw .tgx-star{font-size:36px!important;color:'+C.mutedText+'!important;cursor:pointer!important;transition:color .15s,transform .15s!important;line-height:1!important}'
   +'#tgx-cw .tgx-footer{text-align:center!important;padding:6px!important;color:'+C.mutedText+'!important;font-size:10px!important;flex-shrink:0!important}'
   +'@media(max-width:440px){#tgx-cw .tgx-panel{right:0!important;bottom:0!important;left:0!important;width:100%!important;height:100%!important;max-height:100%!important;border-radius:0!important}#tgx-cw .tgx-fab.open{display:none!important}}';
   document.head.appendChild(s);
@@ -276,8 +280,10 @@ function initAbly() {
       $escBar.style.cssText = "display:none!important";
     }
     if (d.handler === "resolved" || d.handler === "closed") {
-      addMsg("system", "This conversation has been closed. You can start a new chat anytime.");
+      addMsg("system", "This conversation has been closed.");
       liveMode = false;
+      var resolvedChannel = chatChannel;
+      showRatingOverlay(resolvedChannel);
       chatChannel.unsubscribe();
       convId = "conv_" + Date.now() + "_" + Math.random().toString(36).substr(2,6);
       chatChannel = ably.channels.get("luna-chat:" + convId);
@@ -313,7 +319,9 @@ function ensureConversationStarted() {
     visitor: {
       name: userName || "Anonymous",
       page: window.location.href,
-      device: isMobile ? "mobile" : "desktop"
+      device: isMobile ? "mobile" : "desktop",
+      country: visitorCountry,
+      visitorId: visitorId
     },
     handler: "ai",
     startedAt: now,
@@ -428,6 +436,49 @@ function doLeaveMessage() {
 
   if (ov) ov.remove();
   addMsg("system", "Message sent! We'll be in touch soon.");
+}
+
+/* ─── RATING OVERLAY (after resolution) ──────────────────── */
+function showRatingOverlay(ratingChannel) {
+  var ov = document.createElement("div");
+  ov.className = "tgx-overlay";
+  ov.id = "tgxRatingOv";
+  ov.innerHTML = '<h3>How was your experience?</h3><p>Rate your conversation</p>'
+    +'<div class="tgx-stars" id="tgxStars">'
+    +'<span class="tgx-star" data-v="1">&#9733;</span>'
+    +'<span class="tgx-star" data-v="2">&#9733;</span>'
+    +'<span class="tgx-star" data-v="3">&#9733;</span>'
+    +'<span class="tgx-star" data-v="4">&#9733;</span>'
+    +'<span class="tgx-star" data-v="5">&#9733;</span>'
+    +'</div>'
+    +'<button class="tgx-olink" id="tgxRatingSkip">Skip</button>';
+  $panel.appendChild(ov);
+  setTimeout(function(){
+    var stars = ov.querySelectorAll(".tgx-star");
+    stars.forEach(function(star){
+      star.addEventListener("mouseenter", function(){
+        var val = parseInt(this.getAttribute("data-v"));
+        stars.forEach(function(s){
+          s.style.cssText = parseInt(s.getAttribute("data-v")) <= val ? "color:#FFD60A!important;transform:scale(1.15)!important" : "color:"+C.mutedText+"!important;transform:scale(1)!important";
+        });
+      });
+      star.addEventListener("click", function(){
+        var val = parseInt(this.getAttribute("data-v"));
+        if (ratingChannel) {
+          ratingChannel.publish("rating", {rating: val});
+        }
+        ov.innerHTML = '<h3>Thanks for your feedback!</h3><p>You can start a new chat anytime.</p>';
+        setTimeout(function(){ if (ov.parentNode) ov.remove(); }, 2000);
+      });
+    });
+    var starsContainer = document.getElementById("tgxStars");
+    if (starsContainer) {
+      starsContainer.addEventListener("mouseleave", function(){
+        stars.forEach(function(s){ s.style.cssText = "color:"+C.mutedText+"!important;transform:scale(1)!important"; });
+      });
+    }
+    document.getElementById("tgxRatingSkip").addEventListener("click", function(){ ov.remove(); });
+  }, 50);
 }
 
 /* ─── CALL LUNA AI ENDPOINT ──────────────────────────────── */
@@ -565,6 +616,26 @@ async function boot() {
   } catch(e) {
     console.warn("Luna widget: config fetch failed, using defaults:", e.message);
   }
+
+  /* Persistent visitor ID */
+  try {
+    visitorId = localStorage.getItem("luna_visitor_id");
+    if (!visitorId) {
+      visitorId = "v_" + Date.now() + "_" + Math.random().toString(36).substr(2,9);
+      localStorage.setItem("luna_visitor_id", visitorId);
+    }
+  } catch(e) {
+    visitorId = "v_" + Date.now() + "_" + Math.random().toString(36).substr(2,9);
+  }
+
+  /* Country detection by IP (non-blocking) */
+  try {
+    var geoRes = await fetch("https://ipapi.co/json/");
+    if (geoRes.ok) {
+      var geoData = await geoRes.json();
+      visitorCountry = geoData.country_code || "";
+    }
+  } catch(e) { /* silent fallback */ }
 
   injectCSS();
   buildDOM();
