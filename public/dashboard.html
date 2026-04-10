@@ -607,7 +607,10 @@
     <div class="login-sub">Sign in to your dashboard</div>
     <input type="text" class="login-input" id="loginCompany" placeholder="Company name" autofocus>
     <input type="text" class="login-input" id="loginName" placeholder="Your name (e.g. Sarah)" style="margin-top:8px">
-    <input type="password" class="login-input" id="loginPass" placeholder="Password" style="margin-top:8px">
+    <div style="position:relative;margin-top:8px">
+      <input type="password" class="login-input" id="loginPass" placeholder="Password" style="padding-right:44px">
+      <button type="button" id="loginEye" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-muted);padding:4px;display:flex;align-items:center" onclick="togglePassEye()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+    </div>
     <button class="login-btn" id="loginBtn">Sign In</button>
     <div class="login-error" id="loginError"></div>
   </div>
@@ -933,6 +936,18 @@
   loginPass.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
   loginCompany.addEventListener('keydown', e => { if (e.key === 'Enter') loginName.focus(); });
   loginName.addEventListener('keydown', e => { if (e.key === 'Enter') loginPass.focus(); });
+
+  window.togglePassEye = function() {
+    var field = document.getElementById('loginPass');
+    var eye = document.getElementById('loginEye');
+    if (field.type === 'password') {
+      field.type = 'text';
+      eye.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+    } else {
+      field.type = 'password';
+      eye.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+    }
+  };
 
   // ─── ABLY INIT ───
   function initAbly() {
