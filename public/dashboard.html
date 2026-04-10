@@ -1032,9 +1032,11 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
 
     // Agent presence
     presenceChannel = ably.channels.get(CONFIG.PRESENCE_CHANNEL);
-    presenceChannel.presence.enter({ name: CONFIG.AGENT_NAME, status: 'online' });
+    presenceChannel.presence.enter({ name: CONFIG.AGENT_NAME, status: 'online' }, function() {
+      // Get presence list after we've entered
+      presenceChannel.presence.get((err, members) => { if (!err) renderPresence(members); });
+    });
     presenceChannel.presence.subscribe(updatePresenceList);
-    presenceChannel.presence.get((err, members) => { if (!err) renderPresence(members); });
   }
 
   // ─── CONNECTION STATUS ───
