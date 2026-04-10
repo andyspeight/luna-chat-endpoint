@@ -29,6 +29,23 @@
     --mono: 'JetBrains Mono', monospace;
   }
 
+  .light-mode {
+    --navy: #F8FAFC;
+    --navy-light: #F1F5F9;
+    --navy-mid: #E2E8F0;
+    --teal: #0284C7;
+    --teal-dark: #0369A1;
+    --teal-glow: rgba(2,132,199,0.1);
+    --green: #059669;
+    --green-glow: rgba(5,150,105,0.1);
+    --text: #1E293B;
+    --text-dim: #64748B;
+    --text-muted: #94A3B8;
+    --surface: #FFFFFF;
+    --surface-raised: #F8FAFC;
+    --border: rgba(0,0,0,0.08);
+  }
+
   * { margin:0; padding:0; box-sizing:border-box; }
   body { font-family:var(--font); background:var(--navy); color:var(--text); height:100vh; overflow:hidden; }
 
@@ -293,6 +310,7 @@
   .info-panel {
     background:var(--surface); border-left:1px solid var(--border);
     padding:20px; overflow-y:auto; display:flex; flex-direction:column; gap:20px;
+    min-height:0;
   }
   .info-section h4 {
     font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px;
@@ -629,6 +647,7 @@
     </div>
     <button class="topbar-stats-btn" id="statsToggle" onclick="window._toggleStats()">📊 Stats</button>
     <button class="topbar-stats-btn" id="settingsToggle" onclick="window._toggleSettings()">⚙ Settings</button>
+    <button class="topbar-stats-btn" id="themeToggle" onclick="window._toggleTheme()" title="Toggle light/dark mode"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg></button>
     <div class="topbar-controls">
       <button class="topbar-icon-btn active" id="btnSound" onclick="window._toggleSound()" title="Toggle sound">🔔</button>
       <button class="topbar-icon-btn" id="btnDesktop" onclick="window._toggleDesktopNotifs()" title="Desktop notifications">🖥</button>
@@ -699,7 +718,7 @@
     <div class="info-section">
       <h4>Agents Online</h4>
       <div class="presence-list" id="presenceList">
-        <div style="font-size:12px;color:var(--text-muted);">Connecting…</div>
+        <div style="font-size:12px;color:var(--text-muted);">No agents online</div>
       </div>
     </div>
     <div class="info-section" id="visitorInfo" style="display:none;">
@@ -1313,15 +1332,15 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
   // ─── CANNED RESPONSES ───
   const DEFAULT_CANNED = [
     { id:'c1', cat:'greeting', emoji:'👋', title:'Warm greeting', msg:'Hi! I\'m here to help. What can I do for you today?' },
-    { id:'c2', cat:'greeting', emoji:'🌍', title:'Travel greeting', msg:'Hi there! Welcome to Travelgenix. Looking to plan your next trip?' },
+    { id:'c2', cat:'greeting', emoji:'🌍', title:'Travel greeting', msg:'Hi there! Welcome — are you looking to plan a holiday or do you have a question about an existing booking?' },
     { id:'c3', cat:'support', emoji:'⏳', title:'Hold on', msg:'Let me look into that for you. One moment please.' },
-    { id:'c4', cat:'support', emoji:'🔧', title:'Dev escalation', msg:'I\'ve raised this with our development team and they\'ll be looking into it.' },
-    { id:'c5', cat:'support', emoji:'📧', title:'Email follow-up', msg:'I\'ll send you the details by email shortly. Can you confirm your email address for me?' },
-    { id:'c6', cat:'support', emoji:'🔄', title:'Known issue', msg:'We\'re aware of this issue and our team is working on a fix. I\'ll keep you updated on progress.' },
-    { id:'c7', cat:'sales', emoji:'💡', title:'Boost recommendation', msg:'Based on what you\'re looking for, our Boost package at £229/month would be the best fit. It includes the full 200+ supplier integration stack plus Travelify mid-office.' },
-    { id:'c8', cat:'sales', emoji:'🎯', title:'Book a demo', msg:'Would you like to see it in action? I can set up a quick 20-minute demo at a time that suits you.' },
-    { id:'c9', cat:'sales', emoji:'🚀', title:'Quick Quote pitch', msg:'You might also be interested in our new Quick Quote feature — it lets you search live availability from 200+ suppliers, build quotes and let clients book, all in one workflow.' },
-    { id:'c10', cat:'sales', emoji:'💰', title:'No booking fees', msg:'One of the big advantages is that bookings through your Travelgenix site come with no additional booking fees on premium suppliers like Jet2, TUI, RateHawk and Hotelbeds.' },
+    { id:'c4', cat:'support', emoji:'📧', title:'Email follow-up', msg:'I\'ll send you the details by email shortly. Can you confirm your email address for me?' },
+    { id:'c5', cat:'support', emoji:'🔄', title:'Checking availability', msg:'Let me check availability for those dates. Bear with me for just a moment.' },
+    { id:'c6', cat:'support', emoji:'📋', title:'Need more details', msg:'To help me find the best options for you, could you let me know your preferred dates, number of travellers, and rough budget?' },
+    { id:'c7', cat:'sales', emoji:'💡', title:'Suggest call', msg:'This is something I can help with much better over the phone. Would you like me to give you a call? What number works best?' },
+    { id:'c8', cat:'sales', emoji:'🎯', title:'Special offer', msg:'We actually have some great deals on that destination at the moment. Let me pull together a few options for you.' },
+    { id:'c9', cat:'sales', emoji:'🛡', title:'Protection info', msg:'All our package holidays are fully ATOL protected, so your money is completely safe. We can also arrange comprehensive travel insurance.' },
+    { id:'c10', cat:'sales', emoji:'💰', title:'Price match', msg:'If you\'ve seen a lower price elsewhere, let us know — we\'ll do our best to match or beat it.' },
     { id:'c11', cat:'closing', emoji:'✅', title:'Anything else?', msg:'Is there anything else I can help you with?' },
     { id:'c12', cat:'closing', emoji:'👋', title:'Sign off', msg:'Thanks for getting in touch. Have a great day!' },
     { id:'c13', cat:'closing', emoji:'📞', title:'Callback offer', msg:'If you\'d prefer a call, I can arrange for someone to ring you back. Just let me know your number and a convenient time.' }
@@ -1831,6 +1850,26 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
   // Render grids on first settings open
   renderThemeGrid();
   renderSizeGrid();
+
+  // ─── LIGHT/DARK TOGGLE ───
+  window._toggleTheme = function() {
+    document.body.classList.toggle('light-mode');
+    var isLight = document.body.classList.contains('light-mode');
+    var btn = document.getElementById('themeToggle');
+    if (isLight) {
+      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+    } else {
+      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
+    }
+    try { localStorage.setItem(STORAGE_PREFIX + 'theme_mode', isLight ? 'light' : 'dark'); } catch(e) {}
+  };
+
+  // Restore saved theme preference
+  try {
+    if (localStorage.getItem(STORAGE_PREFIX + 'theme_mode') === 'light') {
+      window._toggleTheme();
+    }
+  } catch(e) {}
 
   function renderAnalytics() {
     const history = getHistory();
