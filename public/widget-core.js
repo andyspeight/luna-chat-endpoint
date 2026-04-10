@@ -47,7 +47,9 @@ var D = {
   fabSize: "60px",
   panelW: "380px",
   panelH: "600px",
-  radius: "20px"
+  radius: "20px",
+  position: "right",
+  mobileBubble: "normal"
 };
 
 /* Merge phase 1: window config > data-attrs > defaults */
@@ -87,7 +89,11 @@ function rebuildConfig(apiConfig) {
     if (A.size.panelW) C.panelW = A.size.panelW;
     if (A.size.panelH) C.panelH = A.size.panelH;
     if (A.size.fabSize) C.fabSize = A.size.fabSize;
+    if (A.size.radius) C.radius = A.size.radius;
   }
+  /* Map position and mobileBubble */
+  if (A.position) C.position = A.position;
+  if (A.mobileBubble) C.mobileBubble = A.mobileBubble;
   /* hints might be a JSON string from data-attr */
   if (typeof C.hints === "string") {
     try { C.hints = JSON.parse(C.hints); } catch(e) { C.hints = D.hints; }
@@ -127,13 +133,17 @@ function loadAbly(cb) {
 function injectCSS() {
   var s = document.createElement("style");
   s.id = "tgx-cw-styles";
+  var isLeft = C.position === "left";
+  var fabSide = isLeft ? "left:24px!important" : "right:24px!important";
+  var panelSide = isLeft ? "left:24px!important" : "right:24px!important";
+  var badgeSide = isLeft ? "right:-4px!important;left:auto!important" : "right:-4px!important";
   s.textContent = '#tgx-cw *{box-sizing:border-box!important;margin:0!important;padding:0!important;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue",Helvetica,Arial,sans-serif!important;-webkit-font-smoothing:antialiased!important}'
-  +'#tgx-cw .tgx-fab{position:fixed!important;bottom:24px!important;right:24px!important;width:'+C.fabSize+'!important;height:'+C.fabSize+'!important;border-radius:50%!important;background:'+C.fabBg+'!important;border:none!important;cursor:pointer!important;z-index:999998!important;display:flex!important;align-items:center!important;justify-content:center!important;box-shadow:0 4px 24px rgba(0,0,0,0.4)!important;transition:transform .2s cubic-bezier(.4,0,.2,1),box-shadow .2s!important}'
+  +'#tgx-cw .tgx-fab{position:fixed!important;bottom:24px!important;'+fabSide+';width:'+C.fabSize+'!important;height:'+C.fabSize+'!important;border-radius:50%!important;background:'+C.fabBg+'!important;border:none!important;cursor:pointer!important;z-index:999998!important;display:flex!important;align-items:center!important;justify-content:center!important;box-shadow:0 4px 24px rgba(0,0,0,0.4)!important;transition:transform .2s cubic-bezier(.4,0,.2,1),box-shadow .2s!important}'
   +'#tgx-cw .tgx-fab:hover{transform:scale(1.08)!important;box-shadow:0 6px 32px rgba(0,0,0,0.5)!important}'
   +'#tgx-cw .tgx-fab svg{width:28px!important;height:28px!important;fill:'+C.buttonText+'!important;transition:transform .3s!important}'
   +'#tgx-cw .tgx-fab.open svg{transform:rotate(90deg)!important}'
-  +'#tgx-cw .tgx-badge{position:absolute!important;top:-4px!important;right:-4px!important;min-width:20px!important;height:20px!important;border-radius:10px!important;background:#FF453A!important;color:#fff!important;font-size:11px!important;font-weight:700!important;display:none!important;align-items:center!important;justify-content:center!important;padding:0 5px!important}'
-  +'#tgx-cw .tgx-panel{position:fixed!important;bottom:96px!important;right:24px!important;width:'+C.panelW+'!important;height:'+C.panelH+'!important;max-height:calc(100vh - 120px)!important;background:'+C.bg+'!important;border-radius:'+C.radius+'!important;border:1px solid '+C.border+'!important;box-shadow:0 20px 60px rgba(0,0,0,0.3)!important;display:flex!important;flex-direction:column!important;overflow:hidden!important;z-index:999999!important;opacity:0!important;visibility:hidden!important;transform:translateY(12px) scale(0.97)!important;transition:opacity .25s cubic-bezier(.4,0,.2,1),transform .25s cubic-bezier(.4,0,.2,1),visibility .25s!important}'
+  +'#tgx-cw .tgx-badge{position:absolute!important;top:-4px!important;'+badgeSide+';min-width:20px!important;height:20px!important;border-radius:10px!important;background:#FF453A!important;color:#fff!important;font-size:11px!important;font-weight:700!important;display:none!important;align-items:center!important;justify-content:center!important;padding:0 5px!important}'
+  +'#tgx-cw .tgx-panel{position:fixed!important;bottom:96px!important;'+panelSide+';width:'+C.panelW+'!important;height:'+C.panelH+'!important;max-height:calc(100vh - 120px)!important;background:'+C.bg+'!important;border-radius:'+C.radius+'!important;border:1px solid '+C.border+'!important;box-shadow:0 20px 60px rgba(0,0,0,0.3)!important;display:flex!important;flex-direction:column!important;overflow:hidden!important;z-index:999999!important;opacity:0!important;visibility:hidden!important;transform:translateY(12px) scale(0.97)!important;transition:opacity .25s cubic-bezier(.4,0,.2,1),transform .25s cubic-bezier(.4,0,.2,1),visibility .25s!important}'
   +'#tgx-cw .tgx-panel.open{opacity:1!important;visibility:visible!important;transform:translateY(0) scale(1)!important}'
   +'#tgx-cw .tgx-hdr{background:'+C.headerBg+'!important;padding:16px 18px!important;display:flex!important;align-items:center!important;gap:12px!important;border-bottom:1px solid '+C.border+'!important;flex-shrink:0!important}'
   +'#tgx-cw .tgx-logo{width:40px!important;height:40px!important;border-radius:12px!important;background:'+C.fabBg+'!important;display:flex!important;align-items:center!important;justify-content:center!important;color:'+C.buttonText+'!important;font-size:18px!important;font-weight:700!important;flex-shrink:0!important}'
@@ -181,7 +191,19 @@ function injectCSS() {
   +'#tgx-cw .tgx-stars{display:flex!important;gap:8px!important;justify-content:center!important;margin-bottom:16px!important}'
   +'#tgx-cw .tgx-star{font-size:36px!important;color:'+C.mutedText+'!important;cursor:pointer!important;transition:color .15s,transform .15s!important;line-height:1!important}'
   +'#tgx-cw .tgx-footer{text-align:center!important;padding:6px!important;color:'+C.mutedText+'!important;font-size:10px!important;flex-shrink:0!important}'
-  +'@media(max-width:440px){#tgx-cw .tgx-panel{right:0!important;bottom:0!important;left:0!important;width:100%!important;height:100%!important;max-height:100%!important;border-radius:0!important}#tgx-cw .tgx-fab.open{display:none!important}}';
+  /* Mobile: panel always full-screen regardless of size config */
+  var mobileCSS = '@media(max-width:440px){'
+    +'#tgx-cw .tgx-panel{right:0!important;bottom:0!important;left:0!important;top:0!important;width:100vw!important;height:100vh!important;max-height:100vh!important;border-radius:0!important}'
+    +'#tgx-cw .tgx-fab.open{display:none!important}';
+  /* mobileBubble options */
+  if (C.mobileBubble === "small") {
+    mobileCSS += '#tgx-cw .tgx-fab{width:44px!important;height:44px!important;box-shadow:0 2px 12px rgba(0,0,0,0.3)!important}'
+      +'#tgx-cw .tgx-fab svg{width:22px!important;height:22px!important}';
+  } else if (C.mobileBubble === "hidden") {
+    mobileCSS += '#tgx-cw .tgx-fab{display:none!important}';
+  }
+  mobileCSS += '}';
+  s.textContent += mobileCSS;
   document.head.appendChild(s);
 }
 
@@ -664,24 +686,34 @@ async function boot() {
   document.getElementById("tgxHuman").addEventListener("click", escalateToHuman);
   document.getElementById("tgxLeave").addEventListener("click", showLeaveOverlay);
 
-  $fab.addEventListener("click", function(){
-    panelOpen = !panelOpen;
-    if (panelOpen) {
-      $panel.classList.add("open");
-      $fab.classList.add("open");
-      unread = 0;
-      $badge.style.cssText = "display:none!important";
-      if (!nameCollected && C.collectName) {
-        showNameOverlay();
-      } else if (msgs.length === 0) {
-        startChat();
-      }
-      setTimeout(function(){ $input.focus(); }, 300);
-    } else {
-      $panel.classList.remove("open");
-      $fab.classList.remove("open");
+  /* ─── Open/close chat function (also used by FAB) ─────── */
+  function openChat() {
+    panelOpen = true;
+    $panel.classList.add("open");
+    $fab.classList.add("open");
+    unread = 0;
+    $badge.style.cssText = "display:none!important";
+    if (!nameCollected && C.collectName) {
+      showNameOverlay();
+    } else if (msgs.length === 0) {
+      startChat();
     }
+    setTimeout(function(){ $input.focus(); }, 300);
+  }
+  function closeChat() {
+    panelOpen = false;
+    $panel.classList.remove("open");
+    $fab.classList.remove("open");
+  }
+
+  $fab.addEventListener("click", function(){
+    if (panelOpen) closeChat();
+    else openChat();
   });
+
+  /* Expose global API for programmatic control (e.g. mobileBubble: "hidden") */
+  window.openLunaChat = openChat;
+  window.closeLunaChat = closeChat;
 
   /* Init Ably */
   loadAbly(function(){ initAbly(); });
