@@ -71,6 +71,10 @@ module.exports = async function handler(req, res) {
           autoTriggerEnabled: !!fields.AutoTriggerEnabled,
           autoTriggerDelay: fields.AutoTriggerDelay || 30,
           autoTriggerMessage: fields.AutoTriggerMessage || '',
+          privacyPolicyUrl: fields.PrivacyPolicyUrl || '',
+          emailPlatform: fields.EmailPlatform ? (typeof fields.EmailPlatform === 'object' ? fields.EmailPlatform.name : fields.EmailPlatform) : 'none',
+          emailPlatformApiKey: fields.EmailPlatformApiKey || '',
+          emailPlatformListId: fields.EmailPlatformListId || '',
           cannedResponses: fields.CannedResponses || ''
         }
       });
@@ -104,6 +108,10 @@ module.exports = async function handler(req, res) {
       if (body.autoTriggerEnabled !== undefined) updateFields.AutoTriggerEnabled = body.autoTriggerEnabled;
       if (body.autoTriggerDelay !== undefined) updateFields.AutoTriggerDelay = parseInt(body.autoTriggerDelay) || 30;
       if (body.autoTriggerMessage !== undefined) updateFields.AutoTriggerMessage = body.autoTriggerMessage;
+      if (body.privacyPolicyUrl !== undefined) updateFields.PrivacyPolicyUrl = body.privacyPolicyUrl;
+      if (body.emailPlatform !== undefined) updateFields.EmailPlatform = body.emailPlatform;
+      if (body.emailPlatformApiKey !== undefined) updateFields.EmailPlatformApiKey = body.emailPlatformApiKey;
+      if (body.emailPlatformListId !== undefined) updateFields.EmailPlatformListId = body.emailPlatformListId;
 
       // Canned responses
       if (body.cannedResponses !== undefined) updateFields.CannedResponses = body.cannedResponses;
@@ -133,3 +141,4 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: e.message });
   }
 };
+
