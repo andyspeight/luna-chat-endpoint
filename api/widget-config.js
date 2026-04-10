@@ -76,6 +76,15 @@ module.exports = async function handler(req, res) {
     var mob = f.MobileBubble;
     if (mob) config.mobileBubble = (typeof mob === 'object' ? mob.name : mob) || 'normal';
 
+    // Auto-trigger
+    if (f.AutoTriggerEnabled) {
+      config.autoTrigger = {
+        enabled: true,
+        delay: f.AutoTriggerDelay || 30,
+        message: f.AutoTriggerMessage || 'Hi there! Can I help you find anything?'
+      };
+    }
+
     return res.status(200).json(config);
   } catch (e) {
     console.warn('Widget config fetch error:', e.message);
