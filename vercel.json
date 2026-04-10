@@ -1,21 +1,10 @@
 {
   "version": 2,
   "functions": {
-    "api/luna-chat.js": {
-      "maxDuration": 30,
-      "memory": 256
-    },
-    "api/widget.js": {
-      "maxDuration": 5,
-      "memory": 128
-    },
-    "api/clients.js": {
-      "maxDuration": 10,
-      "memory": 128
-    },
-    "api/profile.js": {
-      "maxDuration": 10,
-      "memory": 128
-    }
+    "api/luna-chat.js": { "maxDuration": 30, "memory": 256 },
+    "api/widget.js": { "maxDuration": 5, "memory": 128 },
+    "api/clients.js": { "maxDuration": 10, "memory": 128 },
+    "api/profile.js": { "maxDuration": 10, "memory": 128 },
+    "api/auth.js": { "maxDuration": 10, "memory": 128 }
   }
 }
