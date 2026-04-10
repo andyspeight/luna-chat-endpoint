@@ -26,7 +26,6 @@ input.fi.mono{font-family:monospace;font-size:13px}
 .btn-pri{background:#0A84FF;color:#fff}
 .btn-pri:hover{opacity:.9}
 .btn-pri:disabled{opacity:.4;cursor:not-allowed}
-.btn-green{background:#30D158;color:#fff}
 .btn-sec{background:transparent;border:1px solid rgba(255,255,255,0.1);color:#8E8E93}
 .btn-sec:hover{background:rgba(255,255,255,0.04)}
 .output{display:none}
@@ -98,8 +97,8 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,0.06);margin:24px 0
         </div>
       </div>
       <label class="lbl">Ably API Key</label>
-      <input class="fi mono" id="fAbly" placeholder="Client's Ably key (or leave for shared key)">
-      <p style="font-size:11px;color:#5A5A6E;margin-top:4px">Leave blank to use the shared Ably key. For isolated clients, paste their own key.</p>
+      <input class="fi mono" id="fAbly" placeholder="Client's Ably key (from their Ably account)">
+      <p style="font-size:11px;color:#5A5A6E;margin-top:4px">Each client needs their own Ably account for private conversations. Send them the Ably Setup Guide.</p>
       <div id="errorBanner" class="error-banner"></div>
       <button class="btn btn-pri" id="createBtn" onclick="createClient()" style="margin-top:20px">Create Client</button>
     </div>
@@ -135,19 +134,21 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,0.06);margin:24px 0
 <script>
 var API = 'https://luna-chat-endpoint.vercel.app/api/clients';
 var adminPass = '';
+var clientsCache = [];
 
 function checkAdmin() {
   adminPass = document.getElementById('adminPass').value;
   fetch(API, { headers: { 'X-Admin-Pass': adminPass } })
     .then(function(r) {
-      if (r.status === 401) { document.getElementById('adminError').textContent = 'Incorrect password'; return; }
+      if (r.status === 401) { document.getElementById('adminError').textContent = 'Incorrect password'; return null; }
       return r.json();
     })
     .then(function(data) {
       if (!data) return;
       document.getElementById('adminLock').style.display = 'none';
       document.getElementById('mainContent').style.display = 'block';
-      renderClients(data.clients || []);
+      clientsCache = data.clients || [];
+      renderClients();
     })
     .catch(function(e) { document.getElementById('adminError').textContent = 'Connection error: ' + e.message; });
 }
@@ -160,22 +161,29 @@ function autoSlug() {
   document.getElementById('fPassword').value = slug.replace(/-/g, '') + Math.floor(Math.random() * 9000 + 1000);
 }
 
-function renderClients(clients) {
+function renderClients() {
   var el = document.getElementById('clientList');
-  if (!clients.length) { el.innerHTML = '<em style="color:#5A5A6E;font-size:13px">No clients yet. Add your first below.</em>'; return; }
-  el.innerHTML = clients.map(function(c) {
+  if (!clientsCache.length) { el.innerHTML = '<em style="color:#5A5A6E;font-size:13px">No clients yet. Add your first below.</em>'; return; }
+  el.innerHTML = clientsCache.map(function(c, idx) {
     return '<div class="client-row"><div><div class="client-name">' + esc(c.name) + '</div><div class="client-slug">' + esc(c.slug) + '</div></div>'
       + '<div style="display:flex;align-items:center;gap:8px"><span class="client-status active">' + esc(c.status) + '</span>'
-      + '<button class="client-action" onclick="viewClient(' + JSON.stringify(JSON.stringify(c)) + ')">View</button></div></div>';
+      + '<button class="client-action" data-idx="' + idx + '">View</button></div></div>';
   }).join('');
+
+  // Attach click handlers
+  el.querySelectorAll('.client-action').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var c = clientsCache[parseInt(this.getAttribute('data-idx'))];
+      if (c) viewClient(c);
+    });
+  });
 }
 
-function viewClient(jsonStr) {
-  var c = JSON.parse(jsonStr);
+function viewClient(c) {
   document.getElementById('outName').textContent = c.name;
-  document.getElementById('outDash').textContent = c.dashUrl;
-  document.getElementById('outEmbed').textContent = c.embed;
-  document.getElementById('outCreds').textContent = 'Dashboard: ' + c.dashUrl + '\nEmail: ' + c.email;
+  document.getElementById('outDash').textContent = c.dashUrl || 'Not configured';
+  document.getElementById('outEmbed').textContent = c.embed || 'Not configured';
+  document.getElementById('outCreds').textContent = 'Dashboard: ' + (c.dashUrl || 'N/A') + '\nEmail: ' + (c.email || 'N/A');
   document.getElementById('outputSection').classList.add('active');
   document.getElementById('formCard').style.display = 'none';
   document.getElementById('outputSection').scrollIntoView({ behavior: 'smooth' });
@@ -190,6 +198,7 @@ async function createClient() {
 
   if (!name) return showError('Please enter a client name');
   if (!email) return showError('Please enter a contact email');
+  if (!ably) return showError('Please enter the client\'s Ably API key. Send them the Ably Setup Guide if they don\'t have one yet.');
   hideError();
 
   var btn = document.getElementById('createBtn');
@@ -217,7 +226,8 @@ async function createClient() {
     // Reload list
     var listRes = await fetch(API, { headers: { 'X-Admin-Pass': adminPass } });
     var listData = await listRes.json();
-    renderClients(listData.clients || []);
+    clientsCache = listData.clients || [];
+    renderClients();
   } catch(e) {
     showError('Failed: ' + e.message);
   }
@@ -234,6 +244,7 @@ function resetForm() {
   document.getElementById('fSlug').value = '';
   document.getElementById('fEmail').value = '';
   document.getElementById('fPassword').value = '';
+  document.getElementById('fAbly').value = '';
   document.getElementById('fName').focus();
 }
 function copyEl(id, btn) {
