@@ -218,14 +218,26 @@ function injectCSS() {
   +'#tgx-cw .tgx-overlay{position:absolute!important;inset:0!important;background:'+C.overlayBg+'!important;backdrop-filter:blur(8px)!important;-webkit-backdrop-filter:blur(8px)!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;padding:32px!important;z-index:10!important;border-radius:'+C.radius+'!important}'
   +'#tgx-cw .tgx-overlay h3{color:#FFFFFF!important;font-size:18px!important;font-weight:600!important;margin-bottom:8px!important;text-align:center!important}'
   +'#tgx-cw .tgx-overlay p{color:rgba(255,255,255,0.65)!important;font-size:13px!important;margin-bottom:20px!important;text-align:center!important}'
-  +'#tgx-cw .tgx-overlay input,#tgx-cw .tgx-overlay textarea{width:100%!important;background:rgba(255,255,255,0.12)!important;border:1px solid rgba(255,255,255,0.2)!important;border-radius:12px!important;padding:11px 14px!important;color:#FFFFFF!important;font-size:14px!important;outline:none!important;margin-bottom:10px!important}'
-  +'#tgx-cw .tgx-overlay input::placeholder,#tgx-cw .tgx-overlay textarea::placeholder{color:rgba(255,255,255,0.45)!important}'
+  /* Apple-style inputs */
+  +'#tgx-cw .tgx-overlay input[type="text"],#tgx-cw .tgx-overlay input[type="email"],#tgx-cw .tgx-overlay textarea{width:100%!important;background:rgba(255,255,255,0.08)!important;border:1px solid rgba(255,255,255,0.18)!important;border-radius:12px!important;padding:14px 16px!important;color:#FFFFFF!important;font-size:15px!important;font-weight:400!important;outline:none!important;margin-bottom:12px!important;transition:border-color .2s,background .2s,box-shadow .2s!important;-webkit-appearance:none!important;appearance:none!important}'
+  +'#tgx-cw .tgx-overlay input[type="text"]:focus,#tgx-cw .tgx-overlay input[type="email"]:focus,#tgx-cw .tgx-overlay textarea:focus{border-color:'+C.accent+'!important;background:rgba(255,255,255,0.12)!important;box-shadow:0 0 0 3px '+C.accent+'33!important}'
+  +'#tgx-cw .tgx-overlay input::placeholder,#tgx-cw .tgx-overlay textarea::placeholder{color:rgba(255,255,255,0.38)!important;font-weight:400!important}'
   +'#tgx-cw .tgx-overlay textarea{height:80px!important;resize:none!important;font-family:inherit!important}'
-  +'#tgx-cw .tgx-overlay .tgx-obtn{width:100%!important;padding:12px!important;border-radius:12px!important;background:'+C.accent+'!important;color:'+C.buttonText+'!important;font-size:14px!important;font-weight:600!important;border:none!important;cursor:pointer!important;margin-bottom:8px!important}'
+  +'#tgx-cw .tgx-overlay .tgx-obtn{width:100%!important;padding:14px!important;border-radius:12px!important;background:'+C.accent+'!important;color:'+C.buttonText+'!important;font-size:15px!important;font-weight:600!important;border:none!important;cursor:pointer!important;margin-bottom:8px!important;transition:opacity .15s,transform .1s!important}'
+  +'#tgx-cw .tgx-overlay .tgx-obtn:hover{opacity:.9!important}'
+  +'#tgx-cw .tgx-overlay .tgx-obtn:active{transform:scale(.98)!important}'
   +'#tgx-cw .tgx-overlay .tgx-olink{background:none!important;border:none!important;color:'+C.accentGlow+'!important;font-size:13px!important;cursor:pointer!important;text-decoration:underline!important}'
-  +'#tgx-cw .tgx-check{display:flex!important;align-items:flex-start!important;gap:8px!important;margin-bottom:14px!important;cursor:pointer!important;text-align:left!important;width:100%!important;align-self:flex-start!important}'
-  +'#tgx-cw .tgx-check input[type="checkbox"]{width:16px!important;height:16px!important;margin-top:2px!important;accent-color:'+C.accent+'!important;cursor:pointer!important;flex-shrink:0!important}'
-  +'#tgx-cw .tgx-check span{color:rgba(255,255,255,0.6)!important;font-size:12px!important;line-height:1.4!important}'
+  /* Apple-style custom checkbox */
+  +'#tgx-cw .tgx-check{display:flex!important;align-items:center!important;gap:10px!important;margin-bottom:16px!important;cursor:pointer!important;text-align:left!important;width:100%!important;align-self:flex-start!important;-webkit-user-select:none!important;user-select:none!important}'
+  +'#tgx-cw .tgx-check input[type="checkbox"]{position:absolute!important;opacity:0!important;width:0!important;height:0!important;pointer-events:none!important}'
+  +'#tgx-cw .tgx-check .tgx-cb{width:22px!important;height:22px!important;border-radius:6px!important;border:1.5px solid rgba(255,255,255,0.3)!important;background:rgba(255,255,255,0.06)!important;display:flex!important;align-items:center!important;justify-content:center!important;flex-shrink:0!important;transition:background .15s,border-color .15s,transform .1s!important}'
+  +'#tgx-cw .tgx-check .tgx-cb svg{width:14px!important;height:14px!important;opacity:0!important;transform:scale(.5)!important;transition:opacity .15s,transform .15s!important}'
+  +'#tgx-cw .tgx-check input:checked+.tgx-cb{background:'+C.accent+'!important;border-color:'+C.accent+'!important}'
+  +'#tgx-cw .tgx-check input:checked+.tgx-cb svg{opacity:1!important;transform:scale(1)!important}'
+  +'#tgx-cw .tgx-check:active .tgx-cb{transform:scale(.92)!important}'
+  +'#tgx-cw .tgx-check .tgx-cb-label{color:rgba(255,255,255,0.6)!important;font-size:13px!important;line-height:1.4!important}'
+  /* Honeypot */
+  +'#tgx-cw .tgx-hp{position:absolute!important;left:-9999px!important;top:-9999px!important;opacity:0!important;height:0!important;width:0!important;z-index:-1!important;pointer-events:none!important;tab-index:-1!important}'
   +'#tgx-cw .tgx-privacy{display:block!important;margin-top:12px!important;color:rgba(255,255,255,0.5)!important;font-size:11px!important;text-decoration:none!important;transition:color .15s!important}'
   +'#tgx-cw .tgx-privacy:hover{color:#FFFFFF!important;text-decoration:underline!important}'
   +'#tgx-cw .tgx-stars{display:flex!important;gap:8px!important;justify-content:center!important;margin-bottom:16px!important}'
@@ -425,9 +437,11 @@ function showNameOverlay() {
   var html = '<h3>'+C.namePrompt+'</h3><p>This helps us personalise your experience.</p>'
     +'<input type="text" id="tgxNameIn" placeholder="Your name" autofocus>'
     +'<input type="email" id="tgxEmailIn" placeholder="Email (optional)">'
+    +'<input type="text" id="tgxHpIn" class="tgx-hp" tabindex="-1" autocomplete="off">'
     +'<label class="tgx-check" id="tgxMarketingLabel">'
     +'<input type="checkbox" id="tgxMarketingIn">'
-    +'<span>I\'d like to receive offers and updates</span>'
+    +'<span class="tgx-cb"><svg viewBox="0 0 14 14" fill="none"><path d="M2.5 7.5L5.5 10.5L11.5 3.5" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>'
+    +'<span class="tgx-cb-label">I\'d like to receive offers and updates</span>'
     +'</label>'
     +'<button class="tgx-obtn" id="tgxNameGo">Continue</button>'
     +'<button class="tgx-olink" id="tgxNameSkip">'+C.skipLabel+'</button>';
@@ -436,18 +450,31 @@ function showNameOverlay() {
   }
   ov.innerHTML = html;
   $panel.appendChild(ov);
+  var formOpenedAt = Date.now();
   setTimeout(function(){
     var ni = document.getElementById("tgxNameIn");
     var ei = document.getElementById("tgxEmailIn");
     var mi = document.getElementById("tgxMarketingIn");
+    var hp = document.getElementById("tgxHpIn");
     ni.focus();
     function doSubmit() {
+      /* Bot protection: honeypot filled = bot */
+      if (hp && hp.value) {
+        ov.innerHTML = '<h3>Something went wrong</h3><p>Please refresh the page and try again.</p>';
+        return;
+      }
+      /* Bot protection: submitted too fast (under 2 seconds) = likely bot */
+      if (Date.now() - formOpenedAt < 2000) {
+        ov.innerHTML = '<h3>Something went wrong</h3><p>Please refresh the page and try again.</p>';
+        return;
+      }
       userName = ni.value.trim();
       visitorEmail = ei.value.trim();
       marketingConsent = mi.checked;
       nameCollected = true;
       /* If email + marketing consent, call subscribe endpoint */
-      if (visitorEmail && marketingConsent) {
+      var emailValid = visitorEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(visitorEmail);
+      if (emailValid && marketingConsent) {
         fetch(C.endpoint.replace("/api/luna-chat", "/api/subscribe"), {
           method: "POST",
           headers: {"Content-Type": "application/json"},
