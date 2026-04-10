@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Luna — Client Onboarding</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'DM Sans',-apple-system,sans-serif;background:#0A0A0F;color:#E8EDF5;min-height:100vh}
+.wrap{max-width:700px;margin:0 auto;padding:40px 24px}
+.hdr{text-align:center;margin-bottom:40px}
+.hdr h1{font-size:28px;font-weight:700;background:linear-gradient(135deg,#0A84FF,#5E5CE6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:6px}
+.hdr p{font-size:14px;color:#8E8E93}
+.card{background:#16161D;border:1px solid rgba(255,255,255,0.06);border-radius:16px;padding:28px;margin-bottom:24px}
+.card h3{font-size:16px;font-weight:600;margin-bottom:4px}
+.card .desc{font-size:13px;color:#8E8E93;margin-bottom:16px}
+label.lbl{display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.2px;color:#8E8E93;margin-bottom:6px;margin-top:16px}
+label.lbl:first-child{margin-top:0}
+input.fi{width:100%;padding:11px 14px;background:#1C1C24;border:1px solid rgba(255,255,255,0.08);border-radius:10px;color:#E8EDF5;font-size:14px;outline:none;font-family:inherit}
+input.fi:focus{border-color:#0A84FF}
+input.fi.mono{font-family:monospace;font-size:13px}
+.row{display:flex;gap:12px}
+.row>*{flex:1}
+.btn{padding:14px 28px;border-radius:12px;border:none;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;width:100%;transition:opacity .15s}
+.btn-pri{background:#0A84FF;color:#fff}
+.btn-pri:hover{opacity:.9}
+.btn-pri:disabled{opacity:.4;cursor:not-allowed}
+.btn-green{background:#30D158;color:#fff}
+.btn-sec{background:transparent;border:1px solid rgba(255,255,255,0.1);color:#8E8E93}
+.btn-sec:hover{background:rgba(255,255,255,0.04)}
+.output{display:none}
+.output.active{display:block}
+.result-box{background:#0D0D12;border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:16px;margin-top:12px;position:relative}
+.result-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#8E8E93;margin-bottom:6px}
+.result-value{font-family:monospace;font-size:12px;color:#64D2FF;word-break:break-all;line-height:1.6;white-space:pre-wrap}
+.copy-btn{position:absolute;top:10px;right:10px;padding:6px 14px;border-radius:8px;border:none;background:#0A84FF;color:#fff;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit}
+.copy-btn.copied{background:#30D158}
+.success-banner{background:rgba(48,209,88,0.08);border:1px solid rgba(48,209,88,0.2);border-radius:12px;padding:16px;margin-bottom:16px;display:flex;align-items:center;gap:10px}
+.success-banner .text{font-size:14px;color:#A8F0C6}
+.error-banner{background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:12px;padding:12px 16px;margin-top:12px;display:none;font-size:13px;color:#FCA5A5}
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;margin-right:8px;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+.client-row{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#1C1C24;border-radius:8px;margin-bottom:6px}
+.client-name{font-size:14px;font-weight:600}
+.client-slug{font-size:11px;color:#5A5A6E}
+.client-status{font-size:11px;font-weight:600;padding:3px 8px;border-radius:6px}
+.client-status.active{background:rgba(48,209,88,0.15);color:#30D158}
+.client-action{padding:5px 10px;border-radius:6px;border:none;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;background:rgba(255,255,255,0.06);color:#8E8E93}
+.client-action:hover{background:rgba(255,255,255,0.1);color:#E8EDF5}
+hr.divider{border:none;border-top:1px solid rgba(255,255,255,0.06);margin:24px 0}
+.admin-lock{text-align:center;padding:60px 20px}
+.admin-lock h2{font-size:20px;margin-bottom:8px}
+.admin-lock p{font-size:13px;color:#8E8E93;margin-bottom:20px}
+.admin-lock input{max-width:300px;margin:0 auto;display:block}
+.admin-lock .btn{max-width:300px;margin:12px auto 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hdr">
+    <h1>Client Onboarding</h1>
+    <p>Set up a new Luna Live Chat client in seconds</p>
+  </div>
+
+  <div id="adminLock" class="admin-lock">
+    <h2>Admin Access</h2>
+    <p>Enter the admin password to continue</p>
+    <input class="fi" type="password" id="adminPass" placeholder="Admin password">
+    <button class="btn btn-pri" onclick="checkAdmin()" style="margin-top:12px">Continue</button>
+    <div id="adminError" style="color:#EF4444;font-size:12px;margin-top:8px"></div>
+  </div>
+
+  <div id="mainContent" style="display:none">
+    <div class="card">
+      <h3>Existing Clients</h3>
+      <p class="desc">Click View to see their dashboard URL and embed code.</p>
+      <div id="clientList"><em style="color:#5A5A6E;font-size:13px">Loading...</em></div>
+    </div>
+
+    <hr class="divider">
+
+    <div class="card" id="formCard">
+      <h3>Add New Client</h3>
+      <p class="desc">Enter the client details. Everything else is generated automatically.</p>
+      <label class="lbl">Client Name</label>
+      <input class="fi" id="fName" placeholder="e.g. Sunshine Travel" oninput="autoSlug()">
+      <label class="lbl">Client Slug (auto-generated)</label>
+      <input class="fi mono" id="fSlug" readonly style="opacity:0.7">
+      <div class="row">
+        <div>
+          <label class="lbl">Contact Email</label>
+          <input class="fi" id="fEmail" placeholder="hello@sunshinetravel.com" type="email">
+        </div>
+        <div>
+          <label class="lbl">Dashboard Password</label>
+          <input class="fi" id="fPassword" readonly style="opacity:0.7">
+        </div>
+      </div>
+      <label class="lbl">Ably API Key</label>
+      <input class="fi mono" id="fAbly" placeholder="Client's Ably key (or leave for shared key)">
+      <p style="font-size:11px;color:#5A5A6E;margin-top:4px">Leave blank to use the shared Ably key. For isolated clients, paste their own key.</p>
+      <div id="errorBanner" class="error-banner"></div>
+      <button class="btn btn-pri" id="createBtn" onclick="createClient()" style="margin-top:20px">Create Client</button>
+    </div>
+
+    <div class="output" id="outputSection">
+      <div class="success-banner">
+        <span>✅</span>
+        <span class="text"><strong id="outName">Client</strong> has been set up! Share the details below.</span>
+      </div>
+      <div class="result-box">
+        <div class="result-label">Dashboard URL</div>
+        <div class="result-value" id="outDash"></div>
+        <button class="copy-btn" onclick="copyEl('outDash',this)">Copy</button>
+      </div>
+      <div class="result-box">
+        <div class="result-label">Widget Embed Code</div>
+        <div class="result-value" id="outEmbed"></div>
+        <button class="copy-btn" onclick="copyEl('outEmbed',this)">Copy</button>
+      </div>
+      <div class="result-box">
+        <div class="result-label">Login Credentials</div>
+        <div class="result-value" id="outCreds"></div>
+        <button class="copy-btn" onclick="copyEl('outCreds',this)">Copy</button>
+      </div>
+      <div class="row" style="margin-top:16px">
+        <button class="btn btn-sec" onclick="resetForm()">Add Another Client</button>
+        <button class="btn btn-pri" onclick="window.open(document.getElementById('outDash').textContent.trim())">Open Dashboard</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+var API = 'https://luna-chat-endpoint.vercel.app/api/clients';
+var adminPass = '';
+
+function checkAdmin() {
+  adminPass = document.getElementById('adminPass').value;
+  fetch(API, { headers: { 'X-Admin-Pass': adminPass } })
+    .then(function(r) {
+      if (r.status === 401) { document.getElementById('adminError').textContent = 'Incorrect password'; return; }
+      return r.json();
+    })
+    .then(function(data) {
+      if (!data) return;
+      document.getElementById('adminLock').style.display = 'none';
+      document.getElementById('mainContent').style.display = 'block';
+      renderClients(data.clients || []);
+    })
+    .catch(function(e) { document.getElementById('adminError').textContent = 'Connection error: ' + e.message; });
+}
+document.getElementById('adminPass').addEventListener('keydown', function(e) { if (e.key === 'Enter') checkAdmin(); });
+
+function autoSlug() {
+  var name = document.getElementById('fName').value.trim();
+  var slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  document.getElementById('fSlug').value = slug;
+  document.getElementById('fPassword').value = slug.replace(/-/g, '') + Math.floor(Math.random() * 9000 + 1000);
+}
+
+function renderClients(clients) {
+  var el = document.getElementById('clientList');
+  if (!clients.length) { el.innerHTML = '<em style="color:#5A5A6E;font-size:13px">No clients yet. Add your first below.</em>'; return; }
+  el.innerHTML = clients.map(function(c) {
+    return '<div class="client-row"><div><div class="client-name">' + esc(c.name) + '</div><div class="client-slug">' + esc(c.slug) + '</div></div>'
+      + '<div style="display:flex;align-items:center;gap:8px"><span class="client-status active">' + esc(c.status) + '</span>'
+      + '<button class="client-action" onclick="viewClient(' + JSON.stringify(JSON.stringify(c)) + ')">View</button></div></div>';
+  }).join('');
+}
+
+function viewClient(jsonStr) {
+  var c = JSON.parse(jsonStr);
+  document.getElementById('outName').textContent = c.name;
+  document.getElementById('outDash').textContent = c.dashUrl;
+  document.getElementById('outEmbed').textContent = c.embed;
+  document.getElementById('outCreds').textContent = 'Dashboard: ' + c.dashUrl + '\nEmail: ' + c.email;
+  document.getElementById('outputSection').classList.add('active');
+  document.getElementById('formCard').style.display = 'none';
+  document.getElementById('outputSection').scrollIntoView({ behavior: 'smooth' });
+}
+
+async function createClient() {
+  var name = document.getElementById('fName').value.trim();
+  var slug = document.getElementById('fSlug').value.trim();
+  var email = document.getElementById('fEmail').value.trim();
+  var pass = document.getElementById('fPassword').value.trim();
+  var ably = document.getElementById('fAbly').value.trim();
+
+  if (!name) return showError('Please enter a client name');
+  if (!email) return showError('Please enter a contact email');
+  hideError();
+
+  var btn = document.getElementById('createBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Creating...';
+
+  try {
+    var res = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Pass': adminPass },
+      body: JSON.stringify({ name: name, slug: slug, email: email, password: pass, ablyKey: ably })
+    });
+    var data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+
+    var c = data.client;
+    document.getElementById('outName').textContent = c.name;
+    document.getElementById('outDash').textContent = c.dashUrl;
+    document.getElementById('outEmbed').textContent = c.embed;
+    document.getElementById('outCreds').textContent = 'Dashboard: ' + c.dashUrl + '\n\nPassword: ' + c.password + '\n\nShare these details securely with the client.';
+    document.getElementById('outputSection').classList.add('active');
+    document.getElementById('formCard').style.display = 'none';
+    document.getElementById('outputSection').scrollIntoView({ behavior: 'smooth' });
+
+    // Reload list
+    var listRes = await fetch(API, { headers: { 'X-Admin-Pass': adminPass } });
+    var listData = await listRes.json();
+    renderClients(listData.clients || []);
+  } catch(e) {
+    showError('Failed: ' + e.message);
+  }
+  btn.disabled = false;
+  btn.textContent = 'Create Client';
+}
+
+function showError(msg) { var el = document.getElementById('errorBanner'); el.style.display = 'block'; el.textContent = msg; }
+function hideError() { document.getElementById('errorBanner').style.display = 'none'; }
+function resetForm() {
+  document.getElementById('outputSection').classList.remove('active');
+  document.getElementById('formCard').style.display = 'block';
+  document.getElementById('fName').value = '';
+  document.getElementById('fSlug').value = '';
+  document.getElementById('fEmail').value = '';
+  document.getElementById('fPassword').value = '';
+  document.getElementById('fName').focus();
+}
+function copyEl(id, btn) {
+  navigator.clipboard.writeText(document.getElementById(id).textContent).then(function() {
+    btn.textContent = 'Copied!'; btn.classList.add('copied');
+    setTimeout(function() { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+  });
+}
+function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+</script>
+</body>
+</html>
