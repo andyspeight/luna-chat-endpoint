@@ -1,23 +1,10 @@
 // Luna Client Management API
 // Handles listing and creating clients via Airtable
-// Airtable key stored securely as AIRTABLE_KEY env var
 
 const AT_BASE = 'app6Ot3eOb3DangkB';
 const AT_TABLE = 'tbl6CZ7aVzq1wHF2v';
 const ADMIN_PASS = process.env.ADMIN_PASSWORD || 'travelgenix2026';
 const VERCEL_HOST = 'luna-chat-endpoint.vercel.app';
-
-const FID = {
-  name: 'fldT257oW3qssqUcZ',
-  slug: 'fldSmneYA5MWTBnD1',
-  ably: 'fldX9j7FbmoZ6LyD3',
-  pass: 'fldzGhMat02ytWzxA',
-  email: 'fld2ZN2JpYkSNppeZ',
-  status: 'fldROhVFn237yDuKP',
-  embed: 'fldI0jyNiwovCvanu',
-  dashUrl: 'fld3VNDyNyQTXv6wR',
-  created: 'fldyeeciN1NvzkEYB'
-};
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -27,39 +14,37 @@ module.exports = async function handler(req, res) {
 
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  // Auth check
-  const adminPass = req.headers['x-admin-pass'] || '';
+  var adminPass = req.headers['x-admin-pass'] || '';
   if (adminPass !== ADMIN_PASS) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const atKey = process.env.AIRTABLE_KEY;
+  var atKey = process.env.AIRTABLE_KEY;
   if (!atKey) {
     return res.status(500).json({ error: 'Airtable key not configured on server' });
   }
 
-  const atHeaders = { 'Authorization': 'Bearer ' + atKey, 'Content-Type': 'application/json' };
-  const atUrl = 'https://api.airtable.com/v0/' + AT_BASE + '/' + AT_TABLE;
+  var atHeaders = { 'Authorization': 'Bearer ' + atKey, 'Content-Type': 'application/json' };
+  var atUrl = 'https://api.airtable.com/v0/' + AT_BASE + '/' + AT_TABLE;
 
-  // GET = list clients
   if (req.method === 'GET') {
     try {
-      const atRes = await fetch(atUrl + '?sort%5B0%5D%5Bfield%5D=' + FID.name + '&sort%5B0%5D%5Bdirection%5D=asc', {
+      var atRes = await fetch(atUrl + '?sort%5B0%5D%5Bfield%5D=ClientName&sort%5B0%5D%5Bdirection%5D=asc', {
         headers: atHeaders
       });
       if (!atRes.ok) throw new Error('Airtable error: ' + atRes.status);
-      const data = await atRes.json();
+      var data = await atRes.json();
 
-      const clients = (data.records || []).map(function(r) {
+      var clients = (data.records || []).map(function(r) {
         var f = r.fields || {};
         return {
           id: r.id,
-          name: f[FID.name] || '',
-          slug: f[FID.slug] || '',
-          email: f[FID.email] || '',
-          status: (f[FID.status] && f[FID.status].name) || f[FID.status] || 'Active',
-          dashUrl: f[FID.dashUrl] || '',
-          embed: f[FID.embed] || ''
+          name: f.ClientName || '',
+          slug: f.ClientSlug || '',
+          email: f.ContactEmail || '',
+          status: typeof f.Status === 'object' ? (f.Status && f.Status.name || 'Active') : (f.Status || 'Active'),
+          dashUrl: f.DashboardURL || '',
+          embed: f.WidgetEmbed || ''
         };
       });
 
@@ -69,47 +54,49 @@ module.exports = async function handler(req, res) {
     }
   }
 
-  // POST = create client
   if (req.method === 'POST') {
-    const { name, slug, email, password, ablyKey } = req.body || {};
+    var body = req.body || {};
+    var name = (body.name || '').trim();
+    var slug = (body.slug || '').trim();
+    var email = (body.email || '').trim();
+    var ably = (body.ablyKey || '').trim();
+    var pass = (body.password || slug.replace(/-/g, '') + Math.floor(Math.random() * 9000 + 1000)).trim();
 
     if (!name || !slug || !email) {
       return res.status(400).json({ error: 'Missing required fields: name, slug, email' });
     }
 
-    const ably = ablyKey || '';
-    const pass = password || slug.replace(/-/g, '') + Math.floor(Math.random() * 9000 + 1000);
-    const dashUrl = 'https://' + VERCEL_HOST + '/dashboard.html?client=' + encodeURIComponent(name) + '&ably=' + encodeURIComponent(ably) + '&pass=' + encodeURIComponent(pass);
-    const embed = '<script src="https://' + VERCEL_HOST + '/widget-core.js" data-clientName="' + name.replace(/"/g, '&quot;') + '"' + (ably ? ' data-ablyKey="' + ably + '"' : '') + ' async></script>';
+    var dashUrl = 'https://' + VERCEL_HOST + '/dashboard.html?client=' + encodeURIComponent(name) + '&ably=' + encodeURIComponent(ably) + '&pass=' + encodeURIComponent(pass);
+    var embed = '<script src="https://' + VERCEL_HOST + '/widget-core.js" data-clientName="' + name.replace(/"/g, '&quot;') + '"' + (ably ? ' data-ablyKey="' + ably + '"' : '') + ' async><\/script>';
 
     try {
-      const atRes = await fetch(atUrl, {
+      var atRes = await fetch(atUrl, {
         method: 'POST',
         headers: atHeaders,
         body: JSON.stringify({
           records: [{ fields: {
-            [FID.name]: name,
-            [FID.slug]: slug,
-            [FID.ably]: ably,
-            [FID.pass]: pass,
-            [FID.email]: email,
-            [FID.status]: 'Active',
-            [FID.embed]: embed,
-            [FID.dashUrl]: dashUrl,
-            [FID.created]: new Date().toISOString()
+            ClientName: name,
+            ClientSlug: slug,
+            AblyKey: ably,
+            DashboardPassword: pass,
+            ContactEmail: email,
+            Status: 'Active',
+            WidgetEmbed: embed,
+            DashboardURL: dashUrl,
+            CreatedAt: new Date().toISOString()
           }}],
           typecast: true
         })
       });
 
       if (!atRes.ok) {
-        const errData = await atRes.json();
+        var errData = await atRes.json();
         throw new Error(errData.error?.message || 'Airtable create failed');
       }
 
       return res.status(200).json({
         success: true,
-        client: { name, slug, email, dashUrl, embed, password: pass }
+        client: { name: name, slug: slug, email: email, dashUrl: dashUrl, embed: embed, password: pass }
       });
     } catch (e) {
       return res.status(500).json({ error: e.message });
