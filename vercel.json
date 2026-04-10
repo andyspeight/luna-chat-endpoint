@@ -12,6 +12,10 @@
     "api/clients.js": {
       "maxDuration": 10,
       "memory": 128
+    },
+    "api/profile.js": {
+      "maxDuration": 10,
+      "memory": 128
     }
   }
 }
