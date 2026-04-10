@@ -5,6 +5,7 @@
     "api/widget.js": { "maxDuration": 5, "memory": 128 },
     "api/clients.js": { "maxDuration": 10, "memory": 128 },
     "api/profile.js": { "maxDuration": 10, "memory": 128 },
-    "api/auth.js": { "maxDuration": 10, "memory": 128 }
+    "api/auth.js": { "maxDuration": 10, "memory": 128 },
+    "api/widget-config.js": { "maxDuration": 10, "memory": 128 }
   }
 }
