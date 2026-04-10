@@ -884,6 +884,36 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
       </div>
     </div>
 
+    <div class="settings-section">
+      <h4>Privacy Policy</h4>
+      <div class="settings-row">
+        <label class="settings-label">Privacy Policy URL</label>
+        <input class="settings-input" id="setPrivacyUrl" placeholder="https://yoursite.com/privacy-policy">
+        <div class="settings-hint">A link to your privacy policy. Shown at the bottom of the chat sign-in screen.</div>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h4>Email Marketing</h4>
+      <div class="settings-hint" style="margin-bottom:12px">Connect your email marketing platform to automatically add visitors who opt in to marketing. Their name and email will be synced when they start a chat.</div>
+      <div class="settings-row">
+        <label class="settings-label">Platform</label>
+        <div style="display:flex;gap:8px" id="emailPlatformGrid"></div>
+      </div>
+      <div id="emailPlatformFields" style="display:none">
+        <div class="settings-row">
+          <label class="settings-label">API Key</label>
+          <input class="settings-input mono" id="setEmailApiKey" placeholder="Your Mailchimp or Mailerlite API key">
+          <div class="settings-hint">Mailchimp: Account → Extras → API keys. Mailerlite: Integrations → API.</div>
+        </div>
+        <div class="settings-row">
+          <label class="settings-label">Audience / List ID</label>
+          <input class="settings-input mono" id="setEmailListId" placeholder="e.g. abc1234567">
+          <div class="settings-hint">Mailchimp: Audience → Settings → Audience ID. Mailerlite: Groups → Group ID.</div>
+        </div>
+      </div>
+    </div>
+
     <div>
       <button class="settings-save" onclick="window._saveSettings()">Save Appearance</button>
       <span class="settings-saved" id="settingsSaved2">Saved!</span>
@@ -2084,6 +2114,26 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
     }).join('');
   }
 
+  // ─── EMAIL PLATFORM ───
+  let selectedEmailPlatform = 'none';
+
+  function renderEmailPlatformGrid() {
+    var el = document.getElementById('emailPlatformGrid');
+    var platforms = [
+      { key: 'none', label: 'None' },
+      { key: 'mailchimp', label: 'Mailchimp' },
+      { key: 'mailerlite', label: 'Mailerlite' }
+    ];
+    el.innerHTML = platforms.map(function(p) {
+      var active = selectedEmailPlatform === p.key;
+      return '<div onclick="window._selectEmailPlatform(\'' + p.key + '\')" style="flex:1;padding:12px;border-radius:8px;cursor:pointer;text-align:center;border:2px solid ' + (active ? 'var(--teal)' : 'var(--border)') + ';background:' + (active ? 'var(--teal-glow)' : 'var(--navy-mid)') + '">'
+        + '<div style="font-size:13px;font-weight:600;color:' + (active ? 'var(--teal)' : 'var(--text)') + '">' + p.label + '</div></div>';
+    }).join('');
+    document.getElementById('emailPlatformFields').style.display = selectedEmailPlatform !== 'none' ? 'block' : 'none';
+  }
+
+  window._selectEmailPlatform = function(p) { selectedEmailPlatform = p; renderEmailPlatformGrid(); };
+
   async function loadProfile() {
     try {
       const res = await fetch('https://luna-chat-endpoint.vercel.app/api/profile', {
@@ -2117,6 +2167,10 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
       document.getElementById('setAutoTriggerEnabled').checked = !!p.autoTriggerEnabled;
       document.getElementById('setAutoTriggerDelay').value = p.autoTriggerDelay || 30;
       document.getElementById('setAutoTriggerMessage').value = p.autoTriggerMessage || '';
+      document.getElementById('setPrivacyUrl').value = p.privacyPolicyUrl || '';
+      selectedEmailPlatform = p.emailPlatform || 'none';
+      document.getElementById('setEmailApiKey').value = p.emailPlatformApiKey || '';
+      document.getElementById('setEmailListId').value = p.emailPlatformListId || '';
       document.getElementById('setBotName').value = p.widgetBotName || 'Luna AI';
       document.getElementById('setWelcome').value = p.widgetWelcome || '';
       document.getElementById('setHints').value = p.widgetHints || '';
@@ -2126,6 +2180,7 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
       renderPositionGrid();
       renderMobileBubbleGrid();
       renderSearchTypesGrid();
+      renderEmailPlatformGrid();
       profileLoaded = true;
     } catch (e) {
       console.warn('Profile load error:', e.message);
@@ -2159,6 +2214,10 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
           autoTriggerEnabled: document.getElementById('setAutoTriggerEnabled').checked,
           autoTriggerDelay: document.getElementById('setAutoTriggerDelay').value,
           autoTriggerMessage: document.getElementById('setAutoTriggerMessage').value,
+          privacyPolicyUrl: document.getElementById('setPrivacyUrl').value,
+          emailPlatform: selectedEmailPlatform,
+          emailPlatformApiKey: document.getElementById('setEmailApiKey').value,
+          emailPlatformListId: document.getElementById('setEmailListId').value,
           widgetBotName: document.getElementById('setBotName').value,
           widgetWelcome: document.getElementById('setWelcome').value,
           widgetHints: document.getElementById('setHints').value
@@ -2178,6 +2237,7 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
   renderPositionGrid();
   renderMobileBubbleGrid();
   renderSearchTypesGrid();
+  renderEmailPlatformGrid();
 
   // ─── LIGHT/DARK TOGGLE ───
   window._toggleTheme = function() {
