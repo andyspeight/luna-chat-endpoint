@@ -85,6 +85,9 @@ module.exports = async function handler(req, res) {
       };
     }
 
+    // Privacy policy
+    if (f.PrivacyPolicyUrl) config.privacyUrl = f.PrivacyPolicyUrl;
+
     return res.status(200).json(config);
   } catch (e) {
     console.warn('Widget config fetch error:', e.message);
