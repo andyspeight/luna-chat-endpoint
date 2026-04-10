@@ -417,8 +417,116 @@ A: Live now. Bundle event tickets with flights and hotels. New revenue stream.
 - Give legal or financial advice.
 - Offer discounts or negotiate pricing. If asked, say pricing is straightforward and transparent, and suggest they book a demo to discuss their needs.`;
 
+// --- RATE LIMITING (in-memory, resets on cold start) ---
+const rateLimits = {};
+const RATE_LIMIT_WINDOW = 60000; // 1 minute
+const RATE_LIMIT_MAX = 15;       // max messages per minute per conversation
+
+function checkRateLimit(convId) {
+  if (!convId) return true;
+  const now = Date.now();
+  if (!rateLimits[convId]) rateLimits[convId] = [];
+  rateLimits[convId] = rateLimits[convId].filter(t => now - t < RATE_LIMIT_WINDOW);
+  if (rateLimits[convId].length >= RATE_LIMIT_MAX) return false;
+  rateLimits[convId].push(now);
+  return true;
+}
+
+// --- INPUT SANITIZATION ---
+function sanitizeInput(str) {
+  if (typeof str !== 'string') return '';
+  return str
+    .replace(/<[^>]*>/g, '')           // Strip HTML tags
+    .replace(/javascript:/gi, '')       // Strip JS protocol
+    .replace(/on\w+\s*=/gi, '')         // Strip inline event handlers
+    .replace(/data:[^,]*,/gi, '')       // Strip data URIs
+    .slice(0, 2000)                     // Max length
+    .trim();
+}
+
+// --- CONTENT MODERATION ---
+const PROFANITY_LIST = [
+  'fuck','shit','cunt','twat','wanker','bollocks','arsehole','asshole',
+  'dickhead','piss off','slag','slut','bitch','bastard','cock','knob',
+  'bellend','tosser','minger','shag','bugger off','prick','whore'
+];
+const ABUSE_PATTERNS = [
+  /\b(kill|die|murder|rape|bomb|terrorist)\b/i,
+  /\b(nigger|faggot|retard|spastic)\b/i,
+];
+const WARNING_THRESHOLDS = { warn: 1, block: 3 };
+const moderationStrikes = {};
+
+function moderateContent(text, convId) {
+  if (!text) return { allowed: true };
+  const lower = text.toLowerCase();
+  
+  // Check profanity
+  for (const word of PROFANITY_LIST) {
+    if (lower.includes(word)) {
+      return recordStrike(convId, 'profanity');
+    }
+  }
+  
+  // Check abuse patterns
+  for (const pattern of ABUSE_PATTERNS) {
+    if (pattern.test(text)) {
+      return recordStrike(convId, 'abuse');
+    }
+  }
+  
+  // Check for prompt injection attempts
+  const injectionPatterns = [
+    /ignore (all |your |previous )?instructions/i,
+    /you are now/i,
+    /new instructions/i,
+    /system prompt/i,
+    /jailbreak/i,
+    /act as if/i,
+    /pretend you/i,
+    /override/i,
+    /disregard/i
+  ];
+  for (const pattern of injectionPatterns) {
+    if (pattern.test(text)) {
+      return { allowed: false, reason: 'injection', message: "I can only help with travel-related questions. Is there something about our services I can assist with?" };
+    }
+  }
+  
+  return { allowed: true };
+}
+
+function recordStrike(convId, type) {
+  if (!convId) convId = 'unknown';
+  if (!moderationStrikes[convId]) moderationStrikes[convId] = 0;
+  moderationStrikes[convId]++;
+  
+  const strikes = moderationStrikes[convId];
+  
+  if (strikes >= WARNING_THRESHOLDS.block) {
+    return {
+      allowed: false,
+      reason: type,
+      blocked: true,
+      message: "This conversation has been ended due to repeated use of inappropriate language. If you need help, please call us on +44 (0) 1202 934033."
+    };
+  }
+  
+  return {
+    allowed: false,
+    reason: type,
+    blocked: false,
+    message: "Please keep the conversation respectful. I'm here to help, but I'm not able to respond to messages containing inappropriate language. How can I assist you today?"
+  };
+}
+
 // --- HANDLER ---
 module.exports = async function handler(req, res) {
+  // Security headers
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -426,13 +534,44 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { convId, visitorName, message, history, page, clientName } = req.body || {};
+  const body = req.body || {};
+  
+  // Sanitize all inputs
+  const convId = sanitizeInput(body.convId);
+  const visitorName = sanitizeInput(body.visitorName);
+  const message = sanitizeInput(body.message);
+  const page = sanitizeInput(body.page);
+  const clientName = sanitizeInput(body.clientName);
+  const history = Array.isArray(body.history) ? body.history.map(h => ({
+    role: h.role === 'user' ? 'user' : 'assistant',
+    content: sanitizeInput(h.content)
+  })) : [];
 
-  if (!message || typeof message !== 'string') {
+  if (!message) {
     return res.status(400).json({ error: 'Missing or invalid message' });
   }
 
-  const claudeMessages = buildMessages(history || [], message);
+  // Rate limit check
+  if (!checkRateLimit(convId)) {
+    return res.status(429).json({
+      reply: "You're sending messages quite quickly. Please wait a moment before trying again.",
+      escalate: false,
+      rateLimited: true
+    });
+  }
+
+  // Content moderation
+  const modResult = moderateContent(message, convId);
+  if (!modResult.allowed) {
+    return res.status(200).json({
+      reply: modResult.message,
+      escalate: false,
+      moderated: true,
+      blocked: modResult.blocked || false
+    });
+  }
+
+  const claudeMessages = buildMessages(history, message);
 
   // Select system prompt based on client
   const isTravelgenix = (clientName || '').toLowerCase().includes('travelgenix');
