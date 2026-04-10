@@ -50,17 +50,51 @@ var D = {
   radius: "20px"
 };
 
-/* Merge: window config wins, then data-attrs, then defaults */
+/* Merge phase 1: window config > data-attrs > defaults */
 var W = (typeof window.__LUNA_CONFIG === "object") ? window.__LUNA_CONFIG : {};
 var C = {};
-Object.keys(D).forEach(function(k) {
-  C[k] = W[k] !== undefined ? W[k] : (attr(k) || D[k]);
-});
-/* hints might be a JSON string from data-attr */
-if (typeof C.hints === "string") {
-  try { C.hints = JSON.parse(C.hints); } catch(e) { C.hints = D.hints; }
+function rebuildConfig(apiConfig) {
+  /* Priority: API config > window.__LUNA_CONFIG > data-attrs > defaults */
+  var A = apiConfig || {};
+  Object.keys(D).forEach(function(k) {
+    C[k] = A[k] !== undefined ? A[k] : (W[k] !== undefined ? W[k] : (attr(k) || D[k]));
+  });
+  /* Map API theme fields onto widget config keys */
+  if (A.theme) {
+    var t = A.theme;
+    if (t.bg) C.bg = t.bg;
+    if (t.headerBg) C.headerBg = t.headerBg;
+    if (t.bubbleBg) C.bubbleBg = t.bubbleBg;
+    if (t.userBubble) C.userBubble = t.userBubble;
+    if (t.userText) C.userText = t.userText;
+    if (t.botText) C.botText = t.botText;
+    if (t.mutedText) C.mutedText = t.mutedText;
+    if (t.accent) C.accent = t.accent;
+    if (t.accentGlow) C.accentGlow = t.accentGlow;
+    if (t.border) C.border = t.border;
+    if (t.inputBg) C.inputBg = t.inputBg;
+    if (t.inputText) C.inputText = t.inputText;
+    if (t.buttonBg) C.buttonBg = t.buttonBg;
+    if (t.buttonText) C.buttonText = t.buttonText;
+    if (t.pillBg) C.pillBg = t.pillBg;
+    if (t.pillBorder) C.pillBorder = t.pillBorder;
+    if (t.pillText) C.pillText = t.pillText;
+    if (t.fabBg) C.fabBg = t.fabBg;
+    if (t.radius) C.radius = t.radius;
+  }
+  /* Map API size fields */
+  if (A.size) {
+    if (A.size.panelW) C.panelW = A.size.panelW;
+    if (A.size.panelH) C.panelH = A.size.panelH;
+    if (A.size.fabSize) C.fabSize = A.size.fabSize;
+  }
+  /* hints might be a JSON string from data-attr */
+  if (typeof C.hints === "string") {
+    try { C.hints = JSON.parse(C.hints); } catch(e) { C.hints = D.hints; }
+  }
+  if (typeof C.collectName === "string") C.collectName = C.collectName === "true";
 }
-if (typeof C.collectName === "string") C.collectName = C.collectName === "true";
+rebuildConfig(null); /* initial merge without API */
 
 /* ─── STATE ──────────────────────────────────────────────── */
 var msgs = [];
@@ -516,7 +550,22 @@ function handleSend() {
 }
 
 /* ─── BOOT ───────────────────────────────────────────────── */
-function boot() {
+async function boot() {
+  /* Fetch remote config from API before rendering */
+  var clientSlug = C.clientName || attr("clientName") || "default";
+  try {
+    var cfgRes = await fetch(C.endpoint.replace("/api/luna-chat", "/api/widget-config") + "?client=" + encodeURIComponent(clientSlug));
+    if (cfgRes.ok) {
+      var apiConfig = await cfgRes.json();
+      rebuildConfig(apiConfig);
+      console.log("Luna widget: loaded API config for", clientSlug);
+    } else {
+      console.warn("Luna widget: config API returned", cfgRes.status, "— using defaults");
+    }
+  } catch(e) {
+    console.warn("Luna widget: config fetch failed, using defaults:", e.message);
+  }
+
   injectCSS();
   buildDOM();
 
