@@ -2210,7 +2210,7 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
     const aiPct = total > 0 ? Math.round((aiOnly/total)*100) : 0;
 
     // Average messages
-    const avgMsgs = total > 0 ? (history.reduce((s,h) => s + (h.messageCount || h.messages.length), 0) / total).toFixed(1) : '0';
+    const avgMsgs = total > 0 ? (history.reduce((s,h) => s + (h.messageCount || (h.messages||[]).length), 0) / total).toFixed(1) : '0';
 
     // Average duration (minutes)
     const durations = history.filter(h => h.startedAt && h.resolvedAt).map(h =>
@@ -2218,20 +2218,68 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
     );
     const avgDuration = durations.length > 0 ? (durations.reduce((s,d) => s+d, 0) / durations.length).toFixed(0) : '0';
 
+    // Ratings
+    const rated = history.filter(h => h.rating && h.rating > 0);
+    const avgRating = rated.length > 0 ? (rated.reduce((s,h) => s + h.rating, 0) / rated.length).toFixed(1) : '—';
+    const ratingDist = [0,0,0,0,0];
+    rated.forEach(h => { if (h.rating >= 1 && h.rating <= 5) ratingDist[h.rating-1]++; });
+    const maxRating = Math.max(...ratingDist, 1);
+
+    // Agent response times (time between visitor msg and next agent msg during agent mode)
+    const responseTimes = [];
+    history.forEach(h => {
+      const msgs = h.messages || [];
+      for (var i = 0; i < msgs.length - 1; i++) {
+        if (msgs[i].from === 'visitor' && msgs[i+1].from === 'agent' && msgs[i].timestamp && msgs[i+1].timestamp) {
+          var diff = (new Date(msgs[i+1].timestamp) - new Date(msgs[i].timestamp)) / 1000;
+          if (diff > 0 && diff < 3600) responseTimes.push(diff);
+        }
+      }
+    });
+    const avgResponseSecs = responseTimes.length > 0 ? Math.round(responseTimes.reduce((s,d) => s+d, 0) / responseTimes.length) : 0;
+    const avgResponseStr = avgResponseSecs < 60 ? avgResponseSecs + 's' : Math.round(avgResponseSecs/60) + 'm ' + (avgResponseSecs%60) + 's';
+
+    // First contact resolution (resolved by AI without escalation)
+    const fcrPct = total > 0 ? Math.round((aiOnly/total)*100) : 0;
+
+    // Agent leaderboard
+    const agentStats = {};
+    history.forEach(h => {
+      (h.messages || []).forEach(m => {
+        if (m.from === 'agent' && m.agentName) {
+          if (!agentStats[m.agentName]) agentStats[m.agentName] = { msgs: 0, convs: new Set() };
+          agentStats[m.agentName].msgs++;
+          agentStats[m.agentName].convs.add(h.id);
+        }
+      });
+    });
+    const leaderboard = Object.entries(agentStats)
+      .map(([name, s]) => ({ name, msgs: s.msgs, convs: s.convs.size }))
+      .sort((a,b) => b.convs - a.convs);
+
+    // Peak hours
+    const hourCounts = new Array(24).fill(0);
+    history.forEach(h => {
+      if (h.startedAt) { var hr = new Date(h.startedAt).getHours(); hourCounts[hr]++; }
+    });
+    const maxHour = Math.max(...hourCounts, 1);
+    const peakHour = hourCounts.indexOf(Math.max(...hourCounts));
+    const peakStr = peakHour.toString().padStart(2,'0') + ':00–' + ((peakHour+1)%24).toString().padStart(2,'0') + ':00';
+
     // Top pages
     const pageCounts = {};
     history.forEach(h => {
-      const p = h.visitor?.page || 'Unknown';
+      const p = (h.visitor?.page || 'Unknown').replace(/^https?:\/\/[^/]+/, '') || '/';
       pageCounts[p] = (pageCounts[p]||0) + 1;
     });
     const topPages = Object.entries(pageCounts).sort((a,b) => b[1]-a[1]).slice(0,6);
 
-    // Conversations by day (last 7 days)
+    // Conversations by day (last 14 days)
     const dayLabels = [];
     const dayCounts = [];
-    for (let i=6; i>=0; i--) {
+    for (let i=13; i>=0; i--) {
       const d = new Date(); d.setDate(d.getDate()-i);
-      const label = d.toLocaleDateString('en-GB', { weekday:'short' });
+      const label = d.toLocaleDateString('en-GB', { day:'numeric', month:'short' });
       const dateStr = d.toDateString();
       const count = history.filter(h => new Date(h.resolvedAt || h.startedAt).toDateString() === dateStr).length;
       dayLabels.push(label);
@@ -2239,12 +2287,12 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
     }
     const maxDay = Math.max(...dayCounts, 1);
 
-    // Donut gradient for AI vs Human
-    const donutGradient = `conic-gradient(var(--teal) 0% ${aiPct}%, var(--green) ${aiPct}% 100%)`;
+    // Donut gradient
+    const donutGradient = 'conic-gradient(var(--teal) 0% ' + aiPct + '%, var(--green) ' + aiPct + '% 100%)';
 
     const el = document.getElementById('analyticsPanel');
     el.innerHTML = `
-      <div class="analytics-title">Chat Analytics</div>
+      <div class="analytics-title">Agent Performance Dashboard</div>
       <div class="analytics-sub">Based on ${total} resolved conversation${total!==1?'s':''} in history</div>
 
       <div class="stats-grid">
@@ -2259,26 +2307,46 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
           <span class="stat-detail">In history</span>
         </div>
         <div class="stat-card">
-          <span class="stat-label">Avg Messages</span>
-          <span class="stat-value amber">${avgMsgs}</span>
-          <span class="stat-detail">Per conversation</span>
+          <span class="stat-label">Avg Response Time</span>
+          <span class="stat-value amber">${avgResponseStr || '—'}</span>
+          <span class="stat-detail">${responseTimes.length} agent responses</span>
         </div>
         <div class="stat-card">
           <span class="stat-label">Avg Duration</span>
           <span class="stat-value green">${avgDuration}m</span>
           <span class="stat-detail">To resolution</span>
         </div>
+        <div class="stat-card">
+          <span class="stat-label">Customer Rating</span>
+          <span class="stat-value" style="color:var(--amber)">${avgRating}${avgRating !== '—' ? '/5' : ''}</span>
+          <span class="stat-detail">${rated.length} rated conversation${rated.length!==1?'s':''}</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">AI Resolution</span>
+          <span class="stat-value teal">${fcrPct}%</span>
+          <span class="stat-detail">${aiOnly} resolved without agent</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Avg Messages</span>
+          <span class="stat-value">${avgMsgs}</span>
+          <span class="stat-detail">Per conversation</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Peak Hour</span>
+          <span class="stat-value" style="font-size:22px">${total > 0 ? peakStr : '—'}</span>
+          <span class="stat-detail">${total > 0 ? hourCounts[peakHour] + ' conversations' : 'No data'}</span>
+        </div>
       </div>
 
       <div class="analytics-section">
-        <h3>Last 7 Days</h3>
+        <h3>Last 14 Days</h3>
         <div class="bar-chart">
           ${dayLabels.map((label, i) => `
             <div class="bar-row">
               <span class="bar-label">${label}</span>
               <div class="bar-track">
                 <div class="bar-fill teal" style="width:${Math.max((dayCounts[i]/maxDay)*100, dayCounts[i]>0?8:0)}%">
-                  ${dayCounts[i] > 0 ? `<span>${dayCounts[i]}</span>` : ''}
+                  ${dayCounts[i] > 0 ? '<span>' + dayCounts[i] + '</span>' : ''}
                 </div>
               </div>
             </div>
@@ -2300,6 +2368,32 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
           </div>
         </div>
         <div class="split-card">
+          <h4>Customer Ratings</h4>
+          ${rated.length > 0 ? `<div style="display:flex;align-items:flex-end;gap:8px;height:80px;margin-top:8px">
+            ${ratingDist.map((count, i) => `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
+              <div style="font-size:10px;color:var(--text-muted)">${count}</div>
+              <div style="width:100%;height:${Math.max((count/maxRating)*60, count>0?4:0)}px;background:var(--amber);border-radius:4px;transition:height .3s"></div>
+              <div style="font-size:11px;color:var(--text-dim)">${i+1}★</div>
+            </div>`).join('')}
+          </div>` : '<div style="font-size:12px;color:var(--text-muted);padding:20px 0">No ratings yet</div>'}
+        </div>
+      </div>
+
+      ${leaderboard.length > 0 ? `<div class="analytics-section">
+        <h3>Agent Leaderboard</h3>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          ${leaderboard.map((a, i) => `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:8px;background:var(--navy-mid)">
+            <div style="width:28px;height:28px;border-radius:50%;background:${i===0?'var(--teal-glow)':'var(--surface-raised)'};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:${i===0?'var(--teal)':'var(--text-dim)'}">${i+1}</div>
+            <div style="flex:1">
+              <div style="font-size:13px;font-weight:600">${esc(a.name)}</div>
+              <div style="font-size:11px;color:var(--text-muted)">${a.convs} conversation${a.convs!==1?'s':''} · ${a.msgs} messages</div>
+            </div>
+          </div>`).join('')}
+        </div>
+      </div>` : ''}
+
+      <div class="split-row">
+        <div class="split-card">
           <h4>Top Pages</h4>
           <div class="page-list">
             ${topPages.length > 0 ? topPages.map(([page, count]) => `
@@ -2308,6 +2402,19 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
                 <span class="page-count">${count}</span>
               </div>
             `).join('') : '<div style="font-size:12px;color:var(--text-muted);">No data yet</div>'}
+          </div>
+        </div>
+        <div class="split-card">
+          <h4>Hourly Activity</h4>
+          <div style="display:flex;align-items:flex-end;gap:2px;height:60px">
+            ${hourCounts.map((count, hr) => `<div title="${hr.toString().padStart(2,'0')}:00 — ${count} chats" style="flex:1;height:${Math.max((count/maxHour)*56, count>0?3:1)}px;background:${count>0?'var(--teal)':'var(--border)'};border-radius:2px;opacity:${count>0?1:0.3};transition:height .3s"></div>`).join('')}
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:4px">
+            <span style="font-size:9px;color:var(--text-muted)">00</span>
+            <span style="font-size:9px;color:var(--text-muted)">06</span>
+            <span style="font-size:9px;color:var(--text-muted)">12</span>
+            <span style="font-size:9px;color:var(--text-muted)">18</span>
+            <span style="font-size:9px;color:var(--text-muted)">24</span>
           </div>
         </div>
       </div>
