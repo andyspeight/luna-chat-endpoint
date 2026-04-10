@@ -954,6 +954,17 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
       // Set client-specific storage
       STORAGE_PREFIX = 'luna_' + (CONFIG.CLIENT_NAME || 'default').toLowerCase().replace(/[^a-z0-9]/g, '_') + '_';
 
+      // Re-render canned responses from Airtable
+      loadCannedFromAPI();
+
+      // Restore theme preference for this client
+      try {
+        var savedTheme = localStorage.getItem(STORAGE_PREFIX + 'theme_mode');
+        var isCurrentlyLight = document.body.classList.contains('light-mode');
+        if (savedTheme === 'light' && !isCurrentlyLight) window._toggleTheme();
+        if (savedTheme !== 'light' && isCurrentlyLight) window._toggleTheme();
+      } catch(e) {}
+
       // Show dashboard
       loginScreen.style.display = 'none';
       app.classList.add('active');
@@ -1521,15 +1532,63 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
     closing: { label:'Closing', order:4 }
   };
 
+  let cannedCache = null; // in-memory cache, loaded from API on login
+
   function getCanned() {
+    if (cannedCache) return [...cannedCache];
+    // Fallback to localStorage during initial load
     try {
       const stored = localStorage.getItem(STORAGE_PREFIX + 'canned');
       if (stored) return JSON.parse(stored);
     } catch(e) {}
     return [...DEFAULT_CANNED];
   }
+
   function saveCanned(list) {
+    cannedCache = [...list];
+    // Save to localStorage as immediate backup
     try { localStorage.setItem(STORAGE_PREFIX + 'canned', JSON.stringify(list)); } catch(e) {}
+    // Save to Airtable via profile API
+    fetch('https://luna-chat-endpoint.vercel.app/api/profile', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Client-Name': CONFIG.CLIENT_NAME,
+        'X-Client-Pass': CONFIG.PASSWORD
+      },
+      body: JSON.stringify({ cannedResponses: JSON.stringify(list) })
+    }).catch(function(e) { console.warn('Failed to save canned to Airtable:', e.message); });
+  }
+
+  // Load canned responses from API (called after login)
+  async function loadCannedFromAPI() {
+    try {
+      const res = await fetch('https://luna-chat-endpoint.vercel.app/api/profile', {
+        headers: { 'X-Client-Name': CONFIG.CLIENT_NAME, 'X-Client-Pass': CONFIG.PASSWORD }
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const raw = (data.profile || {}).cannedResponses;
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          cannedCache = parsed;
+          localStorage.setItem(STORAGE_PREFIX + 'canned', raw);
+          renderCanned();
+          return;
+        }
+      }
+      // No saved canned — check localStorage, then use defaults
+      const stored = localStorage.getItem(STORAGE_PREFIX + 'canned');
+      if (stored) {
+        cannedCache = JSON.parse(stored);
+      } else {
+        cannedCache = [...DEFAULT_CANNED];
+      }
+      renderCanned();
+    } catch(e) {
+      console.warn('Failed to load canned from API:', e.message);
+    }
   }
 
   let cannedEditId = null; // null = adding, string = editing
