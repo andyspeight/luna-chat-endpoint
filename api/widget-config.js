@@ -68,6 +68,14 @@ module.exports = async function handler(req, res) {
     }
     if (f.ClientName) config.clientName = f.ClientName;
 
+    // Position
+    var pos = f.WidgetPosition;
+    if (pos) config.position = (typeof pos === 'object' ? pos.name : pos) || 'right';
+
+    // Mobile bubble
+    var mob = f.MobileBubble;
+    if (mob) config.mobileBubble = (typeof mob === 'object' ? mob.name : mob) || 'normal';
+
     return res.status(200).json(config);
   } catch (e) {
     console.warn('Widget config fetch error:', e.message);
