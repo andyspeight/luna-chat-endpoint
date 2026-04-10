@@ -238,6 +238,14 @@ function injectCSS() {
   +'#tgx-cw .tgx-check .tgx-cb-label{color:rgba(255,255,255,0.6)!important;font-size:13px!important;line-height:1.4!important}'
   /* Honeypot */
   +'#tgx-cw .tgx-hp{position:absolute!important;left:-9999px!important;top:-9999px!important;opacity:0!important;height:0!important;width:0!important;z-index:-1!important;pointer-events:none!important;tab-index:-1!important}'
+  +'#tgx-cw .tgx-email-bar{padding:4px 16px 2px!important;flex-shrink:0!important;text-align:right!important}'
+  +'#tgx-cw .tgx-email-link{color:'+C.mutedText+'!important;font-size:11px!important;cursor:pointer!important;transition:color .15s!important;border:none!important;background:none!important;padding:0!important}'
+  +'#tgx-cw .tgx-email-link:hover{color:'+C.accent+'!important}'
+  +'#tgx-cw .tgx-email-inline{display:flex!important;gap:6px!important;align-items:center!important;padding:4px 16px 2px!important;flex-shrink:0!important}'
+  +'#tgx-cw .tgx-email-inline input{flex:1!important;background:'+C.inputBg+'!important;border:1px solid '+C.border+'!important;border-radius:16px!important;padding:6px 12px!important;color:'+C.inputText+'!important;font-size:12px!important;outline:none!important}'
+  +'#tgx-cw .tgx-email-inline input::placeholder{color:'+C.mutedText+'!important}'
+  +'#tgx-cw .tgx-email-inline button{background:'+C.accent+'!important;color:'+C.buttonText+'!important;border:none!important;border-radius:16px!important;padding:6px 12px!important;font-size:11px!important;font-weight:600!important;cursor:pointer!important;white-space:nowrap!important}'
+  +'#tgx-cw .tgx-email-inline .tgx-email-cancel{background:none!important;color:'+C.mutedText+'!important;padding:6px 4px!important;font-size:11px!important;font-weight:400!important}'
   +'#tgx-cw .tgx-privacy{display:block!important;margin-top:12px!important;color:rgba(255,255,255,0.5)!important;font-size:11px!important;text-decoration:none!important;transition:color .15s!important}'
   +'#tgx-cw .tgx-privacy:hover{color:#FFFFFF!important;text-decoration:underline!important}'
   +'#tgx-cw .tgx-stars{display:flex!important;gap:8px!important;justify-content:center!important;margin-bottom:16px!important}'
@@ -269,6 +277,7 @@ function buildDOM() {
   +'<div class="tgx-msgs" id="tgxMsgs"></div>'
   +'<div class="tgx-typing" id="tgxTyping"><span></span><span></span><span></span></div>'
   +'<div id="tgxPills" class="tgx-pills"></div>'
+  +'<div class="tgx-email-bar" id="tgxEmailBar" style="display:none!important"><span class="tgx-email-link" id="tgxEmailLink">&#128231; Email this chat</span></div>'
   +'<div class="tgx-input-wrap"><input class="tgx-input" id="tgxInput" placeholder="Ask me anything..." autocomplete="off"><button class="tgx-send" id="tgxSend"><svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></button></div>'
   +'<div class="tgx-esc-bar" id="tgxEscBar"><button class="tgx-esc-btn human" id="tgxHuman">'+C.escalateLabel+'</button><button class="tgx-esc-btn leave" id="tgxLeave">'+C.leaveLabel+'</button></div>'
   +'<div class="tgx-footer">'+C.footer+'</div>'
@@ -278,7 +287,7 @@ function buildDOM() {
 }
 
 /* ─── HELPERS ────────────────────────────────────────────── */
-var $fab, $panel, $msgs, $input, $send, $pills, $typing, $badge, $escBar;
+var $fab, $panel, $msgs, $input, $send, $pills, $typing, $badge, $escBar, $emailBar;
 
 function scrollBottom() { setTimeout(function(){ $msgs.scrollTop = $msgs.scrollHeight; }, 50); }
 
@@ -295,6 +304,10 @@ function addMsg(role, text, noStore) {
   $msgs.appendChild(div);
   if (!noStore) msgs.push({role:role, content:text, ts:Date.now()});
   scrollBottom();
+  /* Show email-this-chat link after 3+ stored messages */
+  if ($emailBar && msgs.length >= 3) {
+    $emailBar.style.cssText = "display:block!important";
+  }
 }
 
 function showPills(items, onClick) {
@@ -318,6 +331,67 @@ function parseResponse(text) {
     else clean.push(line);
   });
   return {body: clean.join("\n").trim(), fqs:fqs, opts:opts};
+}
+
+/* ─── EMAIL THIS CHAT ────────────────────────────────────── */
+function buildTranscript() {
+  var lines = [];
+  msgs.forEach(function(m) {
+    if (m.role === "system") return;
+    var d = new Date(m.ts);
+    var time = ("0"+d.getHours()).slice(-2) + ":" + ("0"+d.getMinutes()).slice(-2);
+    var sender = m.role === "user" ? "You" : m.role === "agent" ? "Agent" : (C.name || "Luna AI");
+    lines.push(sender + " (" + time + "): " + m.content);
+  });
+  return lines.join("\n\n");
+}
+
+function openMailto(email) {
+  var today = new Date().toLocaleDateString("en-GB", {day:"numeric",month:"long",year:"numeric"});
+  var subject = "Chat transcript — " + (C.clientName || C.name);
+  var header = "Here's a copy of your conversation with " + (C.name || "Luna AI") + " at " + (C.clientName || "") + " on " + today + "\n\n---\n\n";
+  var body = header + buildTranscript();
+  window.location.href = "mailto:" + encodeURIComponent(email)
+    + "?subject=" + encodeURIComponent(subject)
+    + "&body=" + encodeURIComponent(body);
+}
+
+function handleEmailChat() {
+  if (visitorEmail) {
+    openMailto(visitorEmail);
+  } else {
+    /* Show inline email prompt */
+    var bar = $emailBar;
+    bar.innerHTML = '';
+    var wrap = document.createElement("div");
+    wrap.className = "tgx-email-inline";
+    wrap.innerHTML = '<input type="email" id="tgxInlineEmail" placeholder="Enter your email">'
+      +'<button id="tgxInlineEmailGo">Send</button>'
+      +'<button class="tgx-email-cancel" id="tgxInlineEmailX">Cancel</button>';
+    bar.appendChild(wrap);
+    bar.style.cssText = "display:block!important";
+    setTimeout(function(){
+      var inp = document.getElementById("tgxInlineEmail");
+      inp.focus();
+      document.getElementById("tgxInlineEmailGo").addEventListener("click", function(){
+        var em = inp.value.trim();
+        if (em && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) {
+          visitorEmail = em;
+          openMailto(em);
+          /* Restore link */
+          bar.innerHTML = '<span class="tgx-email-link" id="tgxEmailLink">&#128231; Email this chat</span>';
+          document.getElementById("tgxEmailLink").addEventListener("click", handleEmailChat);
+        }
+      });
+      document.getElementById("tgxInlineEmailX").addEventListener("click", function(){
+        bar.innerHTML = '<span class="tgx-email-link" id="tgxEmailLink">&#128231; Email this chat</span>';
+        document.getElementById("tgxEmailLink").addEventListener("click", handleEmailChat);
+      });
+      inp.addEventListener("keydown", function(e){
+        if (e.key === "Enter") { e.preventDefault(); document.getElementById("tgxInlineEmailGo").click(); }
+      });
+    }, 50);
+  }
 }
 
 /* ─── ABLY: init ─────────────────────────────────────────── */
@@ -773,6 +847,7 @@ async function boot() {
   $typing = document.getElementById("tgxTyping");
   $badge = document.getElementById("tgxBadge");
   $escBar = document.getElementById("tgxEscBar");
+  $emailBar = document.getElementById("tgxEmailBar");
 
   $send.addEventListener("click", handleSend);
   $input.addEventListener("keydown", function(e){
@@ -787,6 +862,7 @@ async function boot() {
 
   document.getElementById("tgxHuman").addEventListener("click", escalateToHuman);
   document.getElementById("tgxLeave").addEventListener("click", showLeaveOverlay);
+  document.getElementById("tgxEmailLink").addEventListener("click", handleEmailChat);
 
   /* ─── Open/close chat function (also used by FAB) ─────── */
   function openChat() {
