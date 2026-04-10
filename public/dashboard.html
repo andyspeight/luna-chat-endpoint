@@ -830,6 +830,23 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
     </div>
 
     <div class="settings-section">
+      <h4>Bubble Position</h4>
+      <div style="display:flex;gap:8px" id="positionGrid"></div>
+    </div>
+
+    <div class="settings-section">
+      <h4>Mobile Bubble</h4>
+      <div class="settings-hint" style="margin-bottom:8px">How the chat bubble appears on mobile phones.</div>
+      <div style="display:flex;gap:8px" id="mobileBubbleGrid"></div>
+    </div>
+
+    <div class="settings-section">
+      <h4>Holiday Search Types</h4>
+      <div class="settings-hint" style="margin-bottom:8px">Which search types are available when Luna offers to search for holidays. Leave all unchecked for all types.</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px" id="searchTypesGrid"></div>
+    </div>
+
+    <div class="settings-section">
       <h4>Chat Settings</h4>
       <div class="settings-row">
         <label class="settings-label">Bot Name</label>
@@ -1978,6 +1995,9 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
   const WIDGET_SIZES = { compact: 'Compact', standard: 'Standard', large: 'Large' };
   let selectedTheme = 'dark';
   let selectedSize = 'standard';
+  let selectedPosition = 'right';
+  let selectedMobileBubble = 'normal';
+  let selectedSearchTypes = [];
 
   function renderThemeGrid() {
     const el = document.getElementById('themeGrid');
@@ -2000,6 +2020,48 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
 
   window._selectTheme = function(t) { selectedTheme = t; renderThemeGrid(); };
   window._selectSize = function(s) { selectedSize = s; renderSizeGrid(); };
+  window._selectPosition = function(p) { selectedPosition = p; renderPositionGrid(); };
+  window._selectMobileBubble = function(m) { selectedMobileBubble = m; renderMobileBubbleGrid(); };
+  window._toggleSearchType = function(t) {
+    var idx = selectedSearchTypes.indexOf(t);
+    if (idx === -1) selectedSearchTypes.push(t); else selectedSearchTypes.splice(idx, 1);
+    renderSearchTypesGrid();
+  };
+
+  function renderPositionGrid() {
+    var el = document.getElementById('positionGrid');
+    ['right', 'left'].forEach(function(){});
+    el.innerHTML = ['right', 'left'].map(function(k) {
+      var active = selectedPosition === k;
+      return '<div onclick="window._selectPosition(\'' + k + '\')" style="flex:1;padding:12px;border-radius:8px;cursor:pointer;text-align:center;border:2px solid ' + (active ? 'var(--teal)' : 'var(--border)') + ';background:' + (active ? 'var(--teal-glow)' : 'var(--navy-mid)') + '">'
+        + '<div style="font-size:13px;font-weight:600;color:' + (active ? 'var(--teal)' : 'var(--text)') + '">' + k.charAt(0).toUpperCase() + k.slice(1) + '</div></div>';
+    }).join('');
+  }
+
+  function renderMobileBubbleGrid() {
+    var el = document.getElementById('mobileBubbleGrid');
+    var labels = { normal: 'Normal', small: 'Small', hidden: 'Hidden' };
+    el.innerHTML = ['normal', 'small', 'hidden'].map(function(k) {
+      var active = selectedMobileBubble === k;
+      return '<div onclick="window._selectMobileBubble(\'' + k + '\')" style="flex:1;padding:12px;border-radius:8px;cursor:pointer;text-align:center;border:2px solid ' + (active ? 'var(--teal)' : 'var(--border)') + ';background:' + (active ? 'var(--teal-glow)' : 'var(--navy-mid)') + '">'
+        + '<div style="font-size:13px;font-weight:600;color:' + (active ? 'var(--teal)' : 'var(--text)') + '">' + labels[k] + '</div></div>';
+    }).join('');
+  }
+
+  function renderSearchTypesGrid() {
+    var el = document.getElementById('searchTypesGrid');
+    var types = [
+      { key: 'Packages', label: 'Package Holidays' },
+      { key: 'Flights', label: 'Flights Only' },
+      { key: 'Accommodation', label: 'Hotels Only' },
+      { key: 'DynamicPackaging', label: 'Flight + Hotel' }
+    ];
+    el.innerHTML = types.map(function(t) {
+      var active = selectedSearchTypes.indexOf(t.key) !== -1;
+      return '<div onclick="window._toggleSearchType(\'' + t.key + '\')" style="padding:10px 16px;border-radius:8px;cursor:pointer;border:2px solid ' + (active ? 'var(--teal)' : 'var(--border)') + ';background:' + (active ? 'var(--teal-glow)' : 'var(--navy-mid)') + '">'
+        + '<div style="font-size:13px;font-weight:600;color:' + (active ? 'var(--teal)' : 'var(--text)') + '">' + t.label + '</div></div>';
+    }).join('');
+  }
 
   async function loadProfile() {
     try {
@@ -2028,12 +2090,18 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
       // Widget appearance
       selectedTheme = p.widgetTheme || 'dark';
       selectedSize = p.widgetSize || 'standard';
+      selectedPosition = p.widgetPosition || 'right';
+      selectedMobileBubble = p.mobileBubble || 'normal';
+      selectedSearchTypes = Array.isArray(p.searchTypes) ? p.searchTypes : [];
       document.getElementById('setBotName').value = p.widgetBotName || 'Luna AI';
       document.getElementById('setWelcome').value = p.widgetWelcome || '';
       document.getElementById('setHints').value = p.widgetHints || '';
 
       renderThemeGrid();
       renderSizeGrid();
+      renderPositionGrid();
+      renderMobileBubbleGrid();
+      renderSearchTypesGrid();
       profileLoaded = true;
     } catch (e) {
       console.warn('Profile load error:', e.message);
@@ -2061,6 +2129,9 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
           hours: document.getElementById('setHours').value,
           widgetTheme: selectedTheme,
           widgetSize: selectedSize,
+          widgetPosition: selectedPosition,
+          mobileBubble: selectedMobileBubble,
+          searchTypes: selectedSearchTypes,
           widgetBotName: document.getElementById('setBotName').value,
           widgetWelcome: document.getElementById('setWelcome').value,
           widgetHints: document.getElementById('setHints').value
@@ -2077,6 +2148,9 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
   // Render grids on first settings open
   renderThemeGrid();
   renderSizeGrid();
+  renderPositionGrid();
+  renderMobileBubbleGrid();
+  renderSearchTypesGrid();
 
   // ─── LIGHT/DARK TOGGLE ───
   window._toggleTheme = function() {
