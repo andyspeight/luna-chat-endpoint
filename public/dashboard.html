@@ -700,12 +700,14 @@
         <div class="chat-header-actions">
           <button class="chat-action-btn takeover" id="btnTakeover">Take Over</button>
           <button class="chat-action-btn resolve" id="btnResolve">Resolve</button>
+          <button class="chat-action-btn" id="btnBlock" style="background:rgba(239,68,68,0.15);color:var(--red);border-color:rgba(239,68,68,0.3)">Block</button>
         </div>
       </div>
       <div class="chat-messages" id="chatMessages"></div>
       <div class="typing-indicator" id="typingIndicator">
         <div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>
       </div>
+      <div id="suggestionsBar" style="display:none;flex-wrap:wrap;gap:6px;padding:8px 16px;border-top:1px solid var(--border);background:var(--navy-mid)"></div>
       <div class="chat-input-area">
         <textarea class="chat-textarea" id="msgInput" placeholder="Type a message…" rows="1"></textarea>
         <button class="send-btn" id="sendBtn" disabled>Send</button>
@@ -1089,6 +1091,14 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
       conv.channel.subscribe('message', msg => onConvMessage(convId, msg.data));
       conv.channel.subscribe('typing', msg => onConvTyping(convId, msg.data));
       conv.channel.subscribe('handler_change', msg => onHandlerChange(convId, msg.data));
+      conv.channel.subscribe('rating', msg => {
+        const c = conversations[convId];
+        if (c && msg.data && msg.data.rating) {
+          c.rating = msg.data.rating;
+          if (convId === activeConvId) showVisitorInfo(c);
+          appendMessage({ from: 'ai', text: '⭐ Visitor rated this conversation ' + msg.data.rating + '/5', timestamp: new Date().toISOString() });
+        }
+      });
     }
 
     conversations[convId] = conv;
@@ -1110,7 +1120,13 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
     if (convId === activeConvId) {
       appendMessage(data);
       scrollChat();
+      // Trigger smart suggestions when visitor sends a message and agent is active
+      if (data.from === 'visitor' && conv.handler !== 'ai') {
+        fetchSuggestions(data.text);
+      }
     }
+    // Update visitor info (live message count etc.)
+    if (convId === activeConvId) showVisitorInfo(conv);
   }
 
   function onConvTyping(convId, data) {
@@ -1251,14 +1267,104 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
     const details = document.getElementById('visitorDetails');
     section.style.display = 'block';
     const v = conv.visitor;
+    const msgCount = conv.messages.length;
+    const visitorMsgs = conv.messages.filter(m => m.from === 'visitor').length;
+    const aiMsgs = conv.messages.filter(m => m.from === 'ai').length;
+    const duration = conv.startedAt ? Math.round((Date.now() - new Date(conv.startedAt).getTime()) / 60000) : 0;
+    const durationStr = duration < 1 ? 'Just started' : duration < 60 ? duration + ' min' : Math.round(duration/60) + ' hr ' + (duration%60) + ' min';
+    const pageShort = (v.page || '—').replace(/^https?:\/\/[^/]+/, '');
+
+    // Country flag from country code (sent by widget)
+    const countryCode = (v.country || '').toUpperCase();
+    const flag = countryCode ? String.fromCodePoint(...[...countryCode].map(c => 0x1F1E6 + c.charCodeAt(0) - 65)) : '';
+
+    // Find previous conversations from history
+    const history = getHistory();
+    const visitorId = v.visitorId || v.name;
+    const prevConvs = history.filter(h => {
+      const hId = h.visitor?.visitorId || h.visitor?.name;
+      return hId === visitorId && h.id !== conv.id;
+    });
+    const isReturning = prevConvs.length > 0;
+
+    let prevConvsHTML = '';
+    if (isReturning) {
+      prevConvsHTML = '<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">'
+        + '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px">🔁 Previous Conversations (' + prevConvs.length + ')</div>'
+        + prevConvs.slice(0,5).map(h => {
+          const hDate = h.resolvedAt ? new Date(h.resolvedAt).toLocaleDateString('en-GB',{day:'numeric',month:'short'}) : '—';
+          const hMsgs = h.messageCount || (h.messages || []).length;
+          const firstMsg = (h.messages || []).find(m => m.from === 'visitor');
+          const preview = firstMsg ? firstMsg.text.slice(0,50) + (firstMsg.text.length > 50 ? '...' : '') : 'No messages';
+          return '<div onclick="window._selectHistoryConv(\'' + h.id + '\')" style="padding:6px 8px;border-radius:6px;cursor:pointer;margin-bottom:4px;background:var(--navy-mid);font-size:12px;line-height:1.4;transition:background .15s" onmouseover="this.style.background=\'var(--navy-light)\'" onmouseout="this.style.background=\'var(--navy-mid)\'">'
+            + '<div style="display:flex;justify-content:space-between;margin-bottom:2px"><span style="font-weight:600">' + hDate + '</span><span style="color:var(--text-muted)">' + hMsgs + ' msgs</span></div>'
+            + '<div style="color:var(--text-dim)">' + esc(preview) + '</div></div>';
+        }).join('')
+        + '</div>';
+    }
+
     details.innerHTML = `
-      <div class="info-row"><span class="info-label">Name</span><span class="info-value">${esc(v.name)}</span></div>
-      <div class="info-row"><span class="info-label">Page</span><span class="info-value">${esc(v.page || '—')}</span></div>
-      <div class="info-row"><span class="info-label">Location</span><span class="info-value">${esc(v.location || '—')}</span></div>
-      <div class="info-row"><span class="info-label">Device</span><span class="info-value">${esc(v.device || '—')}</span></div>
-      <div class="info-row"><span class="info-label">Handler</span><span class="info-value">${conv.handler === 'ai' ? 'Luna AI' : 'Agent'}</span></div>
-      <div class="info-row"><span class="info-label">Started</span><span class="info-value mono">${formatTime(conv.startedAt)}</span></div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+        <div style="width:40px;height:40px;border-radius:50%;background:var(--teal-glow);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:var(--teal)">${esc(v.name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2))}</div>
+        <div>
+          <div style="font-size:14px;font-weight:600">${flag ? flag + ' ' : ''}${esc(v.name)}${isReturning ? ' <span style="font-size:10px;padding:2px 6px;border-radius:4px;background:var(--green-glow);color:var(--green);font-weight:600;margin-left:4px">RETURNING</span>' : ''}</div>
+          <div style="font-size:11px;color:var(--text-muted)">${v.email ? esc(v.email) : 'No email'}</div>
+        </div>
+      </div>
+      <div class="info-row"><span class="info-label">📍 Page</span><span class="info-value" title="${esc(v.page || '')}">${esc(pageShort)}</span></div>
+      ${countryCode ? '<div class="info-row"><span class="info-label">' + flag + ' Country</span><span class="info-value">' + esc(countryCode) + '</span></div>' : ''}
+      <div class="info-row"><span class="info-label">🖥 Device</span><span class="info-value">${esc(v.device || '—')}</span></div>
+      <div class="info-row"><span class="info-label">⏱ Duration</span><span class="info-value">${durationStr}</span></div>
+      <div class="info-row"><span class="info-label">💬 Messages</span><span class="info-value">${msgCount} total (${visitorMsgs} visitor, ${aiMsgs} AI)</span></div>
+      <div class="info-row"><span class="info-label">🤖 Handler</span><span class="info-value">${conv.handler === 'ai' ? '<span style="color:var(--teal)">Luna AI</span>' : '<span style="color:var(--green)">Agent</span>'}</span></div>
+      <div class="info-row"><span class="info-label">🕐 Started</span><span class="info-value mono">${formatTime(conv.startedAt)}</span></div>
+      ${conv.rating ? '<div class="info-row"><span class="info-label">⭐ Rating</span><span class="info-value">' + '★'.repeat(conv.rating) + '☆'.repeat(5-conv.rating) + ' (' + conv.rating + '/5)</span></div>' : ''}
+      ${prevConvsHTML}
     `;
+  }
+
+  // Click handler for previous conversation links
+  window._selectHistoryConv = function(hId) {
+    activeTab = 'history';
+    document.querySelectorAll('.tab-btn').forEach(t => t.classList.toggle('active', t.textContent.includes('History')));
+    activeHistoryId = hId;
+    renderHistoryList();
+    showHistoryDetail(hId);
+  };
+
+  // ─── SMART SUGGESTIONS ───
+  async function fetchSuggestions(visitorMessage) {
+    const sugBar = document.getElementById('suggestionsBar');
+    if (!sugBar || !visitorMessage) return;
+    sugBar.innerHTML = '<span style="font-size:11px;color:var(--text-muted)">Luna is thinking...</span>';
+    sugBar.style.display = 'flex';
+
+    try {
+      const res = await fetch('https://luna-chat-endpoint.vercel.app/api/luna-chat', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          message: 'The visitor just said: "' + visitorMessage + '". Generate 3 short agent reply suggestions (1 sentence each). Format each on its own line starting with [SUG]. Nothing else.',
+          convId: 'suggestions-' + Date.now(),
+          clientName: CONFIG.CLIENT_NAME,
+          history: []
+        })
+      });
+      if (!res.ok) throw new Error('Suggestions failed');
+      const data = await res.json();
+      const sugs = (data.reply || '').split('\n').filter(l => /^\[SUG\]/i.test(l.trim())).map(l => l.trim().replace(/^\[SUG\]\s*/i, '')).slice(0,3);
+
+      if (sugs.length > 0) {
+        sugBar.innerHTML = sugs.map(s =>
+          '<button style="padding:6px 12px;border-radius:16px;border:1px solid var(--border);background:var(--surface-raised);color:var(--text);font-size:12px;cursor:pointer;font-family:var(--font);text-align:left;line-height:1.3;transition:border-color .15s" onmouseover="this.style.borderColor=\'var(--teal)\'" onmouseout="this.style.borderColor=\'var(--border)\'" onclick="document.getElementById(\'msgInput\').value=this.textContent;document.getElementById(\'suggestionsBar\').style.display=\'none\';document.getElementById(\'msgInput\').focus();document.getElementById(\'sendBtn\').disabled=false">' + esc(s) + '</button>'
+        ).join('');
+      } else {
+        sugBar.style.display = 'none';
+      }
+    } catch(e) {
+      sugBar.style.display = 'none';
+      console.warn('Suggestions error:', e.message);
+    }
   }
 
   // ─── SEND MESSAGE ───
@@ -1308,6 +1414,7 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
     msgInput.value = '';
     msgInput.style.height = 'auto';
     sendBtn.disabled = true;
+    document.getElementById('suggestionsBar').style.display = 'none';
   }
 
   // ─── TAKEOVER & RESOLVE ───
@@ -1328,6 +1435,66 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
     if (dashboardChannel) dashboardChannel.publish('conversation_resolved', { convId:activeConvId });
     handleConversationResolved({ convId:activeConvId });
   });
+
+  // ─── BLOCK USER ───
+  const blockedUsers = JSON.parse(localStorage.getItem(STORAGE_PREFIX + 'blocked') || '[]');
+
+  document.getElementById('btnBlock').addEventListener('click', () => {
+    if (!activeConvId) return;
+    if (!confirm('Block this visitor? They won\'t be able to start new conversations.')) return;
+    const conv = conversations[activeConvId];
+    const visitorId = conv.visitor?.visitorId || conv.visitor?.name || 'unknown';
+    blockedUsers.push(visitorId);
+    localStorage.setItem(STORAGE_PREFIX + 'blocked', JSON.stringify(blockedUsers));
+    if (conv.channel) conv.channel.publish('blocked', { reason: 'Blocked by agent' });
+    if (conv.channel) conv.channel.publish('conversation_resolved', { convId:activeConvId });
+    if (dashboardChannel) dashboardChannel.publish('conversation_resolved', { convId:activeConvId });
+    appendMessage({ from: 'ai', text: '🚫 Visitor has been blocked.', timestamp: new Date().toISOString() });
+    handleConversationResolved({ convId:activeConvId });
+  });
+
+  // ─── REOPEN RESOLVED CONVERSATIONS ───
+  // When a new message arrives on a resolved conversation, move it back to live
+  function reopenConversation(convId, data) {
+    const history = getHistory();
+    const histIdx = history.findIndex(h => h.id === convId);
+    if (histIdx === -1) return;
+
+    const histConv = history.splice(histIdx, 1)[0];
+    saveHistory(history);
+
+    // Recreate as live conversation
+    const conv = {
+      id: convId,
+      visitor: histConv.visitor,
+      messages: histConv.messages || [],
+      handler: 'ai',
+      startedAt: histConv.startedAt,
+      unread: true
+    };
+    conv.messages.push(data);
+
+    if (ably && ably.connection.state === 'connected') {
+      conv.channel = ably.channels.get(CONFIG.CHANNEL_PREFIX + convId);
+      conv.channel.subscribe('message', msg => onConvMessage(convId, msg.data));
+      conv.channel.subscribe('typing', msg => onConvTyping(convId, msg.data));
+      conv.channel.subscribe('handler_change', msg => onHandlerChange(convId, msg.data));
+      conv.channel.subscribe('rating', msg => {
+        const c = conversations[convId];
+        if (c && msg.data && msg.data.rating) {
+          c.rating = msg.data.rating;
+          if (convId === activeConvId) showVisitorInfo(c);
+          appendMessage({ from: 'ai', text: '⭐ Visitor rated this conversation ' + msg.data.rating + '/5', timestamp: new Date().toISOString() });
+        }
+      });
+    }
+
+    conversations[convId] = conv;
+    renderConvList();
+    updateHistoryCount();
+    playNotificationSound();
+    showDesktopNotification('Chat reopened — ' + conv.visitor.name, data.text?.slice(0,80) || 'Visitor returned');
+  }
 
   // ─── CANNED RESPONSES ───
   const DEFAULT_CANNED = [
