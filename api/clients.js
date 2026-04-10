@@ -60,6 +60,7 @@ module.exports = async function handler(req, res) {
     var slug = (body.slug || '').trim();
     var email = (body.email || '').trim();
     var ably = (body.ablyKey || '').trim();
+    var siteId = (body.siteId || '').trim();
     var pass = (body.password || slug.replace(/-/g, '') + Math.floor(Math.random() * 9000 + 1000)).trim();
 
     if (!name || !slug || !email) {
@@ -83,6 +84,7 @@ module.exports = async function handler(req, res) {
             Status: 'Active',
             WidgetEmbed: embed,
             DashboardURL: dashUrl,
+            DeepLinkSiteID: siteId,
             CreatedAt: new Date().toISOString()
           }}],
           typecast: true
