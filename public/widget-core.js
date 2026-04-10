@@ -96,6 +96,8 @@ function rebuildConfig(apiConfig) {
   if (A.mobileBubble) C.mobileBubble = A.mobileBubble;
   /* Map autoTrigger */
   if (A.autoTrigger) C.autoTrigger = A.autoTrigger;
+  /* Map privacyUrl */
+  if (A.privacyUrl) C.privacyUrl = A.privacyUrl;
   /* hints might be a JSON string from data-attr */
   if (typeof C.hints === "string") {
     try { C.hints = JSON.parse(C.hints); } catch(e) { C.hints = D.hints; }
@@ -108,6 +110,8 @@ rebuildConfig(null); /* initial merge without API */
 var msgs = [];
 var history = [];
 var userName = "";
+var visitorEmail = "";
+var marketingConsent = false;
 var panelOpen = false;
 var nameCollected = false;
 var convId = null;
@@ -218,6 +222,11 @@ function injectCSS() {
   +'#tgx-cw .tgx-overlay textarea{height:80px!important;resize:none!important;font-family:inherit!important}'
   +'#tgx-cw .tgx-overlay .tgx-obtn{width:100%!important;padding:12px!important;border-radius:12px!important;background:'+C.accent+'!important;color:'+C.buttonText+'!important;font-size:14px!important;font-weight:600!important;border:none!important;cursor:pointer!important;margin-bottom:8px!important}'
   +'#tgx-cw .tgx-overlay .tgx-olink{background:none!important;border:none!important;color:'+C.accentGlow+'!important;font-size:13px!important;cursor:pointer!important;text-decoration:underline!important}'
+  +'#tgx-cw .tgx-check{display:flex!important;align-items:flex-start!important;gap:8px!important;margin-bottom:14px!important;cursor:pointer!important;text-align:left!important}'
+  +'#tgx-cw .tgx-check input[type="checkbox"]{width:16px!important;height:16px!important;margin-top:2px!important;accent-color:'+C.accent+'!important;cursor:pointer!important;flex-shrink:0!important}'
+  +'#tgx-cw .tgx-check span{color:'+C.mutedText+'!important;font-size:12px!important;line-height:1.4!important}'
+  +'#tgx-cw .tgx-privacy{display:block!important;margin-top:12px!important;color:'+C.mutedText+'!important;font-size:11px!important;text-decoration:none!important;transition:color .15s!important}'
+  +'#tgx-cw .tgx-privacy:hover{color:'+C.accent+'!important;text-decoration:underline!important}'
   +'#tgx-cw .tgx-stars{display:flex!important;gap:8px!important;justify-content:center!important;margin-bottom:16px!important}'
   +'#tgx-cw .tgx-star{font-size:36px!important;color:'+C.mutedText+'!important;cursor:pointer!important;transition:color .15s,transform .15s!important;line-height:1!important}'
   +'#tgx-cw .tgx-footer{text-align:center!important;padding:6px!important;color:'+C.mutedText+'!important;font-size:10px!important;flex-shrink:0!important}'
@@ -370,6 +379,8 @@ function ensureConversationStarted() {
     convId: convId,
     visitor: {
       name: userName || "Anonymous",
+      email: visitorEmail || undefined,
+      marketingConsent: marketingConsent,
       page: window.location.href,
       device: isMobile ? "mobile" : "desktop",
       country: visitorCountry,
@@ -410,28 +421,59 @@ function showNameOverlay() {
   var ov = document.createElement("div");
   ov.className = "tgx-overlay";
   ov.id = "tgxNameOv";
-  ov.innerHTML = '<h3>'+C.namePrompt+'</h3><p>This helps us personalise your experience.</p>'
+  var html = '<h3>'+C.namePrompt+'</h3><p>This helps us personalise your experience.</p>'
     +'<input type="text" id="tgxNameIn" placeholder="Your name" autofocus>'
+    +'<input type="email" id="tgxEmailIn" placeholder="Email (optional)">'
+    +'<label class="tgx-check" id="tgxMarketingLabel">'
+    +'<input type="checkbox" id="tgxMarketingIn">'
+    +'<span>I\'d like to receive offers and updates</span>'
+    +'</label>'
     +'<button class="tgx-obtn" id="tgxNameGo">Continue</button>'
     +'<button class="tgx-olink" id="tgxNameSkip">'+C.skipLabel+'</button>';
+  if (C.privacyUrl) {
+    html += '<a class="tgx-privacy" href="'+C.privacyUrl+'" target="_blank" rel="noopener">See our privacy policy</a>';
+  }
+  ov.innerHTML = html;
   $panel.appendChild(ov);
   setTimeout(function(){
     var ni = document.getElementById("tgxNameIn");
+    var ei = document.getElementById("tgxEmailIn");
+    var mi = document.getElementById("tgxMarketingIn");
     ni.focus();
-    document.getElementById("tgxNameGo").addEventListener("click", function(){
+    function doSubmit() {
       userName = ni.value.trim();
+      visitorEmail = ei.value.trim();
+      marketingConsent = mi.checked;
       nameCollected = true;
+      /* If email + marketing consent, call subscribe endpoint */
+      if (visitorEmail && marketingConsent) {
+        fetch(C.endpoint.replace("/api/luna-chat", "/api/subscribe"), {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({
+            clientName: C.clientName,
+            name: userName,
+            email: visitorEmail
+          })
+        }).catch(function(e){ console.warn("Luna widget: subscribe error:", e); });
+      }
       ov.remove();
       startChat();
-    });
+    }
+    document.getElementById("tgxNameGo").addEventListener("click", doSubmit);
     document.getElementById("tgxNameSkip").addEventListener("click", function(){
       userName = "";
+      visitorEmail = "";
+      marketingConsent = false;
       nameCollected = true;
       ov.remove();
       startChat();
     });
     ni.addEventListener("keydown", function(e){
-      if (e.key === "Enter") document.getElementById("tgxNameGo").click();
+      if (e.key === "Enter") { e.preventDefault(); ei.focus(); }
+    });
+    ei.addEventListener("keydown", function(e){
+      if (e.key === "Enter") { e.preventDefault(); doSubmit(); }
     });
   }, 50);
 }
