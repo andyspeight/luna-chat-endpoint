@@ -64,7 +64,8 @@ module.exports = async function handler(req, res) {
           widgetWelcome: fields.WidgetWelcome || '',
           widgetHints: fields.WidgetHints || '',
           widgetBotName: fields.WidgetBotName || 'Luna AI',
-          widgetSize: fields.WidgetSize || 'standard'
+          widgetSize: fields.WidgetSize || 'standard',
+          cannedResponses: fields.CannedResponses || ''
         }
       });
     }
@@ -91,6 +92,9 @@ module.exports = async function handler(req, res) {
       if (body.widgetHints !== undefined) updateFields.WidgetHints = body.widgetHints;
       if (body.widgetBotName !== undefined) updateFields.WidgetBotName = body.widgetBotName;
       if (body.widgetSize !== undefined) updateFields.WidgetSize = body.widgetSize;
+
+      // Canned responses
+      if (body.cannedResponses !== undefined) updateFields.CannedResponses = body.cannedResponses;
 
       if (Object.keys(updateFields).length === 0) {
         return res.status(400).json({ error: 'No fields to update' });
