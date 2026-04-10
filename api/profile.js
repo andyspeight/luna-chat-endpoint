@@ -68,6 +68,9 @@ module.exports = async function handler(req, res) {
           widgetPosition: fields.WidgetPosition ? (typeof fields.WidgetPosition === 'object' ? fields.WidgetPosition.name : fields.WidgetPosition) : 'right',
           mobileBubble: fields.MobileBubble ? (typeof fields.MobileBubble === 'object' ? fields.MobileBubble.name : fields.MobileBubble) : 'normal',
           searchTypes: Array.isArray(fields.SearchTypes) ? fields.SearchTypes.map(function(t) { return typeof t === 'object' ? t.name : t; }) : [],
+          autoTriggerEnabled: !!fields.AutoTriggerEnabled,
+          autoTriggerDelay: fields.AutoTriggerDelay || 30,
+          autoTriggerMessage: fields.AutoTriggerMessage || '',
           cannedResponses: fields.CannedResponses || ''
         }
       });
@@ -98,6 +101,9 @@ module.exports = async function handler(req, res) {
       if (body.widgetPosition !== undefined) updateFields.WidgetPosition = body.widgetPosition;
       if (body.mobileBubble !== undefined) updateFields.MobileBubble = body.mobileBubble;
       if (body.searchTypes !== undefined) updateFields.SearchTypes = body.searchTypes;
+      if (body.autoTriggerEnabled !== undefined) updateFields.AutoTriggerEnabled = body.autoTriggerEnabled;
+      if (body.autoTriggerDelay !== undefined) updateFields.AutoTriggerDelay = parseInt(body.autoTriggerDelay) || 30;
+      if (body.autoTriggerMessage !== undefined) updateFields.AutoTriggerMessage = body.autoTriggerMessage;
 
       // Canned responses
       if (body.cannedResponses !== undefined) updateFields.CannedResponses = body.cannedResponses;
