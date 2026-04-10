@@ -59,7 +59,12 @@ module.exports = async function handler(req, res) {
           destinations: fields.Destinations || '',
           bonding: fields.BondingInfo || '',
           description: fields.BusinessDescription || '',
-          customQA: fields.CustomQA || ''
+          customQA: fields.CustomQA || '',
+          widgetTheme: fields.WidgetTheme || 'dark',
+          widgetWelcome: fields.WidgetWelcome || '',
+          widgetHints: fields.WidgetHints || '',
+          widgetBotName: fields.WidgetBotName || 'Luna AI',
+          widgetSize: fields.WidgetSize || 'standard'
         }
       });
     }
@@ -69,7 +74,7 @@ module.exports = async function handler(req, res) {
       var body = req.body || {};
       var updateFields = {};
 
-      // Only update fields that are provided
+      // Business profile fields
       if (body.address !== undefined) updateFields.BusinessAddress = body.address;
       if (body.phone !== undefined) updateFields.BusinessPhone = body.phone;
       if (body.website !== undefined) updateFields.BusinessWebsite = body.website;
@@ -79,6 +84,13 @@ module.exports = async function handler(req, res) {
       if (body.bonding !== undefined) updateFields.BondingInfo = body.bonding;
       if (body.description !== undefined) updateFields.BusinessDescription = body.description;
       if (body.customQA !== undefined) updateFields.CustomQA = body.customQA;
+
+      // Widget appearance fields
+      if (body.widgetTheme !== undefined) updateFields.WidgetTheme = body.widgetTheme;
+      if (body.widgetWelcome !== undefined) updateFields.WidgetWelcome = body.widgetWelcome;
+      if (body.widgetHints !== undefined) updateFields.WidgetHints = body.widgetHints;
+      if (body.widgetBotName !== undefined) updateFields.WidgetBotName = body.widgetBotName;
+      if (body.widgetSize !== undefined) updateFields.WidgetSize = body.widgetSize;
 
       if (Object.keys(updateFields).length === 0) {
         return res.status(400).json({ error: 'No fields to update' });
