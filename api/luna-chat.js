@@ -579,6 +579,38 @@ module.exports = async function handler(req, res) {
 
   if (!isTravelgenix && clientName) {
     systemPrompt += `\n\n## Client context\nYou are embedded on the website of "${clientName}". Refer to them naturally as "we" or "us".`;
+
+    // Fetch client business profile from Airtable if available
+    const atKey = process.env.AIRTABLE_KEY;
+    if (atKey) {
+      try {
+        const profileUrl = 'https://api.airtable.com/v0/app6Ot3eOb3DangkB/tbl6CZ7aVzq1wHF2v'
+          + '?filterByFormula=' + encodeURIComponent("{ClientName}='" + clientName.replace(/'/g, "\\'") + "'")
+          + '&maxRecords=1';
+        const pRes = await fetch(profileUrl, { headers: { 'Authorization': 'Bearer ' + atKey } });
+        const pData = await pRes.json();
+        if (pData.records && pData.records.length > 0) {
+          const f = pData.records[0].fields || {};
+          const profileParts = [];
+          if (f.BusinessDescription) profileParts.push('About us: ' + f.BusinessDescription);
+          if (f.BusinessAddress) profileParts.push('Address: ' + f.BusinessAddress);
+          if (f.BusinessPhone) profileParts.push('Phone: ' + f.BusinessPhone);
+          if (f.BusinessWebsite) profileParts.push('Website: ' + f.BusinessWebsite);
+          if (f.OpeningHours) profileParts.push('Opening hours: ' + f.OpeningHours);
+          if (f.Specialisms) profileParts.push('We specialise in: ' + f.Specialisms);
+          if (f.Destinations) profileParts.push('Key destinations: ' + f.Destinations);
+          if (f.BondingInfo) profileParts.push('Protection and bonding: ' + f.BondingInfo);
+          if (profileParts.length > 0) {
+            systemPrompt += '\n\n## Business profile\n' + profileParts.join('\n');
+          }
+          if (f.CustomQA) {
+            systemPrompt += '\n\n## Custom Q&A\nUse these answers when visitors ask related questions:\n' + f.CustomQA;
+          }
+        }
+      } catch (e) {
+        console.warn('Profile fetch failed:', e.message);
+      }
+    }
   }
   if (page) systemPrompt += `\nThe visitor is currently viewing: ${page}`;
   if (visitorName) systemPrompt += `\nThe visitor's name is ${visitorName}.`;
