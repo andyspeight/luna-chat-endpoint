@@ -744,29 +744,30 @@
   <!-- SETTINGS OVERLAY -->
   <div class="settings-overlay" id="settingsPanel">
     <div class="settings-title">Business Profile</div>
-    <div class="settings-sub">This information helps Luna answer visitor questions about your business. The more you fill in, the better Luna can help your customers.</div>
+    <div class="settings-sub">Tell Luna about your business. The more she knows, the better she can help your website visitors. Just write naturally — Luna reads everything and uses it to answer questions.</div>
 
     <div class="settings-section">
       <h4>About Your Business</h4>
       <div class="settings-row">
-        <label class="settings-label">Business Description</label>
-        <textarea class="settings-textarea" id="setDescription" placeholder="Tell us about your travel business in a few sentences. What makes you special? Who do you serve?" rows="3"></textarea>
-        <div class="settings-hint">This is what Luna uses when someone asks "Tell me about your company"</div>
-      </div>
-      <div class="settings-grid">
-        <div class="settings-row">
-          <label class="settings-label">Specialisms</label>
-          <input class="settings-input" id="setSpecialisms" placeholder="e.g. Luxury, Family, Cruise, Adventure">
-        </div>
-        <div class="settings-row">
-          <label class="settings-label">Key Destinations</label>
-          <input class="settings-input" id="setDestinations" placeholder="e.g. Greece, Turkey, Maldives, Caribbean">
-        </div>
+        <label class="settings-label">Tell Luna about your business</label>
+        <textarea class="settings-textarea" id="setDescription" placeholder="Write anything Luna should know about your business. For example:
+
+We're a family-run travel agency in Brighton, established in 2005. We specialise in luxury holidays to Greece, Turkey and the Maldives, and we're particularly well known for our honeymoon packages.
+
+We're ATOL protected (number 12345) and ABTA members, so all bookings are fully financially protected.
+
+We offer 0% finance on holidays over £1,000 — customers can spread the cost over 6 or 12 months with no interest.
+
+Our cancellation policy follows the tour operator's terms, but we always try to be flexible. Most bookings can be amended within 48 hours at no cost.
+
+We don't charge booking fees on any of our package holidays." rows="14" style="min-height:220px"></textarea>
+        <div class="settings-hint">Include anything a customer might ask about: specialisms, destinations, financial protection, payment options, cancellation policies, unique selling points, awards, team info — anything you'd tell a customer on the phone.</div>
       </div>
     </div>
 
     <div class="settings-section">
       <h4>Contact Details</h4>
+      <div class="settings-hint" style="margin-bottom:12px;margin-top:-8px">These need to be exact so Luna gives the right information when visitors ask how to reach you.</div>
       <div class="settings-grid">
         <div class="settings-row">
           <label class="settings-label">Phone Number</label>
@@ -779,7 +780,7 @@
       </div>
       <div class="settings-row">
         <label class="settings-label">Business Address</label>
-        <textarea class="settings-textarea" id="setAddress" placeholder="Your full business address" rows="2"></textarea>
+        <input class="settings-input" id="setAddress" placeholder="e.g. 42 High Street, Brighton, BN1 2AA">
       </div>
       <div class="settings-row">
         <label class="settings-label">Opening Hours</label>
@@ -787,27 +788,46 @@
       </div>
     </div>
 
+    <div>
+      <button class="settings-save" id="settingsSaveBtn" onclick="window._saveSettings()">Save Profile</button>
+      <span class="settings-saved" id="settingsSaved">Saved!</span>
+    </div>
+
+    <hr style="border:none;border-top:1px solid var(--border);margin:32px 0">
+
+    <div class="settings-title">Widget Appearance</div>
+    <div class="settings-sub">Customise how the chat widget looks on your website. Changes take effect within a minute.</div>
+
     <div class="settings-section">
-      <h4>Licensing and Protection</h4>
-      <div class="settings-row">
-        <label class="settings-label">ATOL / ABTA / Bonding Details</label>
-        <input class="settings-input" id="setBonding" placeholder="e.g. ATOL 12345, ABTA member, PTS protected">
-        <div class="settings-hint">Customers often ask about financial protection. If you have ATOL, ABTA or other bonding, enter it here.</div>
-      </div>
+      <h4>Theme</h4>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px" id="themeGrid"></div>
     </div>
 
     <div class="settings-section">
-      <h4>Custom Q&A</h4>
+      <h4>Size</h4>
+      <div style="display:flex;gap:8px" id="sizeGrid"></div>
+    </div>
+
+    <div class="settings-section">
+      <h4>Chat Settings</h4>
       <div class="settings-row">
-        <label class="settings-label">Add your own questions and answers</label>
-        <textarea class="settings-textarea" id="setCustomQA" placeholder="Q: Do you offer payment plans?&#10;A: Yes, we offer 0% finance on holidays over £1,000. Spread the cost over 6 or 12 months.&#10;&#10;Q: What is your cancellation policy?&#10;A: We follow the supplier's cancellation terms. Most bookings can be cancelled within 24 hours for free." rows="8"></textarea>
-        <div class="settings-hint">Format: Q: followed by the question, then A: followed by the answer. Leave a blank line between each pair. Luna will use these when visitors ask similar questions.</div>
+        <label class="settings-label">Bot Name</label>
+        <input class="settings-input" id="setBotName" placeholder="Luna AI" value="Luna AI">
+      </div>
+      <div class="settings-row">
+        <label class="settings-label">Welcome Message</label>
+        <input class="settings-input" id="setWelcome" placeholder="Hey there! I'm Luna, your AI assistant. How can I help you today?">
+      </div>
+      <div class="settings-row">
+        <label class="settings-label">Prompt Hints (one per line)</label>
+        <textarea class="settings-textarea" id="setHints" placeholder="How much does it cost?&#10;What destinations do you cover?&#10;Can I book online?&#10;Tell me about your services" rows="4"></textarea>
+        <div class="settings-hint">These appear as clickable suggestion buttons when a visitor opens the chat.</div>
       </div>
     </div>
 
     <div>
-      <button class="settings-save" id="settingsSaveBtn" onclick="window._saveSettings()">Save Profile</button>
-      <span class="settings-saved" id="settingsSaved">Saved!</span>
+      <button class="settings-save" onclick="window._saveSettings()">Save Appearance</button>
+      <span class="settings-saved" id="settingsSaved2">Saved!</span>
     </div>
   </div>
 </div>
@@ -1700,6 +1720,41 @@
     if (settingsOpen && !profileLoaded) loadProfile();
   };
 
+  // Widget theme presets
+  const THEMES = {
+    dark: { label: 'Dark', bg: '#1C1C1E', accent: '#0A84FF', bubble: '#2C2C2E' },
+    light: { label: 'Light', bg: '#FFFFFF', accent: '#0A84FF', bubble: '#F1F3F5' },
+    ocean: { label: 'Ocean', bg: '#0B1D3A', accent: '#00B4D8', bubble: '#15304D' },
+    emerald: { label: 'Emerald', bg: '#0F1A14', accent: '#10B981', bubble: '#1A3426' },
+    sunset: { label: 'Sunset', bg: '#1A1020', accent: '#F97316', bubble: '#2D1A3A' },
+    rose: { label: 'Rose', bg: '#FFF5F7', accent: '#E11D48', bubble: '#FFE4E9' }
+  };
+  const WIDGET_SIZES = { compact: 'Compact', standard: 'Standard', large: 'Large' };
+  let selectedTheme = 'dark';
+  let selectedSize = 'standard';
+
+  function renderThemeGrid() {
+    const el = document.getElementById('themeGrid');
+    el.innerHTML = Object.entries(THEMES).map(([k, t]) => {
+      const active = selectedTheme === k;
+      return '<div onclick="window._selectTheme(\'' + k + '\')" style="padding:12px;border-radius:8px;cursor:pointer;border:2px solid ' + (active ? 'var(--teal)' : 'var(--border)') + ';background:' + (active ? 'var(--teal-glow)' : 'var(--navy-mid)') + '">'
+        + '<div style="display:flex;gap:3px;margin-bottom:6px"><div style="width:14px;height:14px;border-radius:3px;background:' + t.bg + ';border:1px solid var(--border)"></div><div style="width:14px;height:14px;border-radius:3px;background:' + t.accent + '"></div><div style="width:14px;height:14px;border-radius:3px;background:' + t.bubble + ';border:1px solid var(--border)"></div></div>'
+        + '<div style="font-size:12px;font-weight:600;color:' + (active ? 'var(--teal)' : 'var(--text)') + '">' + t.label + '</div></div>';
+    }).join('');
+  }
+
+  function renderSizeGrid() {
+    const el = document.getElementById('sizeGrid');
+    el.innerHTML = Object.entries(WIDGET_SIZES).map(([k, label]) => {
+      const active = selectedSize === k;
+      return '<div onclick="window._selectSize(\'' + k + '\')" style="flex:1;padding:12px;border-radius:8px;cursor:pointer;text-align:center;border:2px solid ' + (active ? 'var(--teal)' : 'var(--border)') + ';background:' + (active ? 'var(--teal-glow)' : 'var(--navy-mid)') + '">'
+        + '<div style="font-size:13px;font-weight:600;color:' + (active ? 'var(--teal)' : 'var(--text)') + '">' + label + '</div></div>';
+    }).join('');
+  }
+
+  window._selectTheme = function(t) { selectedTheme = t; renderThemeGrid(); };
+  window._selectSize = function(s) { selectedSize = s; renderSizeGrid(); };
+
   async function loadProfile() {
     try {
       const res = await fetch('https://luna-chat-endpoint.vercel.app/api/profile', {
@@ -1711,15 +1766,28 @@
       if (!res.ok) { console.warn('Profile load failed:', res.status); return; }
       const data = await res.json();
       const p = data.profile || {};
-      document.getElementById('setDescription').value = p.description || '';
-      document.getElementById('setSpecialisms').value = p.specialisms || '';
-      document.getElementById('setDestinations').value = p.destinations || '';
+
+      // Business profile
+      const parts = [p.description || ''];
+      if (p.specialisms) parts.push('Specialisms: ' + p.specialisms);
+      if (p.destinations) parts.push('Key destinations: ' + p.destinations);
+      if (p.bonding) parts.push('Financial protection: ' + p.bonding);
+      if (p.customQA) parts.push(p.customQA);
+      document.getElementById('setDescription').value = parts.filter(Boolean).join('\n\n');
       document.getElementById('setPhone').value = p.phone || '';
       document.getElementById('setWebsite').value = p.website || '';
       document.getElementById('setAddress').value = p.address || '';
       document.getElementById('setHours').value = p.hours || '';
-      document.getElementById('setBonding').value = p.bonding || '';
-      document.getElementById('setCustomQA').value = p.customQA || '';
+
+      // Widget appearance
+      selectedTheme = p.widgetTheme || 'dark';
+      selectedSize = p.widgetSize || 'standard';
+      document.getElementById('setBotName').value = p.widgetBotName || 'Luna AI';
+      document.getElementById('setWelcome').value = p.widgetWelcome || '';
+      document.getElementById('setHints').value = p.widgetHints || '';
+
+      renderThemeGrid();
+      renderSizeGrid();
       profileLoaded = true;
     } catch (e) {
       console.warn('Profile load error:', e.message);
@@ -1727,10 +1795,9 @@
   }
 
   window._saveSettings = async function() {
-    const btn = document.getElementById('settingsSaveBtn');
-    const saved = document.getElementById('settingsSaved');
-    btn.disabled = true;
-    btn.textContent = 'Saving...';
+    const btns = document.querySelectorAll('.settings-save');
+    const saveds = document.querySelectorAll('.settings-saved');
+    btns.forEach(b => { b.disabled = true; b.textContent = 'Saving...'; });
 
     try {
       const res = await fetch('https://luna-chat-endpoint.vercel.app/api/profile', {
@@ -1742,25 +1809,28 @@
         },
         body: JSON.stringify({
           description: document.getElementById('setDescription').value,
-          specialisms: document.getElementById('setSpecialisms').value,
-          destinations: document.getElementById('setDestinations').value,
           phone: document.getElementById('setPhone').value,
           website: document.getElementById('setWebsite').value,
           address: document.getElementById('setAddress').value,
           hours: document.getElementById('setHours').value,
-          bonding: document.getElementById('setBonding').value,
-          customQA: document.getElementById('setCustomQA').value
+          widgetTheme: selectedTheme,
+          widgetSize: selectedSize,
+          widgetBotName: document.getElementById('setBotName').value,
+          widgetWelcome: document.getElementById('setWelcome').value,
+          widgetHints: document.getElementById('setHints').value
         })
       });
       if (!res.ok) throw new Error('Save failed: ' + res.status);
-      saved.classList.add('show');
-      setTimeout(() => saved.classList.remove('show'), 2500);
+      saveds.forEach(s => { s.classList.add('show'); setTimeout(() => s.classList.remove('show'), 2500); });
     } catch (e) {
       alert('Failed to save: ' + e.message);
     }
-    btn.disabled = false;
-    btn.textContent = 'Save Profile';
+    btns.forEach(b => { b.disabled = false; b.textContent = 'Save Profile'; });
   };
+
+  // Render grids on first settings open
+  renderThemeGrid();
+  renderSizeGrid();
 
   function renderAnalytics() {
     const history = getHistory();
