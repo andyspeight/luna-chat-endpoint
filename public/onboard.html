@@ -99,6 +99,9 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,0.06);margin:24px 0
       <label class="lbl">Ably API Key</label>
       <input class="fi mono" id="fAbly" placeholder="Client's Ably key (from their Ably account)">
       <p style="font-size:11px;color:#5A5A6E;margin-top:4px">Each client needs their own Ably account for private conversations. Send them the Ably Setup Guide.</p>
+      <label class="lbl">Deep Link Site ID</label>
+      <input class="fi mono" id="fSiteId" placeholder="e.g. 250">
+      <p style="font-size:11px;color:#5A5A6E;margin-top:4px">The Travelgenix site ID for holiday search deep links. This enables the booking search feature in the chat widget.</p>
       <div id="errorBanner" class="error-banner"></div>
       <button class="btn btn-pri" id="createBtn" onclick="createClient()" style="margin-top:20px">Create Client</button>
     </div>
@@ -209,7 +212,7 @@ async function createClient() {
     var res = await fetch(API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Admin-Pass': adminPass },
-      body: JSON.stringify({ name: name, slug: slug, email: email, password: pass, ablyKey: ably })
+      body: JSON.stringify({ name: name, slug: slug, email: email, password: pass, ablyKey: ably, siteId: document.getElementById('fSiteId').value.trim() })
     });
     var data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed');
@@ -245,6 +248,7 @@ function resetForm() {
   document.getElementById('fEmail').value = '';
   document.getElementById('fPassword').value = '';
   document.getElementById('fAbly').value = '';
+  document.getElementById('fSiteId').value = '';
   document.getElementById('fName').focus();
 }
 function copyEl(id, btn) {
