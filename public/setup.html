@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Luna Widget Setup — Travelgenix</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'DM Sans',-apple-system,sans-serif;background:#0A0A0F;color:#E8EDF5;min-height:100vh}
+.wrap{max-width:1100px;margin:0 auto;padding:32px 24px}
+.hdr{text-align:center;margin-bottom:36px}
+.hdr h1{font-size:28px;font-weight:700;background:linear-gradient(135deg,#0A84FF,#5E5CE6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:6px}
+.hdr p{font-size:14px;color:#8E8E93}
+.steps{display:flex;justify-content:center;gap:4px;margin-bottom:32px;flex-wrap:wrap}
+.step-dot{display:flex;align-items:center;gap:6px;padding:8px 16px;border-radius:24px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.04);color:#5A5A6E;transition:all .2s}
+.step-dot.active{background:rgba(10,132,255,0.15);border-color:rgba(10,132,255,0.4);color:#0A84FF}
+.step-dot.done{background:rgba(48,209,88,0.08);border-color:rgba(48,209,88,0.15);color:#30D158}
+.body{display:flex;gap:32px;align-items:flex-start}
+@media(max-width:800px){.body{flex-direction:column-reverse}.preview-panel{position:static!important;width:100%!important}}
+.form-panel{flex:1;background:#16161D;border-radius:16px;border:1px solid rgba(255,255,255,0.06);padding:28px}
+.form-panel h3{font-size:18px;font-weight:600;margin-bottom:4px}
+.form-panel .desc{font-size:13px;color:#8E8E93;margin-bottom:12px}
+label.lbl{display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.2px;color:#8E8E93;margin-bottom:6px;margin-top:18px}
+input.fi,textarea.fi,select.fi{width:100%;padding:11px 14px;background:#1C1C24;border:1px solid rgba(255,255,255,0.08);border-radius:10px;color:#E8EDF5;font-size:14px;outline:none;font-family:inherit}
+input.fi:focus,textarea.fi:focus{border-color:#0A84FF}
+textarea.fi{resize:vertical;min-height:70px}
+.fi-short{width:60px!important;text-align:center;font-size:18px!important;font-weight:700}
+.theme-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:8px}
+@media(max-width:600px){.theme-grid{grid-template-columns:repeat(2,1fr)}}
+.theme-card{padding:14px 16px;border-radius:12px;cursor:pointer;border:2px solid rgba(255,255,255,0.06);background:#1C1C24;transition:all .15s}
+.theme-card.active{border-color:#0A84FF;background:rgba(10,132,255,0.08)}
+.theme-card .swatches{display:flex;gap:4px;margin-bottom:8px}
+.theme-card .sw{width:16px;height:16px;border-radius:4px;border:1px solid rgba(255,255,255,0.1)}
+.theme-card .tname{font-size:13px;font-weight:600}
+.theme-card.active .tname{color:#0A84FF}
+.size-row{display:flex;gap:10px;margin-top:8px}
+.size-card{flex:1;padding:16px;border-radius:12px;cursor:pointer;text-align:center;border:2px solid rgba(255,255,255,0.06);background:#1C1C24;transition:all .15s}
+.size-card.active{border-color:#0A84FF;background:rgba(10,132,255,0.08)}
+.size-card .sname{font-size:14px;font-weight:600;margin-top:10px}
+.size-card.active .sname{color:#0A84FF}
+.size-card .sdim{font-size:11px;color:#8E8E93;margin-top:2px}
+.size-icon{width:40px;height:50px;border:2px solid #3A3A4A;border-radius:6px;margin:0 auto;display:flex;align-items:flex-end;justify-content:center;padding-bottom:4px}
+.size-card.active .size-icon{border-color:#0A84FF}
+.size-inner{border-radius:3px;background:rgba(255,255,255,0.06)}
+.size-card.active .size-inner{background:rgba(10,132,255,0.3)}
+.toggle-row{display:flex;align-items:center;gap:12px;margin-top:18px}
+.toggle-row label{flex:1;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.2px;color:#8E8E93}
+.toggle{width:44px;height:24px;border-radius:12px;background:#3A3A4A;cursor:pointer;position:relative;border:none;padding:0;transition:background .2s}
+.toggle.on{background:#0A84FF}
+.toggle-dot{width:18px;height:18px;border-radius:50%;background:#fff;position:absolute;top:3px;left:3px;transition:left .2s}
+.toggle.on .toggle-dot{left:23px}
+.nav{display:flex;justify-content:space-between;margin-top:24px}
+.btn-pri{padding:12px 28px;border-radius:12px;border:none;background:#0A84FF;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
+.btn-pri:hover{opacity:.9}
+.btn-sec{padding:12px 28px;border-radius:12px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:#8E8E93;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
+.btn-sec:hover{background:rgba(255,255,255,0.04)}
+.btn-green{background:#30D158}
+.code-block{background:#0D0D12;border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:16px;font-family:'JetBrains Mono',monospace;font-size:12px;color:#64D2FF;line-height:1.6;word-break:break-all;white-space:pre-wrap;position:relative;margin-top:12px}
+.copy-btn{position:absolute;top:10px;right:10px;padding:6px 14px;border-radius:8px;border:none;background:#0A84FF;color:#fff;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit}
+.copy-btn.copied{background:#30D158}
+.install-box{margin-top:20px;padding:16px;background:rgba(48,209,88,0.06);border:1px solid rgba(48,209,88,0.15);border-radius:12px}
+.install-box h4{font-size:13px;font-weight:600;color:#30D158;margin-bottom:6px}
+.install-box p{font-size:12px;color:#A8F0C6;line-height:1.7}
+.mono{font-family:'JetBrains Mono',monospace;font-size:13px}
+.preview-panel{position:sticky;top:24px;flex-shrink:0}
+.preview-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.2px;color:#8E8E93;margin-bottom:10px;text-align:center}
+.preview-box{border-radius:20px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.3);flex-shrink:0}
+.fab-preview{margin-top:16px;display:flex;justify-content:center}
+.fab-circle{width:60px;height:60px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(0,0,0,0.4)}
+.step-content{display:none}
+.step-content.active{display:block}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hdr">
+    <h1>Luna Widget Setup</h1>
+    <p>Configure, preview and deploy your AI chat widget</p>
+  </div>
+  <div class="steps" id="stepsBar"></div>
+  <div class="body">
+    <div class="form-panel">
+      <!-- Step 0: Brand -->
+      <div class="step-content active" id="step0">
+        <h3>Brand Identity</h3>
+        <p class="desc">Set up how Luna appears on your website.</p>
+        <label class="lbl">Bot Display Name</label>
+        <input class="fi" id="cfgName" value="Luna AI" placeholder="Luna AI">
+        <label class="lbl">Tagline</label>
+        <input class="fi" id="cfgTagline" value="AI ASSISTANT" placeholder="AI ASSISTANT">
+        <label class="lbl">Logo Letter</label>
+        <input class="fi fi-short" id="cfgLogo" value="L" maxlength="2">
+        <label class="lbl">Your Company Name</label>
+        <input class="fi" id="cfgClient" value="" placeholder="e.g. Sunshine Travel">
+        <label class="lbl">Footer Text</label>
+        <input class="fi" id="cfgFooter" value="Powered by Luna AI" placeholder="Powered by Luna AI">
+      </div>
+      <!-- Step 1: Theme -->
+      <div class="step-content" id="step1">
+        <h3>Theme</h3>
+        <p class="desc">Choose a preset theme. Colours apply instantly to the preview.</p>
+        <div class="theme-grid" id="themeGrid"></div>
+      </div>
+      <!-- Step 2: Behaviour -->
+      <div class="step-content" id="step2">
+        <h3>Behaviour</h3>
+        <p class="desc">Configure welcome message, prompts and settings.</p>
+        <label class="lbl">Welcome Message</label>
+        <textarea class="fi" id="cfgWelcome" rows="3">Hey there! I'm Luna, your AI assistant. How can I help you today?</textarea>
+        <label class="lbl">Prompt Hints (one per line)</label>
+        <textarea class="fi" id="cfgHints" rows="4" placeholder="How much does it cost?&#10;What do I get?&#10;Can I see a demo?">How much does it cost?
+What do I get with Ignite?
+Do you integrate with Jet2?
+What is Travelify?</textarea>
+        <div class="toggle-row">
+          <label>Ask for visitor's name</label>
+          <button class="toggle on" id="cfgCollectToggle"><div class="toggle-dot"></div></button>
+        </div>
+        <div id="namePromptWrap">
+          <label class="lbl">Name Prompt</label>
+          <input class="fi" id="cfgNamePrompt" value="Before we start, what's your name?">
+        </div>
+        <label class="lbl">Escalation Button Text</label>
+        <input class="fi" id="cfgEscalate" value="Talk to a human">
+        <label class="lbl">Leave Message Button Text</label>
+        <input class="fi" id="cfgLeave" value="Leave a message">
+      </div>
+      <!-- Step 3: Size -->
+      <div class="step-content" id="step3">
+        <h3>Size and Layout</h3>
+        <p class="desc">Choose the chat window size. On mobile it always goes full screen.</p>
+        <div class="size-row" id="sizeRow"></div>
+      </div>
+      <!-- Step 4: Connect -->
+      <div class="step-content" id="step4">
+        <h3>Connect</h3>
+        <p class="desc">Link to your Ably account for real-time live chat.</p>
+        <label class="lbl">Ably API Key</label>
+        <input class="fi mono" id="cfgAbly" placeholder="xxxxx.yyyyy:zzzzzzzzzz">
+        <p style="font-size:12px;color:#5A5A6E;margin-top:8px;line-height:1.5">Get your key from ably.com. Create a Pub/Sub app and copy the API key.</p>
+        <label class="lbl">AI Endpoint</label>
+        <input class="fi mono" id="cfgEndpoint" value="https://luna-chat-endpoint.vercel.app/api/luna-chat">
+        <p style="font-size:12px;color:#5A5A6E;margin-top:8px;line-height:1.5">The default endpoint includes the Travelgenix knowledge base. For custom deployments, change this.</p>
+      </div>
+      <!-- Step 5: Deploy -->
+      <div class="step-content" id="step5">
+        <h3>Deploy</h3>
+        <p class="desc">Copy this single line and paste it into your website's HTML, just before the closing &lt;/body&gt; tag.</p>
+        <div class="code-block" id="embedCode"></div>
+        <button class="copy-btn" id="copyBtn" onclick="copyEmbed()">Copy</button>
+        <div class="install-box">
+          <h4>Installation methods</h4>
+          <p><strong>Duda:</strong> Settings → Head & Body Scripts → Body End → paste the code<br>
+          <strong>WordPress:</strong> Add to theme footer.php or use a Header/Footer Scripts plugin<br>
+          <strong>Shopify:</strong> Online Store → Themes → Edit code → theme.liquid → before &lt;/body&gt;<br>
+          <strong>Wix:</strong> Settings → Custom Code → Body End<br>
+          <strong>Any HTML:</strong> Paste before &lt;/body&gt;</p>
+        </div>
+      </div>
+      <!-- Nav -->
+      <div class="nav">
+        <button class="btn-sec" id="btnBack" style="visibility:hidden" onclick="goStep(currentStep-1)">Back</button>
+        <button class="btn-pri" id="btnNext" onclick="goStep(currentStep+1)">Next: Theme</button>
+      </div>
+    </div>
+    <!-- Preview -->
+    <div class="preview-panel">
+      <div class="preview-label">Live Preview</div>
+      <div class="preview-box" id="previewBox"></div>
+      <div class="fab-preview"><div class="fab-circle" id="fabPreview"><svg width="24" height="24" viewBox="0 0 24 24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.2L4 17.2V4h16v12z"/></svg></div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+var PRESETS={
+  dark:{label:"Dark (Apple)",bg:"#1C1C1E",headerBg:"#2C2C2E",bubbleBg:"#2C2C2E",userBubble:"#0A84FF",userText:"#FFFFFF",botText:"#E5E5EA",mutedText:"#8E8E93",accent:"#0A84FF",accentGlow:"#64D2FF",border:"rgba(255,255,255,0.08)",inputBg:"#2C2C2E",inputText:"#FFFFFF",buttonBg:"#0A84FF",pillBg:"rgba(10,132,255,0.12)",pillBorder:"rgba(10,132,255,0.3)",pillText:"#64D2FF",overlayBg:"rgba(0,0,0,0.7)",fabBg:"linear-gradient(135deg,#0A84FF,#5E5CE6)"},
+  light:{label:"Light",bg:"#FFFFFF",headerBg:"#F8F9FA",bubbleBg:"#F1F3F5",userBubble:"#0A84FF",userText:"#FFFFFF",botText:"#1F2937",mutedText:"#9CA3AF",accent:"#0A84FF",accentGlow:"#0A84FF",border:"rgba(0,0,0,0.08)",inputBg:"#F1F3F5",inputText:"#1F2937",buttonBg:"#0A84FF",pillBg:"rgba(10,132,255,0.08)",pillBorder:"rgba(10,132,255,0.25)",pillText:"#0A84FF",overlayBg:"rgba(255,255,255,0.85)",fabBg:"linear-gradient(135deg,#0A84FF,#5E5CE6)"},
+  ocean:{label:"Ocean",bg:"#0B1D3A",headerBg:"#0F2340",bubbleBg:"#15304D",userBubble:"#00B4D8",userText:"#FFFFFF",botText:"#E8EDF5",mutedText:"#5A6B85",accent:"#00B4D8",accentGlow:"#48CAE4",border:"rgba(136,153,179,0.12)",inputBg:"#0F2340",inputText:"#E8EDF5",buttonBg:"#00B4D8",pillBg:"rgba(0,180,216,0.12)",pillBorder:"rgba(0,180,216,0.3)",pillText:"#48CAE4",overlayBg:"rgba(11,29,58,0.85)",fabBg:"linear-gradient(135deg,#00B4D8,#0077B6)"},
+  emerald:{label:"Emerald",bg:"#0F1A14",headerBg:"#162A1E",bubbleBg:"#1A3426",userBubble:"#10B981",userText:"#FFFFFF",botText:"#D1FAE5",mutedText:"#6B8A7A",accent:"#10B981",accentGlow:"#34D399",border:"rgba(16,185,129,0.12)",inputBg:"#162A1E",inputText:"#D1FAE5",buttonBg:"#10B981",pillBg:"rgba(16,185,129,0.12)",pillBorder:"rgba(16,185,129,0.3)",pillText:"#34D399",overlayBg:"rgba(15,26,20,0.85)",fabBg:"linear-gradient(135deg,#10B981,#059669)"},
+  sunset:{label:"Sunset",bg:"#1A1020",headerBg:"#251530",bubbleBg:"#2D1A3A",userBubble:"#F97316",userText:"#FFFFFF",botText:"#F5E6FF",mutedText:"#8B6B9E",accent:"#F97316",accentGlow:"#FB923C",border:"rgba(249,115,22,0.12)",inputBg:"#251530",inputText:"#F5E6FF",buttonBg:"#F97316",pillBg:"rgba(249,115,22,0.12)",pillBorder:"rgba(249,115,22,0.3)",pillText:"#FB923C",overlayBg:"rgba(26,16,32,0.85)",fabBg:"linear-gradient(135deg,#F97316,#EF4444)"},
+  rose:{label:"Rose Light",bg:"#FFF5F7",headerBg:"#FFF0F3",bubbleBg:"#FFE4E9",userBubble:"#E11D48",userText:"#FFFFFF",botText:"#1F2937",mutedText:"#9CA3AF",accent:"#E11D48",accentGlow:"#FB7185",border:"rgba(225,29,72,0.1)",inputBg:"#FFF0F3",inputText:"#1F2937",buttonBg:"#E11D48",pillBg:"rgba(225,29,72,0.08)",pillBorder:"rgba(225,29,72,0.2)",pillText:"#E11D48",overlayBg:"rgba(255,245,247,0.9)",fabBg:"linear-gradient(135deg,#E11D48,#BE123C)"}
+};
+
+var SIZES={
+  compact:{panelW:"340px",panelH:"520px",fabSize:"52px",radius:"16px",label:"Compact",iw:14,ih:20},
+  standard:{panelW:"380px",panelH:"600px",fabSize:"60px",radius:"20px",label:"Standard",iw:18,ih:26},
+  large:{panelW:"420px",panelH:"680px",fabSize:"64px",radius:"22px",label:"Large",iw:22,ih:30}
+};
+
+var STEP_NAMES=[{t:"Brand",i:"✦"},{t:"Theme",i:"◐"},{t:"Behaviour",i:"⚙"},{t:"Size",i:"⊞"},{t:"Connect",i:"⚡"},{t:"Deploy",i:"🚀"}];
+
+var currentStep=0;
+var selectedTheme="dark";
+var selectedSize="standard";
+var collectName=true;
+
+// Build steps bar
+function renderSteps(){
+  var bar=document.getElementById("stepsBar");
+  bar.innerHTML=STEP_NAMES.map(function(s,i){
+    var cls="step-dot";
+    if(i===currentStep)cls+=" active";
+    else if(i<currentStep)cls+=" done";
+    return '<div class="'+cls+'" onclick="goStep('+i+')"><span>'+(i<currentStep?"✓":s.i)+'</span><span>'+s.t+'</span></div>';
+  }).join("");
+}
+
+// Build theme grid
+function renderThemes(){
+  var grid=document.getElementById("themeGrid");
+  grid.innerHTML=Object.keys(PRESETS).map(function(k){
+    var p=PRESETS[k];
+    var cls="theme-card"+(selectedTheme===k?" active":"");
+    return '<div class="'+cls+'" onclick="selectTheme(\''+k+'\')">'
+      +'<div class="swatches"><div class="sw" style="background:'+p.bg+'"></div><div class="sw" style="background:'+p.userBubble+';border-color:transparent"></div><div class="sw" style="background:'+p.accent+';border-color:transparent"></div><div class="sw" style="background:'+p.bubbleBg+'"></div></div>'
+      +'<div class="tname">'+p.label+'</div></div>';
+  }).join("");
+}
+
+// Build size row
+function renderSizes(){
+  var row=document.getElementById("sizeRow");
+  row.innerHTML=Object.keys(SIZES).map(function(k){
+    var s=SIZES[k];
+    var cls="size-card"+(selectedSize===k?" active":"");
+    return '<div class="'+cls+'" onclick="selectSize(\''+k+'\')">'
+      +'<div class="size-icon"><div class="size-inner" style="width:'+s.iw+'px;height:'+s.ih+'px"></div></div>'
+      +'<div class="sname">'+s.label+'</div>'
+      +'<div class="sdim">'+s.panelW+' × '+s.panelH+'</div></div>';
+  }).join("");
+}
+
+function selectTheme(k){selectedTheme=k;renderThemes();renderPreview();}
+function selectSize(k){selectedSize=k;renderSizes();renderPreview();}
+
+// Toggle
+document.getElementById("cfgCollectToggle").addEventListener("click",function(){
+  collectName=!collectName;
+  this.classList.toggle("on",collectName);
+  document.getElementById("namePromptWrap").style.display=collectName?"block":"none";
+});
+
+// Go to step
+function goStep(n){
+  if(n<0||n>=STEP_NAMES.length)return;
+  if(n>currentStep+1)return; // can't skip ahead
+  document.getElementById("step"+currentStep).classList.remove("active");
+  currentStep=n;
+  document.getElementById("step"+currentStep).classList.add("active");
+  renderSteps();
+  document.getElementById("btnBack").style.visibility=currentStep>0?"visible":"hidden";
+  if(currentStep<STEP_NAMES.length-1){
+    document.getElementById("btnNext").textContent="Next: "+STEP_NAMES[currentStep+1].t;
+    document.getElementById("btnNext").className="btn-pri";
+    document.getElementById("btnNext").onclick=function(){goStep(currentStep+1);};
+  }else{
+    document.getElementById("btnNext").textContent="Copy Embed Code";
+    document.getElementById("btnNext").className="btn-pri btn-green";
+    document.getElementById("btnNext").onclick=copyEmbed;
+    renderEmbed();
+  }
+  renderPreview();
+}
+
+// Preview
+function renderPreview(){
+  var tc=PRESETS[selectedTheme];
+  var sz=SIZES[selectedSize];
+  var name=document.getElementById("cfgName").value||"Luna AI";
+  var tagline=document.getElementById("cfgTagline").value||"AI ASSISTANT";
+  var logo=document.getElementById("cfgLogo").value||"L";
+  var welcome=document.getElementById("cfgWelcome").value||"Hey there!";
+  var hints=(document.getElementById("cfgHints").value||"").split("\n").filter(function(l){return l.trim();}).slice(0,4);
+  var escLabel=document.getElementById("cfgEscalate").value||"Talk to a human";
+  var leaveLabel=document.getElementById("cfgLeave").value||"Leave a message";
+  var footer=document.getElementById("cfgFooter").value||"Powered by Luna AI";
+  var isDark=["dark","ocean","emerald","sunset"].includes(selectedTheme);
+  var w=Math.min(parseInt(sz.panelW),380);
+  var pills=hints.map(function(h){return '<div style="background:'+tc.pillBg+';border:1px solid '+tc.pillBorder+';color:'+tc.pillText+';font-size:11px;padding:5px 11px;border-radius:16px">'+(h.length>25?h.slice(0,25)+"...":h)+'</div>';}).join("");
+
+  document.getElementById("previewBox").style.width=w+"px";
+  document.getElementById("previewBox").innerHTML=
+    '<div style="background:'+tc.headerBg+';padding:14px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid '+tc.border+'">'
+    +'<div style="width:36px;height:36px;border-radius:10px;background:'+tc.fabBg+';display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;font-weight:700">'+esc(logo)+'</div>'
+    +'<div style="flex:1"><div style="color:'+(isDark?"#fff":"#1F2937")+';font-size:14px;font-weight:600">'+esc(name)+'</div><div style="color:'+tc.accentGlow+';font-size:9px;font-weight:600;letter-spacing:1px;text-transform:uppercase">'+esc(tagline)+'</div></div>'
+    +'<div style="width:7px;height:7px;border-radius:50%;background:#30D158;box-shadow:0 0 6px rgba(48,209,88,0.5)"></div></div>'
+    +'<div style="background:'+tc.bg+';padding:14px;display:flex;flex-direction:column;gap:8px;min-height:180px">'
+    +'<div style="max-width:85%;padding:9px 13px;border-radius:14px 14px 14px 5px;background:'+tc.bubbleBg+';color:'+tc.botText+';font-size:13px;line-height:1.5">'+(welcome.length>90?esc(welcome.slice(0,90))+"...":esc(welcome))+'</div>'
+    +'<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:2px">'+pills+'</div>'
+    +'<div style="max-width:75%;align-self:flex-end;padding:9px 13px;border-radius:14px 14px 5px 14px;background:'+tc.userBubble+';color:'+tc.userText+';font-size:13px">How much does it cost?</div>'
+    +'<div style="max-width:85%;padding:9px 13px;border-radius:14px 14px 14px 5px;background:'+tc.bubbleBg+';color:'+tc.botText+';font-size:13px;line-height:1.5">We have three packages: Spark at £159/mo...</div></div>'
+    +'<div style="background:'+tc.bg+';padding:10px 14px;border-top:1px solid '+tc.border+';display:flex;gap:8px;align-items:center">'
+    +'<div style="flex:1;background:'+tc.inputBg+';border:1px solid '+tc.border+';border-radius:20px;padding:8px 14px;color:'+tc.mutedText+';font-size:13px">Ask me anything...</div>'
+    +'<div style="width:34px;height:34px;border-radius:50%;background:'+tc.buttonBg+';display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="#fff"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></div></div>'
+    +'<div style="display:flex;gap:6px;padding:7px 14px;border-top:1px solid '+tc.border+';background:'+tc.bg+'">'
+    +'<div style="flex:1;padding:7px 0;border-radius:10px;font-size:11px;font-weight:600;text-align:center;background:'+tc.accent+';color:#fff">'+esc(escLabel)+'</div>'
+    +'<div style="flex:1;padding:7px 0;border-radius:10px;font-size:11px;font-weight:600;text-align:center;background:'+(isDark?"rgba(255,255,255,0.08)":"rgba(0,0,0,0.05)")+';color:'+tc.mutedText+'">'+esc(leaveLabel)+'</div></div>'
+    +'<div style="text-align:center;padding:5px;color:'+tc.mutedText+';font-size:9px;background:'+tc.bg+'">'+esc(footer)+'</div>';
+
+  document.getElementById("fabPreview").style.background=tc.fabBg;
+  document.getElementById("fabPreview").style.width=sz.fabSize;
+  document.getElementById("fabPreview").style.height=sz.fabSize;
+}
+
+function esc(s){var d=document.createElement("div");d.textContent=s||"";return d.innerHTML;}
+
+// Generate embed code
+function getEmbed(){
+  var tc=PRESETS[selectedTheme];
+  var sz=SIZES[selectedSize];
+  var dk=PRESETS.dark;
+  var parts=['src="https://luna-chat-endpoint.vercel.app/widget-core.js"'];
+  var v=document.getElementById;
+  function val(id){return document.getElementById(id).value.trim();}
+  if(val("cfgClient"))parts.push('data-clientName="'+esc(val("cfgClient"))+'"');
+  if(val("cfgAbly"))parts.push('data-ablyKey="'+esc(val("cfgAbly"))+'"');
+  if(val("cfgName")!=="Luna AI")parts.push('data-name="'+esc(val("cfgName"))+'"');
+  if(val("cfgTagline")!=="AI ASSISTANT")parts.push('data-tagline="'+esc(val("cfgTagline"))+'"');
+  if(val("cfgLogo")!=="L")parts.push('data-logoText="'+esc(val("cfgLogo"))+'"');
+  if(val("cfgWelcome")!=="Hey there! I'm Luna, your AI assistant. How can I help you today?")parts.push('data-welcome="'+esc(val("cfgWelcome"))+'"');
+  var hints=val("cfgHints").split("\n").filter(function(l){return l.trim();});
+  if(hints.length>0)parts.push("data-hints='"+JSON.stringify(hints)+"'");
+  if(!collectName)parts.push('data-collectName="false"');
+  if(val("cfgEscalate")!=="Talk to a human")parts.push('data-escalateLabel="'+esc(val("cfgEscalate"))+'"');
+  if(val("cfgLeave")!=="Leave a message")parts.push('data-leaveLabel="'+esc(val("cfgLeave"))+'"');
+  if(val("cfgFooter")!=="Powered by Luna AI")parts.push('data-footer="'+esc(val("cfgFooter"))+'"');
+  if(val("cfgEndpoint")!=="https://luna-chat-endpoint.vercel.app/api/luna-chat")parts.push('data-endpoint="'+esc(val("cfgEndpoint"))+'"');
+  // Theme colors (non-default only)
+  if(tc.bg!==dk.bg)parts.push('data-bg="'+tc.bg+'"');
+  if(tc.headerBg!==dk.headerBg)parts.push('data-headerBg="'+tc.headerBg+'"');
+  if(tc.bubbleBg!==dk.bubbleBg)parts.push('data-bubbleBg="'+tc.bubbleBg+'"');
+  if(tc.userBubble!==dk.userBubble)parts.push('data-userBubble="'+tc.userBubble+'"');
+  if(tc.botText!==dk.botText)parts.push('data-botText="'+tc.botText+'"');
+  if(tc.accent!==dk.accent)parts.push('data-accent="'+tc.accent+'"');
+  if(tc.accentGlow!==dk.accentGlow)parts.push('data-accentGlow="'+tc.accentGlow+'"');
+  if(tc.border!==dk.border)parts.push('data-border="'+tc.border+'"');
+  if(tc.inputBg!==dk.inputBg)parts.push('data-inputBg="'+tc.inputBg+'"');
+  if(tc.inputText!==dk.inputText)parts.push('data-inputText="'+tc.inputText+'"');
+  if(tc.buttonBg!==dk.buttonBg)parts.push('data-buttonBg="'+tc.buttonBg+'"');
+  if(tc.pillBg!==dk.pillBg)parts.push('data-pillBg="'+tc.pillBg+'"');
+  if(tc.pillBorder!==dk.pillBorder)parts.push('data-pillBorder="'+tc.pillBorder+'"');
+  if(tc.pillText!==dk.pillText)parts.push('data-pillText="'+tc.pillText+'"');
+  if(tc.fabBg!==dk.fabBg)parts.push('data-fabBg="'+tc.fabBg+'"');
+  if(tc.overlayBg!==dk.overlayBg)parts.push('data-overlayBg="'+tc.overlayBg+'"');
+  // Size
+  if(sz.panelW!=="380px")parts.push('data-panelW="'+sz.panelW+'"');
+  if(sz.panelH!=="600px")parts.push('data-panelH="'+sz.panelH+'"');
+  if(sz.fabSize!=="60px")parts.push('data-fabSize="'+sz.fabSize+'"');
+  if(sz.radius!=="20px")parts.push('data-radius="'+sz.radius+'"');
+  parts.push("async");
+  return "<script "+parts.join(" ")+"><\/script>";
+}
+
+function renderEmbed(){
+  document.getElementById("embedCode").textContent=getEmbed();
+}
+
+function copyEmbed(){
+  var code=getEmbed();
+  navigator.clipboard.writeText(code).then(function(){
+    var btn=document.getElementById("copyBtn");
+    if(btn){btn.textContent="Copied!";btn.classList.add("copied");setTimeout(function(){btn.textContent="Copy";btn.classList.remove("copied");},2000);}
+    if(currentStep===5){
+      var nb=document.getElementById("btnNext");
+      nb.textContent="Copied!";setTimeout(function(){nb.textContent="Copy Embed Code";},2000);
+    }
+  });
+}
+
+// Live preview on input changes
+["cfgName","cfgTagline","cfgLogo","cfgWelcome","cfgHints","cfgEscalate","cfgLeave","cfgFooter","cfgClient"].forEach(function(id){
+  document.getElementById(id).addEventListener("input",renderPreview);
+});
+
+// Init
+renderSteps();
+renderThemes();
+renderSizes();
+renderPreview();
+</script>
+</body>
+</html>
