@@ -607,16 +607,17 @@ module.exports = async function handler(req, res) {
           // Booking search integration
           const siteId = f.DeepLinkSiteID;
           if (siteId) {
-            // Determine allowed search types
+            // Determine allowed search types — must be explicitly selected
             var rawTypes = f.SearchTypes;
             var allowedTypes = [];
             if (Array.isArray(rawTypes) && rawTypes.length > 0) {
               allowedTypes = rawTypes.map(function(t) { return typeof t === 'object' ? t.name : t; });
             }
+
+            // Only enable booking search if at least one type is selected
+            if (allowedTypes.length > 0) {
             var typeNames = { Packages: 'package holidays', Flights: 'flights', Accommodation: 'hotels/accommodation', DynamicPackaging: 'flight + hotel combos' };
-            var typeList = allowedTypes.length > 0
-              ? allowedTypes.map(function(t) { return t + ' (' + (typeNames[t] || t) + ')'; }).join(', ')
-              : 'Packages (package holidays), Flights (flights only), Accommodation (hotels only), DynamicPackaging (flight + hotel combos)';
+            var typeList = allowedTypes.map(function(t) { return t + ' (' + (typeNames[t] || t) + ')'; }).join(', ');
             var defaultType = allowedTypes.length === 1 ? allowedTypes[0] : (allowedTypes.includes('Packages') ? 'Packages' : (allowedTypes[0] || 'Packages'));
             var accommOnly = allowedTypes.length === 1 && allowedTypes[0] === 'Accommodation';
 
@@ -638,6 +639,7 @@ When you have ALL the details, generate the search link on its own line using th
 
 If the destination isn't in the list, say you can still help but suggest they browse the website or speak to the team.
 Do NOT generate a search link until you have all the required details.`;
+            } // end if allowedTypes.length > 0
           }
         }
       } catch (e) {
