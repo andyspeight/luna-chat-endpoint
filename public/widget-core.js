@@ -94,6 +94,8 @@ function rebuildConfig(apiConfig) {
   /* Map position and mobileBubble */
   if (A.position) C.position = A.position;
   if (A.mobileBubble) C.mobileBubble = A.mobileBubble;
+  /* Map autoTrigger */
+  if (A.autoTrigger) C.autoTrigger = A.autoTrigger;
   /* hints might be a JSON string from data-attr */
   if (typeof C.hints === "string") {
     try { C.hints = JSON.parse(C.hints); } catch(e) { C.hints = D.hints; }
@@ -118,6 +120,34 @@ var dashChannel = null;
 var chatChannel = null;
 var visitorCountry = "";
 var visitorId = "";
+var autoTriggerTimer = null;
+var autoTriggered = false;
+var visitorInteracted = false;
+
+/* ─── AUTO-TRIGGER HELPERS ───────────────────────────────── */
+function cancelAutoTrigger() {
+  if (autoTriggerTimer) {
+    clearTimeout(autoTriggerTimer);
+    autoTriggerTimer = null;
+  }
+  visitorInteracted = true;
+}
+
+function playNotifSound() {
+  try {
+    var ctx = new (window.AudioContext || window.webkitAudioContext)();
+    var osc = ctx.createOscillator();
+    var gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 880;
+    osc.type = "sine";
+    gain.gain.setValueAtTime(0.08, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.3);
+  } catch(e) { /* silent fallback */ }
+}
 
 /* ─── LOAD ABLY SDK ──────────────────────────────────────── */
 function loadAbly(cb) {
@@ -538,6 +568,7 @@ async function callLuna(userText) {
 /* ─── SEND MESSAGE (AI mode) ─────────────────────────────── */
 async function sendToAI(text) {
   if (!text.trim()) return;
+  cancelAutoTrigger();
   clearPills();
   addMsg("user", text);
   $input.value = "";
@@ -618,6 +649,7 @@ function startChat() {
 function handleSend() {
   var text = $input.value.trim();
   if (!text) return;
+  cancelAutoTrigger();
   if (liveMode) sendToAgent(text);
   else sendToAI(text);
 }
@@ -688,6 +720,7 @@ async function boot() {
 
   /* ─── Open/close chat function (also used by FAB) ─────── */
   function openChat() {
+    cancelAutoTrigger();
     panelOpen = true;
     $panel.classList.add("open");
     $fab.classList.add("open");
@@ -717,6 +750,49 @@ async function boot() {
 
   /* Init Ably */
   loadAbly(function(){ initAbly(); });
+
+  /* ─── AUTO-TRIGGER ─────────────────────────────────────── */
+  var at = C.autoTrigger;
+  if (at && at.enabled && at.delay && at.message) {
+    /* Don't re-trigger within same session */
+    var alreadyTriggered = false;
+    try { alreadyTriggered = sessionStorage.getItem("luna_auto_triggered") === "1"; } catch(e) {}
+
+    /* Don't trigger on mobile if bubble is hidden */
+    var isMobileHidden = C.mobileBubble === "hidden" && window.innerWidth < 440;
+
+    if (!alreadyTriggered && !isMobileHidden) {
+      autoTriggerTimer = setTimeout(function() {
+        /* Guard: don't trigger if visitor already interacted or chat is open */
+        if (visitorInteracted || panelOpen || msgs.length > 0 || autoTriggered) return;
+        autoTriggered = true;
+        try { sessionStorage.setItem("luna_auto_triggered", "1"); } catch(e) {}
+
+        /* Open the panel */
+        panelOpen = true;
+        $panel.classList.add("open");
+        $fab.classList.add("open");
+
+        /* Skip name collection for auto-trigger — go straight to message */
+        if (!nameCollected) {
+          nameCollected = true; /* mark as handled so it doesn't show later */
+        }
+
+        /* Display the trigger message */
+        addMsg("bot", at.message);
+
+        /* Show hints if configured */
+        if (C.hints && C.hints.length > 0) {
+          showPills(C.hints, function(h){ sendToAI(h); });
+        }
+
+        /* Play subtle notification sound if tab is active */
+        if (!document.hidden) {
+          playNotifSound();
+        }
+      }, at.delay * 1000);
+    }
+  }
 }
 
 /* Run on DOM ready */
