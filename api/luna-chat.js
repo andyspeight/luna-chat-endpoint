@@ -1,5 +1,144 @@
 const Anthropic = require('@anthropic-ai/sdk');
 
+// ─── LUNA BRAIN KNOWLEDGE BASE ───
+const LB_BASE = 'appPKx77relfeiqmq';
+const LB_TABLES = [
+  { id: 'tblirr0vJuQcTLuH2', name: 'Destinations' },
+  { id: 'tblgdLszaPmquxQ7O', name: 'Knowledge' },
+  { id: 'tbl8CRDV48QGjDx2a', name: 'Transport' }
+];
+
+// Simple in-memory cache (survives for the life of the serverless function)
+const kbCache = {};
+const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+
+// Stop words for keyword extraction
+const STOP_WORDS = new Set(['tell','me','about','the','a','an','what','which','where','how','is','are','in','for','to','do','you','have','can','i','my','best','good','great','top','most','popular','like','want','go','visit','travel','holiday','trip','please','some','any','need','should','there','when','does','much','cost','get','take','long','far','would','know','could','also','very','just','been','more','than','from','with','this','that','they','will','were','was','has','had','yes','no','yeah','sure','ok','okay','its','hi','hello','hey','thanks','thank','bye','goodbye','chat','help']);
+
+// Non-travel keywords that skip KB search
+const NON_TRAVEL_PATTERNS = [
+  /^(hi|hello|hey|thanks|bye|goodbye|ok|okay|yes|no|yeah|sure)\s*[!?.]*$/i,
+  /opening hours|contact|phone|email|address|speak to|talk to|human|agent|book(ing)?\s+ref/i,
+  /how (do|can) (i|we) (book|pay|contact)/i
+];
+
+function extractKeywords(msg) {
+  return msg.toLowerCase()
+    .replace(/[?!.,;:'''""()\-]/g, ' ')
+    .split(/\s+/)
+    .filter(function(w) { return w.length > 1 && !STOP_WORDS.has(w); });
+}
+
+function isTravelQuestion(msg) {
+  // Skip KB search for greetings, admin questions, booking references
+  for (var i = 0; i < NON_TRAVEL_PATTERNS.length; i++) {
+    if (NON_TRAVEL_PATTERNS[i].test(msg)) return false;
+  }
+  // If there are travel-relevant keywords, it's a travel question
+  var kw = extractKeywords(msg);
+  return kw.length > 0;
+}
+
+function getCacheKey(query) {
+  return extractKeywords(query).sort().join('_').slice(0, 100);
+}
+
+async function searchLunaBrain(message, atKey) {
+  if (!atKey || !isTravelQuestion(message)) return '';
+
+  var cacheKey = getCacheKey(message);
+  var cached = kbCache[cacheKey];
+  if (cached && (Date.now() - cached.ts < CACHE_TTL)) {
+    return cached.data;
+  }
+
+  var keywords = extractKeywords(message);
+  if (keywords.length === 0) return '';
+
+  // Build search query — use top 4 keywords
+  var searchQuery = keywords.slice(0, 4).join(' ');
+
+  try {
+    var allResults = [];
+
+    // Search all 3 tables in parallel
+    var searches = LB_TABLES.map(function(table) {
+      var url = 'https://api.airtable.com/v0/' + LB_BASE + '/' + table.id
+        + '?pageSize=5'
+        + '&filterByFormula=' + encodeURIComponent('SEARCH("' + searchQuery.replace(/"/g, '') + '", {Search Index})');
+
+      return fetch(url, {
+        headers: { 'Authorization': 'Bearer ' + atKey }
+      }).then(function(r) {
+        if (!r.ok) return [];
+        return r.json().then(function(d) { return d.records || []; });
+      }).catch(function() { return []; });
+    });
+
+    var results = await Promise.all(searches);
+    results.forEach(function(recs) {
+      recs.forEach(function(r) { allResults.push(r.fields); });
+    });
+
+    // If SEARCH formula returned nothing, try individual keyword matching
+    if (allResults.length === 0 && keywords.length > 0) {
+      var topKw = keywords[0];
+      var fallbackSearches = LB_TABLES.map(function(table) {
+        var url = 'https://api.airtable.com/v0/' + LB_BASE + '/' + table.id
+          + '?pageSize=5'
+          + '&filterByFormula=' + encodeURIComponent('SEARCH("' + topKw.replace(/"/g, '') + '", {Search Index})');
+        return fetch(url, {
+          headers: { 'Authorization': 'Bearer ' + atKey }
+        }).then(function(r) {
+          if (!r.ok) return [];
+          return r.json().then(function(d) { return d.records || []; });
+        }).catch(function() { return []; });
+      });
+
+      var fbResults = await Promise.all(fallbackSearches);
+      fbResults.forEach(function(recs) {
+        recs.forEach(function(r) { allResults.push(r.fields); });
+      });
+    }
+
+    if (allResults.length === 0) return '';
+
+    // Format results for the prompt
+    var skipFields = new Set(['Search Index', 'Last Verified', 'Source', 'Confidence', 'FCDO Sensitive', 'Seasonal', 'Audience']);
+    var context = '\n\n## Travel Knowledge\nUse the following verified travel information to answer the visitor\'s question. Only use facts from this data, do not make up travel information.\n\n';
+
+    allResults.slice(0, 8).forEach(function(rec) {
+      context += '---\n';
+      Object.keys(rec).forEach(function(k) {
+        if (skipFields.has(k)) return;
+        var v = rec[k];
+        if (Array.isArray(v) && v.length && typeof v[0] === 'string' && v[0].indexOf('rec') === 0) return;
+        if (v && typeof v === 'object' && v.name) { context += k + ': ' + v.name + '\n'; return; }
+        if (Array.isArray(v) && v.length && typeof v[0] === 'object' && v[0].name) { context += k + ': ' + v.map(function(x) { return x.name; }).join(', ') + '\n'; return; }
+        if (v && typeof v === 'string') {
+          var maxLen = k === 'Consumer Answer' || k === 'Monthly Flight Costs GBP' || k === 'Cheapest Time to Fly' ? 500 : 300;
+          context += k + ': ' + (v.length > maxLen ? v.substring(0, maxLen) + '...' : v) + '\n';
+        } else if (typeof v === 'number') { context += k + ': ' + v + '\n'; }
+        else if (typeof v === 'boolean') { context += k + ': ' + (v ? 'Yes' : 'No') + '\n'; }
+      });
+    });
+
+    // Cache the result
+    kbCache[cacheKey] = { data: context, ts: Date.now() };
+
+    // Clean old cache entries periodically
+    var now = Date.now();
+    Object.keys(kbCache).forEach(function(key) {
+      if (now - kbCache[key].ts > CACHE_TTL) delete kbCache[key];
+    });
+
+    return context;
+  } catch (e) {
+    console.warn('Luna Brain search failed:', e.message);
+    return '';
+  }
+}
+
 // --- LUNA SYSTEM PROMPT (for client travel agent websites) ---
 const LUNA_CLIENT = `You are Luna, the live chat assistant on a travel agent's website. You are warm, knowledgeable and helpful, like a well-travelled friend who happens to know the travel industry inside out.
 
@@ -20,6 +159,8 @@ const LUNA_CLIENT = `You are Luna, the live chat assistant on a travel agent's w
 
 ## Knowledge context
 The travel agent's website includes live booking integrations with 200+ suppliers including Jet2 Holidays, TUI, RateHawk, WebBeds, Hotelbeds, Gold Medal, Faremine and many more, with no additional booking fees on premium suppliers.
+
+When a "Travel Knowledge" section is provided below, use it to give detailed, accurate answers about destinations, visas, weather, flights, airlines, airports, cruise lines, health advice and more. Quote specific facts (e.g. flight prices, visa requirements, plug types) naturally in conversation. If the knowledge section doesn't cover the visitor's question, answer generally or suggest they speak to the team. Never say "according to my database" or reference the knowledge system. Present facts as if you simply know them.
 
 ## Escalation rules
 You MUST escalate when:
@@ -581,13 +722,13 @@ module.exports = async function handler(req, res) {
     systemPrompt += `\n\n## Client context\nYou are embedded on the website of "${clientName}". Refer to them naturally as "we" or "us".`;
 
     // Fetch client business profile from Airtable if available
-    const atKey = process.env.AIRTABLE_KEY;
-    if (atKey) {
+    var profileAtKey = process.env.AIRTABLE_KEY;
+    if (profileAtKey) {
       try {
         const profileUrl = 'https://api.airtable.com/v0/app6Ot3eOb3DangkB/tbl6CZ7aVzq1wHF2v'
           + '?filterByFormula=' + encodeURIComponent("{ClientName}='" + clientName.replace(/'/g, "\\'") + "'")
           + '&maxRecords=1';
-        const pRes = await fetch(profileUrl, { headers: { 'Authorization': 'Bearer ' + atKey } });
+        const pRes = await fetch(profileUrl, { headers: { 'Authorization': 'Bearer ' + profileAtKey } });
         const pData = await pRes.json();
         if (pData.records && pData.records.length > 0) {
           const f = pData.records[0].fields || {};
@@ -602,6 +743,16 @@ module.exports = async function handler(req, res) {
           if (f.OpeningHours) contactParts.push('Opening hours: ' + f.OpeningHours);
           if (contactParts.length > 0) {
             systemPrompt += '\n\n## Contact details\n' + contactParts.join('\n');
+          }
+
+          // Multilingual support
+          if (f.MultilingualEnabled) {
+            var langRestriction = '';
+            var supportedLangs = (f.SupportedLanguages || '').trim();
+            if (supportedLangs) {
+              langRestriction = ' You are configured to support these languages: ' + supportedLangs + '. If a visitor writes in a language not on this list, respond in English and politely let them know which languages you can help in.';
+            }
+            systemPrompt += '\n\n## Multilingual support\nYou speak multiple languages fluently. Detect the language the visitor is writing in and respond in that same language throughout the conversation. If the visitor switches language mid-conversation, follow their lead. The travel knowledge base is in English, so translate facts and information naturally into the visitor\'s language. Keep your warm, friendly tone in every language. Do not mention that you are translating or that the knowledge base is in English.\n\nCRITICAL: Start EVERY response with [LANG:LanguageName] on its own line (e.g. [LANG:French] or [LANG:English]). This tag will be removed before the visitor sees it. Always include it, even for English.' + langRestriction;
           }
 
           // Booking search integration
@@ -650,11 +801,27 @@ Do NOT generate a search link until you have all the required details.`;
   if (page) systemPrompt += `\nThe visitor is currently viewing: ${page}`;
   if (visitorName) systemPrompt += `\nThe visitor's name is ${visitorName}.`;
 
+  // Search Luna Brain KB for travel questions (non-Travelgenix clients only)
+  var useHaiku = false;
+  if (!isTravelgenix) {
+    var atKey = process.env.AIRTABLE_KEY;
+    var kbContext = await searchLunaBrain(message, atKey);
+    if (kbContext) {
+      systemPrompt += kbContext;
+    }
+    useHaiku = true; // Use Haiku for all client responses (10x cheaper)
+  }
+
   try {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+    // Use Haiku for client widgets (cost-efficient), Sonnet for Travelgenix corporate
+    var modelId = useHaiku
+      ? (process.env.LUNA_HAIKU_MODEL || 'claude-haiku-4-5-20251001')
+      : (process.env.LUNA_MODEL || 'claude-sonnet-4-20250514');
+
     const response = await client.messages.create({
-      model: process.env.LUNA_MODEL || 'claude-sonnet-4-20250514',
+      model: modelId,
       max_tokens: 512,
       system: systemPrompt,
       messages: claudeMessages,
@@ -667,17 +834,29 @@ Do NOT generate a search link until you have all the required details.`;
       .join('\n')
       .trim();
 
-    const escalate = detectEscalation(replyText, message);
+    // Extract language tag if present
+    var detectedLang = null;
+    var cleanReply = replyText;
+    var langMatch = replyText.match(/^\[LANG:([^\]]+)\]\s*/);
+    if (langMatch) {
+      detectedLang = langMatch[1].trim();
+      cleanReply = replyText.replace(/^\[LANG:[^\]]+\]\s*/, '').trim();
+    }
 
-    return res.status(200).json({
-      reply: replyText,
+    const escalate = detectEscalation(cleanReply, message);
+
+    var responseJson = {
+      reply: cleanReply,
       escalate: escalate,
       convId: convId,
       usage: {
         input_tokens: response.usage?.input_tokens,
         output_tokens: response.usage?.output_tokens
       }
-    });
+    };
+    if (detectedLang) responseJson.detectedLanguage = detectedLang;
+
+    return res.status(200).json(responseJson);
 
   } catch (err) {
     console.error('Luna AI error:', err?.message || err);
