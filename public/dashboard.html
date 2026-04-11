@@ -895,6 +895,24 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
     </div>
 
     <div class="settings-section">
+      <h4>Multilingual Support</h4>
+      <div class="settings-hint" style="margin-bottom:8px">When enabled, Luna automatically detects the visitor's language and responds in kind. Perfect for agents serving international customers.</div>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="setMultilingualEnabled" style="width:18px;height:18px;accent-color:var(--teal)" onchange="document.getElementById('multilingualFields').style.display=this.checked?'block':'none'">
+          <span style="font-size:13px;font-weight:600">Enable multilingual chat</span>
+        </label>
+      </div>
+      <div id="multilingualFields" style="display:none">
+        <div class="settings-row">
+          <label class="settings-label">Supported Languages (optional)</label>
+          <input class="settings-input" id="setSupportedLanguages" placeholder="e.g. English, French, Spanish, German">
+          <div class="settings-hint">Leave empty to support all languages. Or list the specific languages you want Luna to respond in. If a visitor writes in an unsupported language, Luna will reply in English.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-section">
       <h4>Email Marketing</h4>
       <div class="settings-hint" style="margin-bottom:12px">Connect your email marketing platform to automatically add visitors who opt in to marketing. Their name and email will be synced when they start a chat.</div>
       <div class="settings-row">
@@ -1235,6 +1253,11 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
   function onConvMessage(convId, data) {
     const conv = conversations[convId];
     if (!conv) return;
+
+    // Track conversation language
+    if (data.lang && data.lang !== 'English') conv.lang = data.lang;
+    if (data.detectedLanguage && data.detectedLanguage !== 'English') conv.lang = data.detectedLanguage;
+
     conv.messages.push(data);
     if (convId !== activeConvId) {
       conv.unread = true;
@@ -1247,11 +1270,26 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
       scrollChat();
       // Trigger smart suggestions when visitor sends a message and agent is active
       if (data.from === 'visitor' && conv.handler !== 'ai') {
-        fetchSuggestions(data.text);
+        fetchSuggestions(data.translated || data.text);
       }
     }
     // Update visitor info (live message count etc.)
     if (convId === activeConvId) showVisitorInfo(conv);
+
+    // Auto-translate non-English visitor/AI messages for the agent
+    if ((data.from === 'visitor' || data.from === 'ai') && conv.lang && conv.lang !== 'English' && !data.translated) {
+      translateForAgent(data.text).then(function(result) {
+        if (result && result.translation && result.translation !== data.text) {
+          data.translated = result.translation;
+          data.lang = result.detectedLanguage || conv.lang;
+          // Re-render the conversation if it's currently active
+          if (convId === activeConvId) {
+            renderMessages(conv);
+            scrollChat();
+          }
+        }
+      });
+    }
   }
 
   function onConvTyping(convId, data) {
@@ -1375,11 +1413,42 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
     const type = m.from === 'visitor' ? 'visitor' : m.from === 'ai' ? 'ai' : 'agent';
     const label = m.from === 'ai' ? 'Luna AI' : m.from === 'agent' ? esc(m.agentName || CONFIG.AGENT_NAME) : '';
     const time = formatTime(m.timestamp);
-    return `<div class="msg ${type}">
-      ${label ? `<span class="msg-label">${label}</span>` : ''}
-      <div class="msg-bubble">${esc(m.text)}</div>
-      <div class="msg-meta"><span>${time}</span></div>
-    </div>`;
+    const hasTranslation = m.translated && m.translated !== m.text;
+    const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2,6);
+
+    var bubbleContent = '';
+    if (hasTranslation) {
+      bubbleContent = '<div id="' + msgId + '-en" style="display:block">' + esc(m.translated) + '</div>'
+        + '<div id="' + msgId + '-orig" style="display:none">' + esc(m.text) + '</div>'
+        + '<div style="margin-top:4px"><button onclick="var en=document.getElementById(\'' + msgId + '-en\'),orig=document.getElementById(\'' + msgId + '-orig\');if(en.style.display===\'none\'){en.style.display=\'block\';orig.style.display=\'none\';this.textContent=\'View original\';}else{en.style.display=\'none\';orig.style.display=\'block\';this.textContent=\'View translated\';}" style="font-size:10px;color:var(--teal);background:none;border:none;cursor:pointer;padding:0;font-family:var(--font)">View original</button></div>';
+    } else {
+      bubbleContent = esc(m.text);
+    }
+
+    var langBadge = '';
+    if (m.lang && m.lang !== 'English' && (m.from === 'visitor' || m.from === 'ai')) {
+      langBadge = '<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:var(--teal-glow);color:var(--teal);margin-left:6px">' + esc(m.lang) + '</span>';
+    }
+
+    return '<div class="msg ' + type + '">'
+      + (label ? '<span class="msg-label">' + label + langBadge + '</span>' : '')
+      + '<div class="msg-bubble">' + bubbleContent + '</div>'
+      + '<div class="msg-meta"><span>' + time + '</span></div>'
+      + '</div>';
+  }
+
+  // ─── TRANSLATION ───
+  async function translateForAgent(text) {
+    try {
+      var res = await fetch('https://luna-chat-endpoint.vercel.app/api/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text, targetLang: 'English' })
+      });
+      if (!res.ok) return null;
+      var data = await res.json();
+      return data;
+    } catch(e) { return null; }
   }
 
   function scrollChat() {
@@ -1442,6 +1511,7 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
       <div class="info-row"><span class="info-label">⏱ Duration</span><span class="info-value">${durationStr}</span></div>
       <div class="info-row"><span class="info-label">💬 Messages</span><span class="info-value">${msgCount} total (${visitorMsgs} visitor, ${aiMsgs} AI)</span></div>
       <div class="info-row"><span class="info-label">🤖 Handler</span><span class="info-value">${conv.handler === 'ai' ? '<span style="color:var(--teal)">Luna AI</span>' : '<span style="color:var(--green)">Agent</span>'}</span></div>
+      ${conv.lang ? '<div class="info-row"><span class="info-label">🌐 Language</span><span class="info-value">' + esc(conv.lang) + (conv.lang !== 'English' ? ' <span style="font-size:10px;color:var(--teal)">(auto-translating)</span>' : '') + '</span></div>' : ''}
       <div class="info-row"><span class="info-label">🕐 Started</span><span class="info-value mono">${formatTime(conv.startedAt)}</span></div>
       ${conv.rating ? '<div class="info-row"><span class="info-label">⭐ Rating</span><span class="info-value">' + '★'.repeat(conv.rating) + '☆'.repeat(5-conv.rating) + ' (' + conv.rating + '/5)</span></div>' : ''}
       ${prevConvsHTML}
@@ -1516,6 +1586,7 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
     const text = msgInput.value.trim();
     if (!text || !activeConvId) return;
 
+    const conv = conversations[activeConvId];
     const msg = {
       from: 'agent',
       text: text,
@@ -1524,8 +1595,12 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
       timestamp: new Date().toISOString()
     };
 
+    // If multilingual conversation, tell the widget to translate
+    if (conv.lang && conv.lang !== 'English') {
+      msg.translateTo = conv.lang;
+    }
+
     // Publish via Ably
-    const conv = conversations[activeConvId];
     if (conv.channel) {
       conv.channel.publish('message', msg);
     }
@@ -2216,6 +2291,9 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
       selectedEmailPlatform = p.emailPlatform || 'none';
       document.getElementById('setEmailApiKey').value = p.emailPlatformApiKey || '';
       document.getElementById('setEmailListId').value = p.emailPlatformListId || '';
+      document.getElementById('setMultilingualEnabled').checked = !!p.multilingualEnabled;
+      document.getElementById('setSupportedLanguages').value = p.supportedLanguages || '';
+      document.getElementById('multilingualFields').style.display = p.multilingualEnabled ? 'block' : 'none';
       document.getElementById('setBotName').value = p.widgetBotName || 'Luna AI';
       document.getElementById('setWelcome').value = p.widgetWelcome || '';
       document.getElementById('setHints').value = p.widgetHints || '';
@@ -2263,6 +2341,8 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
           emailPlatform: selectedEmailPlatform,
           emailPlatformApiKey: document.getElementById('setEmailApiKey').value,
           emailPlatformListId: document.getElementById('setEmailListId').value,
+          multilingualEnabled: document.getElementById('setMultilingualEnabled').checked,
+          supportedLanguages: document.getElementById('setSupportedLanguages').value,
           widgetBotName: document.getElementById('setBotName').value,
           widgetWelcome: document.getElementById('setWelcome').value,
           widgetHints: document.getElementById('setHints').value
