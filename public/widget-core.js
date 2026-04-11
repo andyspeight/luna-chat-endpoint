@@ -127,6 +127,7 @@ var visitorId = "";
 var autoTriggerTimer = null;
 var autoTriggered = false;
 var visitorInteracted = false;
+var conversationLang = "";
 
 /* ─── AUTO-TRIGGER HELPERS ───────────────────────────────── */
 function cancelAutoTrigger() {
@@ -291,7 +292,7 @@ var $fab, $panel, $msgs, $input, $send, $pills, $typing, $badge, $escBar, $email
 
 function scrollBottom() { setTimeout(function(){ $msgs.scrollTop = $msgs.scrollHeight; }, 50); }
 
-function addMsg(role, text, noStore) {
+function addMsg(role, text, noStore, originalText) {
   var cls = role === "user" ? "tgx-msg user" : role === "agent" ? "tgx-msg agent" : role === "system" ? "tgx-msg system" : "tgx-msg bot";
   var div = document.createElement("div");
   div.className = cls;
@@ -302,7 +303,7 @@ function addMsg(role, text, noStore) {
     .replace(/\n/g, "<br>");
   div.innerHTML = html;
   $msgs.appendChild(div);
-  if (!noStore) msgs.push({role:role, content:text, ts:Date.now()});
+  if (!noStore) msgs.push({role:role, content:text, original:originalText||null, ts:Date.now()});
   scrollBottom();
   /* Show email-this-chat link after 3+ stored messages */
   if ($emailBar && msgs.length >= 3) {
@@ -341,7 +342,9 @@ function buildTranscript() {
     var d = new Date(m.ts);
     var time = ("0"+d.getHours()).slice(-2) + ":" + ("0"+d.getMinutes()).slice(-2);
     var sender = m.role === "user" ? "You" : m.role === "agent" ? "Agent" : (C.name || "Luna AI");
-    lines.push(sender + " (" + time + "): " + m.content);
+    var line = sender + " (" + time + "): " + m.content;
+    if (m.original) line += "\n  [Original: " + m.original + "]";
+    lines.push(line);
   });
   return lines.join("\n\n");
 }
@@ -409,11 +412,23 @@ function initAbly() {
   chatChannel.subscribe("message", function(msg){
     var d = msg.data;
     if (d && d.from === "agent") {
-      addMsg("agent", d.text);
-      if (!panelOpen) {
-        unread++;
-        $badge.textContent = unread;
-        $badge.style.cssText = "display:flex!important";
+      if (d.translateTo) {
+        /* Translate agent message before displaying */
+        translateText(d.text, d.translateTo).then(function(translated) {
+          addMsg("agent", translated, false, d.text);
+          if (!panelOpen) {
+            unread++;
+            $badge.textContent = unread;
+            $badge.style.cssText = "display:flex!important";
+          }
+        });
+      } else {
+        addMsg("agent", d.text);
+        if (!panelOpen) {
+          unread++;
+          $badge.textContent = unread;
+          $badge.style.cssText = "display:flex!important";
+        }
       }
     }
   });
@@ -471,7 +486,8 @@ function ensureConversationStarted() {
       page: window.location.href,
       device: isMobile ? "mobile" : "desktop",
       country: visitorCountry,
-      visitorId: visitorId
+      visitorId: visitorId,
+      lang: conversationLang || "English"
     },
     handler: "ai",
     startedAt: now,
@@ -493,9 +509,32 @@ function ensureConversationStarted() {
   }
 }
 
+/* ─── TRANSLATION ────────────────────────────────────────── */
+async function translateText(text, targetLang) {
+  try {
+    var res = await fetch(C.endpoint.replace("/api/luna-chat", "/api/translate"), {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({text: text, targetLang: targetLang})
+    });
+    if (res.ok) {
+      var data = await res.json();
+      return data.translated || data.text || text;
+    }
+  } catch(e) {
+    console.warn("Luna widget: translation failed:", e.message);
+  }
+  return text; /* fallback to original */
+}
+
 function publishMessage(from, text) {
   if (!chatChannel) return;
-  chatChannel.publish("message", {from: from, text: text, timestamp: new Date().toISOString()});
+  chatChannel.publish("message", {
+    from: from,
+    text: text,
+    lang: conversationLang || "English",
+    timestamp: new Date().toISOString()
+  });
 }
 
 function publishHandlerChange(handler) {
@@ -702,6 +741,12 @@ async function callLuna(userText) {
     var data = await res.json();
     var reply = data.reply || "Sorry, I'm having trouble connecting right now.";
     history.push({role: "assistant", content: reply});
+
+    /* Capture detected language for Ably messages */
+    if (data.detectedLanguage) {
+      conversationLang = data.detectedLanguage;
+    }
+
     return data;
   } catch(e) {
     console.error("Luna widget: fetch error:", e.message);
