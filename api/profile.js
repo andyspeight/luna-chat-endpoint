@@ -75,6 +75,8 @@ module.exports = async function handler(req, res) {
           emailPlatform: fields.EmailPlatform ? (typeof fields.EmailPlatform === 'object' ? fields.EmailPlatform.name : fields.EmailPlatform) : 'none',
           emailPlatformApiKey: fields.EmailPlatformApiKey || '',
           emailPlatformListId: fields.EmailPlatformListId || '',
+          multilingualEnabled: !!fields.MultilingualEnabled,
+          supportedLanguages: fields.SupportedLanguages || '',
           cannedResponses: fields.CannedResponses || ''
         }
       });
@@ -112,6 +114,8 @@ module.exports = async function handler(req, res) {
       if (body.emailPlatform !== undefined) updateFields.EmailPlatform = body.emailPlatform;
       if (body.emailPlatformApiKey !== undefined) updateFields.EmailPlatformApiKey = body.emailPlatformApiKey;
       if (body.emailPlatformListId !== undefined) updateFields.EmailPlatformListId = body.emailPlatformListId;
+      if (body.multilingualEnabled !== undefined) updateFields.MultilingualEnabled = body.multilingualEnabled;
+      if (body.supportedLanguages !== undefined) updateFields.SupportedLanguages = body.supportedLanguages;
 
       // Canned responses
       if (body.cannedResponses !== undefined) updateFields.CannedResponses = body.cannedResponses;
@@ -141,4 +145,3 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: e.message });
   }
 };
-
