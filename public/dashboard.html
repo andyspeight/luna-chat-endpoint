@@ -1127,7 +1127,7 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
 
       // Restore theme preference for this client
       try {
-        var savedTheme = localStorage.getItem(STORAGE_PREFIX + 'theme_mode');
+        var savedTheme = localStorage.getItem(STORAGE_PREFIX + 'theme_v2');
         var isCurrentlyDark = document.documentElement.getAttribute('data-theme') === 'dark';
         if (savedTheme === 'dark' && !isCurrentlyDark) window._toggleTheme();
         if (savedTheme !== 'dark' && isCurrentlyDark) window._toggleTheme();
@@ -2471,12 +2471,12 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
     } else {
       btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
     }
-    try { localStorage.setItem(STORAGE_PREFIX + 'theme_mode', isDark ? 'dark' : 'light'); } catch(e) {}
+    try { localStorage.setItem(STORAGE_PREFIX + 'theme_v2', isDark ? 'dark' : 'light'); } catch(e) {}
   };
 
   // Restore saved theme preference (dark if saved, otherwise default light)
   try {
-    if (localStorage.getItem(STORAGE_PREFIX + 'theme_mode') === 'dark') {
+    if (localStorage.getItem(STORAGE_PREFIX + 'theme_v2') === 'dark') {
       window._toggleTheme();
     }
   } catch(e) {}
