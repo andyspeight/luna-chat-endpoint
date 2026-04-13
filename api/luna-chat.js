@@ -24,17 +24,15 @@ const NON_TRAVEL_PATTERNS = [
 
 function extractKeywords(msg) {
   return msg.toLowerCase()
-    .replace(/[?!.,;:'''""()\-]/g, ' ')
+    .replace(/[?!.,;:'\u2019\u2018\u201C\u201D()\-]/g, ' ')
     .split(/\s+/)
     .filter(function(w) { return w.length > 1 && !STOP_WORDS.has(w); });
 }
 
 function isTravelQuestion(msg) {
-  // Skip KB search for greetings, admin questions, booking references
   for (var i = 0; i < NON_TRAVEL_PATTERNS.length; i++) {
     if (NON_TRAVEL_PATTERNS[i].test(msg)) return false;
   }
-  // If there are travel-relevant keywords, it's a travel question
   var kw = extractKeywords(msg);
   return kw.length > 0;
 }
@@ -55,13 +53,11 @@ async function searchLunaBrain(message, atKey) {
   var keywords = extractKeywords(message);
   if (keywords.length === 0) return '';
 
-  // Build search query — use top 4 keywords
   var searchQuery = keywords.slice(0, 4).join(' ');
 
   try {
     var allResults = [];
 
-    // Search all 3 tables in parallel
     var searches = LB_TABLES.map(function(table) {
       var url = 'https://api.airtable.com/v0/' + LB_BASE + '/' + table.id
         + '?pageSize=5'
@@ -80,7 +76,6 @@ async function searchLunaBrain(message, atKey) {
       recs.forEach(function(r) { allResults.push(r.fields); });
     });
 
-    // If SEARCH formula returned nothing, try individual keyword matching
     if (allResults.length === 0 && keywords.length > 0) {
       var topKw = keywords[0];
       var fallbackSearches = LB_TABLES.map(function(table) {
@@ -103,7 +98,6 @@ async function searchLunaBrain(message, atKey) {
 
     if (allResults.length === 0) return '';
 
-    // Format results for the prompt
     var skipFields = new Set(['Search Index', 'Last Verified', 'Source', 'Confidence', 'FCDO Sensitive', 'Seasonal', 'Audience']);
     var context = '\n\n## Travel Knowledge\nUse the following verified travel information to answer the visitor\'s question. Only use facts from this data, do not make up travel information.\n\n';
 
@@ -123,10 +117,8 @@ async function searchLunaBrain(message, atKey) {
       });
     });
 
-    // Cache the result
     kbCache[cacheKey] = { data: context, ts: Date.now() };
 
-    // Clean old cache entries periodically
     var now = Date.now();
     Object.keys(kbCache).forEach(function(key) {
       if (now - kbCache[key].ts > CACHE_TTL) delete kbCache[key];
@@ -577,11 +569,11 @@ function checkRateLimit(convId) {
 function sanitizeInput(str) {
   if (typeof str !== 'string') return '';
   return str
-    .replace(/<[^>]*>/g, '')           // Strip HTML tags
-    .replace(/javascript:/gi, '')       // Strip JS protocol
-    .replace(/on\w+\s*=/gi, '')         // Strip inline event handlers
-    .replace(/data:[^,]*,/gi, '')       // Strip data URIs
-    .slice(0, 2000)                     // Max length
+    .replace(/<[^>]*>/g, '')
+    .replace(/javascript:/gi, '')
+    .replace(/on\w+\s*=/gi, '')
+    .replace(/data:[^,]*,/gi, '')
+    .slice(0, 2000)
     .trim();
 }
 
@@ -602,21 +594,18 @@ function moderateContent(text, convId) {
   if (!text) return { allowed: true };
   const lower = text.toLowerCase();
   
-  // Check profanity
   for (const word of PROFANITY_LIST) {
     if (lower.includes(word)) {
       return recordStrike(convId, 'profanity');
     }
   }
   
-  // Check abuse patterns
   for (const pattern of ABUSE_PATTERNS) {
     if (pattern.test(text)) {
       return recordStrike(convId, 'abuse');
     }
   }
   
-  // Check for prompt injection attempts
   const injectionPatterns = [
     /ignore (all |your |previous )?instructions/i,
     /you are now/i,
@@ -663,7 +652,6 @@ function recordStrike(convId, type) {
 
 // --- HANDLER ---
 module.exports = async function handler(req, res) {
-  // Security headers
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('X-XSS-Protection', '1; mode=block');
@@ -677,7 +665,6 @@ module.exports = async function handler(req, res) {
 
   const body = req.body || {};
   
-  // Sanitize all inputs
   const convId = sanitizeInput(body.convId);
   const visitorName = sanitizeInput(body.visitorName);
   const message = sanitizeInput(body.message);
@@ -692,7 +679,6 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: 'Missing or invalid message' });
   }
 
-  // Rate limit check
   if (!checkRateLimit(convId)) {
     return res.status(429).json({
       reply: "You're sending messages quite quickly. Please wait a moment before trying again.",
@@ -701,7 +687,6 @@ module.exports = async function handler(req, res) {
     });
   }
 
-  // Content moderation
   const modResult = moderateContent(message, convId);
   if (!modResult.allowed) {
     return res.status(200).json({
@@ -714,14 +699,12 @@ module.exports = async function handler(req, res) {
 
   const claudeMessages = buildMessages(history, message);
 
-  // Select system prompt based on client
   const isTravelgenix = (clientName || '').toLowerCase().includes('travelgenix');
   let systemPrompt = isTravelgenix ? LUNA_TRAVELGENIX : LUNA_CLIENT;
 
   if (!isTravelgenix && clientName) {
     systemPrompt += `\n\n## Client context\nYou are embedded on the website of "${clientName}". Refer to them naturally as "we" or "us".`;
 
-    // Fetch client business profile from Airtable if available
     var profileAtKey = process.env.AIRTABLE_KEY;
     if (profileAtKey) {
       try {
@@ -735,7 +718,6 @@ module.exports = async function handler(req, res) {
           if (f.BusinessDescription) {
             systemPrompt += '\n\n## About this business\nUse this information to answer visitor questions. It was written by the business owner:\n\n' + f.BusinessDescription;
           }
-          // Contact details kept separate for accuracy
           const contactParts = [];
           if (f.BusinessPhone) contactParts.push('Phone: ' + f.BusinessPhone);
           if (f.BusinessWebsite) contactParts.push('Website: ' + f.BusinessWebsite);
@@ -758,14 +740,12 @@ module.exports = async function handler(req, res) {
           // Booking search integration
           const siteId = f.DeepLinkSiteID;
           if (siteId) {
-            // Determine allowed search types — must be explicitly selected
             var rawTypes = f.SearchTypes;
             var allowedTypes = [];
             if (Array.isArray(rawTypes) && rawTypes.length > 0) {
               allowedTypes = rawTypes.map(function(t) { return typeof t === 'object' ? t.name : t; });
             }
 
-            // Only enable booking search if at least one type is selected
             if (allowedTypes.length > 0) {
             var typeNames = { Packages: 'package holidays', Flights: 'flights', Accommodation: 'hotels/accommodation', DynamicPackaging: 'flight + hotel combos' };
             var typeList = allowedTypes.map(function(t) { return t + ' (' + (typeNames[t] || t) + ')'; }).join(', ');
@@ -773,23 +753,70 @@ module.exports = async function handler(req, res) {
             var accommOnly = allowedTypes.length === 1 && allowedTypes[0] === 'Accommodation';
 
             systemPrompt += `\n\n## Holiday Search
-When a visitor expresses interest in booking or searching for a holiday to a specific destination, help them search by gathering these details conversationally (ask naturally, not all at once):
-1. Destination — match to the closest option from this list:
-Costa del Sol=AGP/Costa+Del+Sol/ES, Costa Blanca=ALC/Costa+Blanca/ES, Barcelona=BCN/Barcelona/ES, Tenerife=TFS/Tenerife/ES, Lanzarote=ACE/Lanzarote/ES, Gran Canaria=LPA/Gran+Canaria/ES, Mallorca=PMI/Mallorca/ES, Menorca=MAH/Menorca/ES, Ibiza=IBZ/Ibiza/ES, Crete=HER/Crete/GR, Rhodes=RHO/Rhodes/GR, Corfu=CFU/Corfu/GR, Zante=ZTH/Zante/GR, Kos=KGS/Kos/GR, Athens=ATH/Athens/GR, Santorini=JTR/Santorini/GR, Antalya=AYT/Antalya/TR, Dalaman=DLM/Dalaman/TR, Bodrum=BJV/Bodrum/TR, Istanbul=IST/Istanbul/TR, Algarve=FAO/Algarve/PT, Madeira=FNC/Madeira/PT, Lisbon=LIS/Lisbon/PT, Naples=NAP/Naples/IT, Rome=FCO/Rome/IT, Sicily=CTA/Sicily/IT, Venice=VCE/Venice/IT, Jamaica=MBJ/Jamaica/JM, Dominican Republic=PUJ/Dominican+Republic/DO, Cancun=CUN/Cancun/MX, Barbados=BGI/Barbados/BB, St Lucia=UVF/St+Lucia/LC, Antigua=ANU/Antigua/AG, Dubai=DXB/Dubai/AE, Maldives=MLE/Maldives/MV, Mauritius=MRU/Mauritius/MU, New York=JFK/New+York/US, Orlando=MCO/Orlando/US, Miami=MIA/Miami/US, Las Vegas=LAS/Las+Vegas/US, Bangkok=BKK/Bangkok/TH, Phuket=HKT/Phuket/TH, Bali=DPS/Bali/ID, Sharm el Sheikh=SSH/Sharm+el+Sheikh/EG, Hurghada=HRG/Hurghada/EG, Marrakech=RAK/Marrakech/MA` +
-(accommOnly ? '' : `
-2. Departure airport — ask where they want to fly from. Options: London (All)=LON, Manchester=MAN, Birmingham=BHX, Bristol=BRS, Edinburgh=EDI, Glasgow=GLA, Newcastle=NCL, Leeds Bradford=LBA, Liverpool=LPL, Belfast=BFS, East Midlands=EMA, Cardiff=CWL, Aberdeen=ABZ, Southampton=SOU, Exeter=EXT, Bournemouth=BOH`) + `
-${accommOnly ? '2' : '3'}. Date — when they want to go (convert to YYYY-MM-DD)
-${accommOnly ? '3' : '4'}. Duration — how many nights (common: 3,4,5,7,10,14)
-${accommOnly ? '4' : '5'}. Travellers — adults (16+), children (2-15 with ages), infants (under 2)
 
-Available search types for this website: ${typeList}
-Use st=${defaultType} in the link unless another type is more appropriate from the allowed list.
+You can help visitors search for holidays by building a deep link URL. This is one of your most powerful features. You can search ANY destination worldwide.
 
-When you have ALL the details, generate the search link on its own line using this exact format:
-[✈️ Search for ${accommOnly ? 'hotels in' : 'holidays to'} DESTINATION](https://dl.tvllnk.com/deeplink/${siteId}?st=TYPE${accommOnly ? '' : '&org=AIRPORT'}&dst=IATA&loc=LOCATION&ctry=COUNTRY&fr=DATE&dur=NIGHTS&adt=ADULTS&chd=CHILDREN&inf=INFANTS)
+### Search Types Available
+The client has enabled these search types: ${typeList}
 
-If the destination isn't in the list, say you can still help but suggest they browse the website or speak to the team.
-Do NOT generate a search link until you have all the required details.`;
+Use "${defaultType}" as the default unless the visitor specifically asks for something else (e.g. "just flights" = Flights, "just a hotel" = Accommodation).
+
+### Deep Link URL Templates
+
+**Packages (package holidays, flight + hotel + transfers):**
+https://dl.tvllnk.com/deeplink/${siteId}?st=Packages&org={ORIGIN_IATA}&dst={DEST_IATA}&loc={LOCATION_NAME}&lat={LATITUDE}&lng={LONGITUDE}&rad=4&fr={DATE}&dur={NIGHTS}&adt={ADULTS}&chd={CHILDREN}&inf={INFANTS}
+
+**DynamicPackaging (flight + hotel combos):**
+https://dl.tvllnk.com/deeplink/${siteId}?st=DynamicPackaging&org={ORIGIN_IATA}&dst={DEST_IATA}&loc={LOCATION_NAME}&lat={LATITUDE}&lng={LONGITUDE}&rad=4&fr={DATE}&dur={NIGHTS}&adt={ADULTS}&chd={CHILDREN}&inf={INFANTS}
+
+**Flights (flights only):**
+https://dl.tvllnk.com/deeplink/${siteId}?st=Flights&org={ORIGIN_IATA}&dst={DEST_IATA}&fr={DATE}&dur={NIGHTS}&adt={ADULTS}&chd={CHILDREN}&inf={INFANTS}
+
+**Accommodation (hotels only, no flights):**
+https://dl.tvllnk.com/deeplink/${siteId}?st=Accommodation&loc={LOCATION_NAME}&lat={LATITUDE}&lng={LONGITUDE}&rad=4&fr={DATE}&dur={NIGHTS}&adt={ADULTS}&chd={CHILDREN}&inf={INFANTS}
+
+### Parameter Rules
+
+**ORIGIN_IATA** — always a UK airport code. Common options:
+LON (all London), LHR (Heathrow), LGW (Gatwick), STN (Stansted), LTN (Luton), LCY (London City), MAN (Manchester), BHX (Birmingham), EDI (Edinburgh), GLA (Glasgow), LBA (Leeds Bradford), NCL (Newcastle), LPL (Liverpool), BRS (Bristol), EMA (East Midlands), BFS (Belfast International), BHD (Belfast City), SOU (Southampton), CWL (Cardiff), ABZ (Aberdeen), EXT (Exeter), BOH (Bournemouth), NWI (Norwich), INV (Inverness).
+If the visitor says "London" use LON. If they name a specific London airport, use that code.
+
+**DEST_IATA** — the IATA airport code nearest to the destination. Use your knowledge of world airports. For cities with multiple airports, use the main international one (e.g. JFK for New York, CDG for Paris, FCO for Rome). For resort destinations, use the nearest serving airport (e.g. PMI for Mallorca, HER for Crete, DPS for Bali, PUJ for Punta Cana).
+
+**LOCATION_NAME** — the destination name as the visitor described it, URL-encoded with + for spaces. For resorts and specific areas, use the specific name (e.g. "Playa+del+Carmen" not just "Mexico"). For cities, use the city name (e.g. "New+York", "Paris", "Tokyo").
+
+**LATITUDE / LONGITUDE** — approximate coordinates of the destination. Use your geographical knowledge. These do not need to be pinpoint accurate, the search uses a radius parameter, so being within a fraction of a degree is fine.
+
+**DATE** — format YYYY-MM-DD. If the visitor says a month without a specific date, use the 15th of that month. If they say "next summer" suggest dates. Always use future dates.
+
+**NIGHTS** — number of nights. Common options: 3, 4, 5, 7, 10, 14, 21, 28. If the visitor says "a week" use 7. "Two weeks" use 14. "Long weekend" use 3 or 4.
+
+**ADULTS** — number of adults (default 2 if not specified).
+**CHILDREN** — number of children aged 2-17 (default 0).
+**INFANTS** — number of infants under 2 (default 0).
+If children are included, append &chdage={age} for each child (e.g. &chdage=8&chdage=5 for two children aged 8 and 5). Always ask for children's ages if children > 0.
+
+**rad** — search radius in km. Use 4 for city/resort searches. Use 8-12 for wider area searches (e.g. "somewhere in the Algarve", "the Amalfi Coast").
+
+### Conversational Flow
+
+1. When a visitor mentions a destination or expresses interest in booking, respond warmly with a little destination knowledge, then offer to search: "Would you like me to search for holidays to [destination]?"
+2. If they say yes, gather the missing details naturally. Do not fire all questions at once. Ask one or two at a time:
+   - Where they would like to fly from (suggest "London" as default, mention other UK airports if relevant)
+   - When they want to travel (month or specific dates)
+   - How long they want to go for
+   - How many adults and any children (ask ages if children are included)
+3. Once you have ALL required details, generate the search link as a markdown link on its own line:
+   [✈️ Search for holidays to {DESTINATION}](URL)
+4. Add a friendly note like "Click the link and you'll see live availability and prices. If you need help choosing, just ask!"
+
+### Important Rules
+- ALWAYS use your own knowledge for IATA codes and coordinates. You know world geography, use it confidently.
+- If you genuinely do not know an IATA code for an obscure destination, tell the visitor honestly and suggest the nearest major airport you do know.
+- For Flights, do NOT include loc, lat, lng, or rad parameters, just org, dst, dates and travellers.
+- For Accommodation, do NOT include org or dst parameters, just loc, lat, lng, rad, dates and travellers.
+- URL-encode the location name: spaces become +, commas become %2C, apostrophes become %27.
+- Do NOT generate a search link until you have all the required details.`;
             } // end if allowedTypes.length > 0
           }
         }
@@ -801,7 +828,6 @@ Do NOT generate a search link until you have all the required details.`;
   if (page) systemPrompt += `\nThe visitor is currently viewing: ${page}`;
   if (visitorName) systemPrompt += `\nThe visitor's name is ${visitorName}.`;
 
-  // Search Luna Brain KB for travel questions (non-Travelgenix clients only)
   var useHaiku = false;
   if (!isTravelgenix) {
     var atKey = process.env.AIRTABLE_KEY;
@@ -809,13 +835,12 @@ Do NOT generate a search link until you have all the required details.`;
     if (kbContext) {
       systemPrompt += kbContext;
     }
-    useHaiku = true; // Use Haiku for all client responses (10x cheaper)
+    useHaiku = true;
   }
 
   try {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-    // Use Haiku for client widgets (cost-efficient), Sonnet for Travelgenix corporate
     var modelId = useHaiku
       ? (process.env.LUNA_HAIKU_MODEL || 'claude-haiku-4-5-20251001')
       : (process.env.LUNA_MODEL || 'claude-sonnet-4-20250514');
@@ -834,7 +859,6 @@ Do NOT generate a search link until you have all the required details.`;
       .join('\n')
       .trim();
 
-    // Extract language tag if present
     var detectedLang = null;
     var cleanReply = replyText;
     var langMatch = replyText.match(/^\[LANG:([^\]]+)\]\s*/);
