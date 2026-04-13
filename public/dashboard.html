@@ -1592,9 +1592,9 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
       <div class="info-row"><span class="info-label">${icon('clock')} Duration</span><span class="info-value">${durationStr}</span></div>
       <div class="info-row"><span class="info-label">${icon('messageSquare')} Messages</span><span class="info-value">${msgCount} total (${visitorMsgs} visitor, ${aiMsgs} AI)</span></div>
       <div class="info-row"><span class="info-label">${icon('bot')} Handler</span><span class="info-value">${conv.handler === 'ai' ? '<span style="color:var(--teal)">Luna AI</span>' : '<span style="color:var(--green)">Agent</span>'}</span></div>
-      ${conv.lang ? '<div class="info-row"><span class="info-label">${icon('globe')} Language</span><span class="info-value">' + esc(conv.lang) + (conv.lang !== 'English' ? ' <span style="font-size:var(--text-xs);color:var(--teal)">(auto-translating)</span>' : '') + '</span></div>' : ''}
+      ${conv.lang ? '<div class="info-row"><span class="info-label">' + icon("globe") + ' Language</span><span class="info-value">' + esc(conv.lang) + (conv.lang !== 'English' ? ' <span style="font-size:var(--text-xs);color:var(--teal)">(auto-translating)</span>' : '') + '</span></div>' : ''}
       <div class="info-row"><span class="info-label">${icon('clock')} Started</span><span class="info-value mono">${formatTime(conv.startedAt)}</span></div>
-      ${conv.rating ? '<div class="info-row"><span class="info-label">${icon('star')} Rating</span><span class="info-value">' + '★'.repeat(conv.rating) + '☆'.repeat(5-conv.rating) + ' (' + conv.rating + '/5)</span></div>' : ''}
+      ${conv.rating ? '<div class="info-row"><span class="info-label">' + icon("star") + ' Rating</span><span class="info-value">' + '★'.repeat(conv.rating) + '☆'.repeat(5-conv.rating) + ' (' + conv.rating + '/5)</span></div>' : ''}
       ${prevConvsHTML}
     `;
   }
