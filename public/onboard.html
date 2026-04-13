@@ -3,78 +3,210 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Luna — Client Onboarding</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<title>Luna Live Chat — Client Onboarding</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'DM Sans',-apple-system,sans-serif;background:#0A0A0F;color:#E8EDF5;min-height:100vh}
-.wrap{max-width:700px;margin:0 auto;padding:40px 24px}
-.hdr{text-align:center;margin-bottom:40px}
-.hdr h1{font-size:28px;font-weight:700;background:linear-gradient(135deg,#0A84FF,#5E5CE6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:6px}
-.hdr p{font-size:14px;color:#8E8E93}
-.card{background:#16161D;border:1px solid rgba(255,255,255,0.06);border-radius:16px;padding:28px;margin-bottom:24px}
-.card h3{font-size:16px;font-weight:600;margin-bottom:4px}
-.card .desc{font-size:13px;color:#8E8E93;margin-bottom:16px}
-label.lbl{display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.2px;color:#8E8E93;margin-bottom:6px;margin-top:16px}
-label.lbl:first-child{margin-top:0}
-input.fi{width:100%;padding:11px 14px;background:#1C1C24;border:1px solid rgba(255,255,255,0.08);border-radius:10px;color:#E8EDF5;font-size:14px;outline:none;font-family:inherit}
-input.fi:focus{border-color:#0A84FF}
-input.fi.mono{font-family:monospace;font-size:13px}
-.row{display:flex;gap:12px}
-.row>*{flex:1}
-.btn{padding:14px 28px;border-radius:12px;border:none;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;width:100%;transition:opacity .15s}
-.btn-pri{background:#0A84FF;color:#fff}
-.btn-pri:hover{opacity:.9}
-.btn-pri:disabled{opacity:.4;cursor:not-allowed}
-.btn-sec{background:transparent;border:1px solid rgba(255,255,255,0.1);color:#8E8E93}
-.btn-sec:hover{background:rgba(255,255,255,0.04)}
-.output{display:none}
-.output.active{display:block}
-.result-box{background:#0D0D12;border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:16px;margin-top:12px;position:relative}
-.result-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#8E8E93;margin-bottom:6px}
-.result-value{font-family:monospace;font-size:12px;color:#64D2FF;word-break:break-all;line-height:1.6;white-space:pre-wrap}
-.copy-btn{position:absolute;top:10px;right:10px;padding:6px 14px;border-radius:8px;border:none;background:#0A84FF;color:#fff;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit}
-.copy-btn.copied{background:#30D158}
-.success-banner{background:rgba(48,209,88,0.08);border:1px solid rgba(48,209,88,0.2);border-radius:12px;padding:16px;margin-bottom:16px;display:flex;align-items:center;gap:10px}
-.success-banner .text{font-size:14px;color:#A8F0C6}
-.error-banner{background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:12px;padding:12px 16px;margin-top:12px;display:none;font-size:13px;color:#FCA5A5}
-.spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;margin-right:8px;vertical-align:middle}
-@keyframes spin{to{transform:rotate(360deg)}}
-.client-row{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#1C1C24;border-radius:8px;margin-bottom:6px}
-.client-name{font-size:14px;font-weight:600}
-.client-slug{font-size:11px;color:#5A5A6E}
-.client-status{font-size:11px;font-weight:600;padding:3px 8px;border-radius:6px}
-.client-status.active{background:rgba(48,209,88,0.15);color:#30D158}
-.client-action{padding:5px 10px;border-radius:6px;border:none;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;background:rgba(255,255,255,0.06);color:#8E8E93}
-.client-action:hover{background:rgba(255,255,255,0.1);color:#E8EDF5}
-hr.divider{border:none;border-top:1px solid rgba(255,255,255,0.06);margin:24px 0}
-.admin-lock{text-align:center;padding:60px 20px}
-.admin-lock h2{font-size:20px;margin-bottom:8px}
-.admin-lock p{font-size:13px;color:#8E8E93;margin-bottom:20px}
-.admin-lock input{max-width:300px;margin:0 auto;display:block}
-.admin-lock .btn{max-width:300px;margin:12px auto 0}
+  :root {
+    --tg-accent: #00B4D8;
+    --tg-accent-dark: #0096B7;
+    --tg-accent-glow: rgba(0,180,216,0.1);
+    --tg-primary: #1B2B5B;
+    --tg-success: #10B981;
+    --tg-error: #EF4444;
+    --tg-bg: #FFFFFF;
+    --tg-bg-secondary: #F8FAFC;
+    --tg-bg-tertiary: #F1F5F9;
+    --tg-border: #E2E8F0;
+    --tg-text: #0F172A;
+    --tg-text-secondary: #475569;
+    --tg-text-tertiary: #94A3B8;
+    --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --mono: 'JetBrains Mono', 'SF Mono', monospace;
+    --radius-sm: 6px; --radius-md: 8px; --radius-lg: 12px; --radius-xl: 16px;
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 4px 6px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.04);
+    --shadow-lg: 0 10px 15px rgba(0,0,0,0.08), 0 4px 6px rgba(0,0,0,0.04);
+    --shadow-xl: 0 20px 25px rgba(0,0,0,0.08), 0 10px 10px rgba(0,0,0,0.04);
+    --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+    --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px;
+    --text-xs: 11px; --text-sm: 13px; --text-base: 15px;
+    --text-md: 16px; --text-lg: 18px; --text-xl: 22px; --text-2xl: 28px;
+  }
+  [data-theme="dark"] {
+    --tg-bg: #0F172A;
+    --tg-bg-secondary: #1E293B;
+    --tg-bg-tertiary: #334155;
+    --tg-border: #334155;
+    --tg-text: #F8FAFC;
+    --tg-text-secondary: #CBD5E1;
+    --tg-text-tertiary: #64748B;
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+    --shadow-md: 0 4px 6px rgba(0,0,0,0.25);
+    --shadow-lg: 0 10px 15px rgba(0,0,0,0.3);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:var(--font); background:var(--tg-bg-secondary); color:var(--tg-text); min-height:100vh; line-height:1.6; }
+
+  .wrap { max-width:720px; margin:0 auto; padding:var(--space-10) var(--space-6); }
+
+  .hdr { text-align:center; margin-bottom:var(--space-10); }
+  .hdr-label { font-size:var(--text-xs); font-weight:700; letter-spacing:2px; text-transform:uppercase; color:var(--tg-accent); margin-bottom:var(--space-2); }
+  .hdr h1 { font-size:var(--text-2xl); font-weight:700; color:var(--tg-primary); margin-bottom:var(--space-2); }
+  [data-theme="dark"] .hdr h1 { color:var(--tg-text); }
+  .hdr p { font-size:var(--text-base); color:var(--tg-text-secondary); }
+
+  .theme-toggle {
+    position:fixed; top:var(--space-4); right:var(--space-4); width:40px; height:40px;
+    border-radius:var(--radius-md); border:1px solid var(--tg-border); background:var(--tg-bg);
+    color:var(--tg-text-secondary); cursor:pointer; display:flex; align-items:center; justify-content:center;
+    transition:all 0.15s; box-shadow:var(--shadow-sm); z-index:10;
+  }
+  .theme-toggle:hover { background:var(--tg-bg-tertiary); color:var(--tg-text); }
+
+  .card {
+    background:var(--tg-bg); border:1px solid var(--tg-border); border-radius:var(--radius-xl);
+    padding:var(--space-6); margin-bottom:var(--space-6); box-shadow:var(--shadow-sm);
+  }
+  .card h3 { font-size:var(--text-lg); font-weight:700; margin-bottom:var(--space-1); }
+  .card .desc { font-size:var(--text-sm); color:var(--tg-text-secondary); margin-bottom:var(--space-4); }
+
+  label.lbl {
+    display:block; font-size:var(--text-xs); font-weight:600; text-transform:uppercase;
+    letter-spacing:1px; color:var(--tg-text-tertiary); margin-bottom:var(--space-1); margin-top:var(--space-4);
+  }
+  label.lbl:first-child { margin-top:0; }
+
+  input.fi {
+    width:100%; padding:var(--space-3); background:var(--tg-bg-secondary); border:1px solid var(--tg-border);
+    border-radius:var(--radius-md); color:var(--tg-text); font-size:var(--text-base); outline:none;
+    font-family:var(--font); height:44px; transition:border-color 0.2s;
+  }
+  input.fi:focus { border-color:var(--tg-accent); box-shadow:0 0 0 3px var(--tg-accent-glow); }
+  input.fi::placeholder { color:var(--tg-text-tertiary); }
+  input.fi.mono { font-family:var(--mono); font-size:var(--text-sm); }
+
+  .hint { font-size:var(--text-xs); color:var(--tg-text-tertiary); margin-top:var(--space-1); line-height:1.4; }
+
+  .row { display:flex; gap:var(--space-3); }
+  .row > * { flex:1; }
+
+  .btn {
+    padding:var(--space-3) var(--space-6); border-radius:var(--radius-md); border:none;
+    font-size:var(--text-base); font-weight:600; cursor:pointer; font-family:var(--font);
+    width:100%; transition:all 0.15s; height:44px; display:inline-flex; align-items:center;
+    justify-content:center;
+  }
+  .btn-pri { background:var(--tg-accent); color:#FFFFFF; }
+  .btn-pri:hover { background:var(--tg-accent-dark); }
+  .btn-pri:active { transform:scale(0.97); }
+  .btn-pri:disabled { opacity:0.4; cursor:not-allowed; }
+  .btn-sec { background:transparent; border:1px solid var(--tg-border); color:var(--tg-text-secondary); }
+  .btn-sec:hover { background:var(--tg-bg-tertiary); color:var(--tg-text); }
+  .btn-sec:active { transform:scale(0.97); }
+
+  .output { display:none; }
+  .output.active { display:block; }
+
+  .result-box {
+    background:var(--tg-bg-secondary); border:1px solid var(--tg-border); border-radius:var(--radius-lg);
+    padding:var(--space-4); margin-top:var(--space-3); position:relative;
+  }
+  .result-label {
+    font-size:var(--text-xs); font-weight:600; text-transform:uppercase;
+    letter-spacing:1px; color:var(--tg-text-tertiary); margin-bottom:var(--space-2);
+  }
+  .result-value {
+    font-family:var(--mono); font-size:var(--text-sm); color:var(--tg-accent);
+    word-break:break-all; line-height:1.6; white-space:pre-wrap;
+  }
+  .copy-btn {
+    position:absolute; top:var(--space-3); right:var(--space-3);
+    padding:var(--space-2) var(--space-3); border-radius:var(--radius-sm); border:none;
+    background:var(--tg-accent); color:#FFFFFF; font-size:var(--text-xs); font-weight:600;
+    cursor:pointer; font-family:var(--font); transition:all 0.15s;
+  }
+  .copy-btn:hover { background:var(--tg-accent-dark); }
+  .copy-btn:active { transform:scale(0.95); }
+  .copy-btn.copied { background:var(--tg-success); }
+
+  .success-banner {
+    background:rgba(16,185,129,0.06); border:1px solid rgba(16,185,129,0.2);
+    border-radius:var(--radius-lg); padding:var(--space-4); margin-bottom:var(--space-4);
+    display:flex; align-items:center; gap:var(--space-3);
+  }
+  .success-banner svg { color:var(--tg-success); flex-shrink:0; }
+  .success-banner .text { font-size:var(--text-base); color:var(--tg-success); }
+
+  .error-banner {
+    background:rgba(239,68,68,0.06); border:1px solid rgba(239,68,68,0.2);
+    border-radius:var(--radius-md); padding:var(--space-3) var(--space-4);
+    margin-top:var(--space-3); display:none; font-size:var(--text-sm); color:var(--tg-error);
+  }
+
+  .spinner {
+    display:inline-block; width:16px; height:16px;
+    border:2px solid rgba(255,255,255,0.3); border-top-color:#fff;
+    border-radius:50%; animation:spin .6s linear infinite; margin-right:var(--space-2); vertical-align:middle;
+  }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spinner { animation:none; } }
+
+  .client-row {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:var(--space-3) var(--space-4); background:var(--tg-bg-secondary);
+    border:1px solid var(--tg-border); border-radius:var(--radius-md); margin-bottom:var(--space-2);
+    transition:background 0.15s;
+  }
+  .client-row:hover { background:var(--tg-bg-tertiary); }
+  .client-name { font-size:var(--text-base); font-weight:600; }
+  .client-slug { font-size:var(--text-xs); color:var(--tg-text-tertiary); font-family:var(--mono); }
+  .client-status {
+    font-size:var(--text-xs); font-weight:600; padding:2px var(--space-2);
+    border-radius:var(--radius-sm);
+  }
+  .client-status.active { background:rgba(16,185,129,0.1); color:var(--tg-success); }
+  .client-action {
+    padding:var(--space-2) var(--space-3); border-radius:var(--radius-sm); border:1px solid var(--tg-border);
+    font-size:var(--text-xs); font-weight:600; cursor:pointer; font-family:var(--font);
+    background:var(--tg-bg); color:var(--tg-text-secondary); transition:all 0.15s; height:32px;
+  }
+  .client-action:hover { background:var(--tg-bg-tertiary); color:var(--tg-text); }
+  .client-action:active { transform:scale(0.95); }
+
+  hr.divider { border:none; border-top:1px solid var(--tg-border); margin:var(--space-6) 0; }
+
+  .admin-lock { text-align:center; padding:var(--space-16) var(--space-5); }
+  .admin-lock h2 { font-size:var(--text-xl); margin-bottom:var(--space-2); }
+  .admin-lock p { font-size:var(--text-sm); color:var(--tg-text-secondary); margin-bottom:var(--space-5); }
+  .admin-lock input { max-width:320px; margin:0 auto; display:block; }
+  .admin-lock .btn { max-width:320px; margin:var(--space-3) auto 0; }
 </style>
 </head>
 <body>
+<button class="theme-toggle" id="themeBtn" onclick="toggleTheme()" title="Toggle dark mode">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+</button>
+
 <div class="wrap">
   <div class="hdr">
+    <div class="hdr-label">Luna Live Chat</div>
     <h1>Client Onboarding</h1>
-    <p>Set up a new Luna Live Chat client in seconds</p>
+    <p>Set up a new client in seconds</p>
   </div>
 
   <div id="adminLock" class="admin-lock">
     <h2>Admin Access</h2>
     <p>Enter the admin password to continue</p>
-    <input class="fi" type="password" id="adminPass" placeholder="Admin password">
-    <button class="btn btn-pri" onclick="checkAdmin()" style="margin-top:12px">Continue</button>
-    <div id="adminError" style="color:#EF4444;font-size:12px;margin-top:8px"></div>
+    <input class="fi" type="password" id="adminPass" placeholder="Admin password" aria-label="Admin password">
+    <button class="btn btn-pri" onclick="checkAdmin()">Continue</button>
+    <div id="adminError" style="color:var(--tg-error);font-size:var(--text-sm);margin-top:var(--space-2)"></div>
   </div>
 
   <div id="mainContent" style="display:none">
     <div class="card">
       <h3>Existing Clients</h3>
       <p class="desc">Click View to see their dashboard URL and embed code.</p>
-      <div id="clientList"><em style="color:#5A5A6E;font-size:13px">Loading...</em></div>
+      <div id="clientList"><em style="color:var(--tg-text-tertiary);font-size:var(--text-sm)">Loading...</em></div>
     </div>
 
     <hr class="divider">
@@ -82,34 +214,34 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,0.06);margin:24px 0
     <div class="card" id="formCard">
       <h3>Add New Client</h3>
       <p class="desc">Enter the client details. Everything else is generated automatically.</p>
-      <label class="lbl">Client Name</label>
+      <label class="lbl" for="fName">Client Name</label>
       <input class="fi" id="fName" placeholder="e.g. Sunshine Travel" oninput="autoSlug()">
-      <label class="lbl">Client Slug (auto-generated)</label>
-      <input class="fi mono" id="fSlug" readonly style="opacity:0.7">
+      <label class="lbl" for="fSlug">Client Slug (auto-generated)</label>
+      <input class="fi mono" id="fSlug" readonly style="opacity:0.6">
       <div class="row">
         <div>
-          <label class="lbl">Contact Email</label>
+          <label class="lbl" for="fEmail">Contact Email</label>
           <input class="fi" id="fEmail" placeholder="hello@sunshinetravel.com" type="email">
         </div>
         <div>
-          <label class="lbl">Dashboard Password</label>
-          <input class="fi" id="fPassword" readonly style="opacity:0.7">
+          <label class="lbl" for="fPassword">Dashboard Password</label>
+          <input class="fi" id="fPassword" readonly style="opacity:0.6">
         </div>
       </div>
-      <label class="lbl">Ably API Key</label>
+      <label class="lbl" for="fAbly">Ably API Key</label>
       <input class="fi mono" id="fAbly" placeholder="Client's Ably key (from their Ably account)">
-      <p style="font-size:11px;color:#5A5A6E;margin-top:4px">Each client needs their own Ably account for private conversations. Send them the Ably Setup Guide.</p>
-      <label class="lbl">Deep Link Site ID</label>
+      <p class="hint">Each client needs their own Ably account for private conversations. Send them the Ably Setup Guide.</p>
+      <label class="lbl" for="fSiteId">Deep Link Site ID</label>
       <input class="fi mono" id="fSiteId" placeholder="e.g. 250">
-      <p style="font-size:11px;color:#5A5A6E;margin-top:4px">The Travelgenix site ID for holiday search deep links. This enables the booking search feature in the chat widget.</p>
+      <p class="hint">The Travelgenix site ID for holiday search deep links. This enables the booking search feature in the chat widget.</p>
       <div id="errorBanner" class="error-banner"></div>
-      <button class="btn btn-pri" id="createBtn" onclick="createClient()" style="margin-top:20px">Create Client</button>
+      <button class="btn btn-pri" id="createBtn" onclick="createClient()" style="margin-top:var(--space-5)">Create Client</button>
     </div>
 
     <div class="output" id="outputSection">
       <div class="success-banner">
-        <span>✅</span>
-        <span class="text"><strong id="outName">Client</strong> has been set up! Share the details below.</span>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        <span class="text"><strong id="outName">Client</strong> has been set up. Share the details below.</span>
       </div>
       <div class="result-box">
         <div class="result-label">Dashboard URL</div>
@@ -126,7 +258,7 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,0.06);margin:24px 0
         <div class="result-value" id="outCreds"></div>
         <button class="copy-btn" onclick="copyEl('outCreds',this)">Copy</button>
       </div>
-      <div class="row" style="margin-top:16px">
+      <div class="row" style="margin-top:var(--space-4)">
         <button class="btn btn-sec" onclick="resetForm()">Add Another Client</button>
         <button class="btn btn-pri" onclick="window.open(document.getElementById('outDash').textContent.trim())">Open Dashboard</button>
       </div>
@@ -138,6 +270,18 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,0.06);margin:24px 0
 var API = 'https://luna-chat-endpoint.vercel.app/api/clients';
 var adminPass = '';
 var clientsCache = [];
+
+function toggleTheme() {
+  var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  if (isDark) { document.documentElement.removeAttribute('data-theme'); }
+  else { document.documentElement.setAttribute('data-theme', 'dark'); }
+  var btn = document.getElementById('themeBtn');
+  btn.innerHTML = isDark
+    ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'
+    : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
+  try { localStorage.setItem('luna_admin_theme', isDark ? 'light' : 'dark'); } catch(e) {}
+}
+try { if (localStorage.getItem('luna_admin_theme') === 'dark') toggleTheme(); } catch(e) {}
 
 function checkAdmin() {
   adminPass = document.getElementById('adminPass').value;
@@ -166,14 +310,13 @@ function autoSlug() {
 
 function renderClients() {
   var el = document.getElementById('clientList');
-  if (!clientsCache.length) { el.innerHTML = '<em style="color:#5A5A6E;font-size:13px">No clients yet. Add your first below.</em>'; return; }
+  if (!clientsCache.length) { el.innerHTML = '<em style="color:var(--tg-text-tertiary);font-size:var(--text-sm)">No clients yet. Add your first below.</em>'; return; }
   el.innerHTML = clientsCache.map(function(c, idx) {
     return '<div class="client-row"><div><div class="client-name">' + esc(c.name) + '</div><div class="client-slug">' + esc(c.slug) + '</div></div>'
-      + '<div style="display:flex;align-items:center;gap:8px"><span class="client-status active">' + esc(c.status) + '</span>'
+      + '<div style="display:flex;align-items:center;gap:var(--space-2)"><span class="client-status active">' + esc(c.status) + '</span>'
       + '<button class="client-action" data-idx="' + idx + '">View</button></div></div>';
   }).join('');
 
-  // Attach click handlers
   el.querySelectorAll('.client-action').forEach(function(btn) {
     btn.addEventListener('click', function() {
       var c = clientsCache[parseInt(this.getAttribute('data-idx'))];
@@ -226,7 +369,6 @@ async function createClient() {
     document.getElementById('formCard').style.display = 'none';
     document.getElementById('outputSection').scrollIntoView({ behavior: 'smooth' });
 
-    // Reload list
     var listRes = await fetch(API, { headers: { 'X-Admin-Pass': adminPass } });
     var listData = await listRes.json();
     clientsCache = listData.clients || [];
