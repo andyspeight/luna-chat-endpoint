@@ -49,7 +49,14 @@ var D = {
   bubbleIcon: "",            /* URL to custom FAB icon */
 
   /* Auto-trigger */
-  autoTrigger: null          /* { enabled: true, delay: 5, message: "..." } */
+  autoTrigger: null,          /* { enabled: true, delay: 5, message: "..." } */
+
+  /* Capability cards on home screen — array of {icon, title, desc} */
+  capabilityCards: [
+    { icon:"plane", title:"Find me a holiday", desc:"Search thousands of packages, flights and hotels — live prices, real availability" },
+    { icon:"compass", title:"Help me decide", desc:"Compare destinations, get recommendations, check what's included" },
+    { icon:"helpCircle", title:"Answer my questions", desc:"Pricing, what's included, luggage, transfers — ask me anything" }
+  ]
 };
 
 /* Merge phase 1: window config > data-attrs > defaults */
@@ -78,6 +85,7 @@ function rebuildConfig(apiConfig) {
   if (A.privacyUrl) C.privacyUrl = A.privacyUrl;
   if (A.profileImage) C.profileImage = A.profileImage;
   if (A.bubbleIcon) C.bubbleIcon = A.bubbleIcon;
+  if (A.capabilityCards && Array.isArray(A.capabilityCards)) C.capabilityCards = A.capabilityCards;
   /* hints might be a JSON string from data-attr */
   if (typeof C.hints === "string") {
     try { C.hints = JSON.parse(C.hints); } catch(e) { C.hints = D.hints; }
@@ -157,7 +165,9 @@ var ICONS = {
   plane: '<path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2Z"/>',
   compass: '<circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>',
   helpCircle: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
-  chevronRight: '<path d="m9 18 6-6-6-6"/>'
+  chevronRight: '<path d="m9 18 6-6-6-6"/>',
+  star: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
+  monitor: '<rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>'
 };
 function svgIcon(name, size, color) {
   return '<svg width="'+(size||20)+'" height="'+(size||20)+'" viewBox="0 0 24 24" fill="none" stroke="'+(color||"currentColor")+'" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">'+(ICONS[name]||'')+'</svg>';
@@ -467,11 +477,7 @@ function buildDOM() {
   document.getElementById("tgxTypingAvatar").appendChild(makeAvatar(26, false));
 
   /* Build capability cards */
-  var cards = [
-    { icon:"plane", title:"Find me a holiday", desc:"Search thousands of packages, flights and hotels — live prices, real availability" },
-    { icon:"compass", title:"Help me decide", desc:"Compare destinations, get recommendations, check what's included" },
-    { icon:"helpCircle", title:"Answer my questions", desc:"Pricing, what's included, luggage, transfers — ask me anything" }
-  ];
+  var cards = C.capabilityCards || D.capabilityCards;
   var cardsEl = document.getElementById("tgxCapCards");
   cards.forEach(function(card){
     var btn = document.createElement("button");
