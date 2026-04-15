@@ -67,6 +67,16 @@ module.exports = async function handler(req, res) {
           widgetSize: fields.WidgetSize || 'standard',
           widgetPosition: fields.WidgetPosition ? (typeof fields.WidgetPosition === 'object' ? fields.WidgetPosition.name : fields.WidgetPosition) : 'right',
           mobileBubble: fields.MobileBubble ? (typeof fields.MobileBubble === 'object' ? fields.MobileBubble.name : fields.MobileBubble) : 'normal',
+          /* v2 widget fields */
+          brandColor: fields.BrandColor || '',
+          accentColor: fields.AccentColor || '',
+          themeMode: fields.ThemeMode || '',
+          widgetTagline: fields.WidgetTagline || '',
+          logoText: fields.LogoText || 'L',
+          profileImage: fields.ProfileImage || '',
+          bubbleIcon: fields.BubbleIcon || '',
+          fabPosition: fields.FabPosition || '',
+          collectName: fields.CollectName !== undefined ? !!fields.CollectName : true,
           searchTypes: Array.isArray(fields.SearchTypes) ? fields.SearchTypes.map(function(t) { return typeof t === 'object' ? t.name : t; }) : [],
           autoTriggerEnabled: !!fields.AutoTriggerEnabled,
           autoTriggerDelay: fields.AutoTriggerDelay || 30,
@@ -111,6 +121,16 @@ module.exports = async function handler(req, res) {
       if (body.widgetSize !== undefined) updateFields.WidgetSize = body.widgetSize;
       if (body.widgetPosition !== undefined) updateFields.WidgetPosition = body.widgetPosition;
       if (body.mobileBubble !== undefined) updateFields.MobileBubble = body.mobileBubble;
+      /* v2 widget fields */
+      if (body.brandColor !== undefined) updateFields.BrandColor = body.brandColor;
+      if (body.accentColor !== undefined) updateFields.AccentColor = body.accentColor;
+      if (body.themeMode !== undefined) updateFields.ThemeMode = body.themeMode;
+      if (body.widgetTagline !== undefined) updateFields.WidgetTagline = body.widgetTagline;
+      if (body.logoText !== undefined) updateFields.LogoText = body.logoText;
+      if (body.profileImage !== undefined) updateFields.ProfileImage = body.profileImage;
+      if (body.bubbleIcon !== undefined) updateFields.BubbleIcon = body.bubbleIcon;
+      if (body.fabPosition !== undefined) updateFields.FabPosition = body.fabPosition;
+      if (body.collectName !== undefined) updateFields.CollectName = !!body.collectName;
       if (body.searchTypes !== undefined) updateFields.SearchTypes = body.searchTypes;
       if (body.autoTriggerEnabled !== undefined) updateFields.AutoTriggerEnabled = body.autoTriggerEnabled;
       if (body.autoTriggerDelay !== undefined) updateFields.AutoTriggerDelay = parseInt(body.autoTriggerDelay) || 30;
@@ -140,7 +160,7 @@ module.exports = async function handler(req, res) {
       var uRes = await fetch(updateUrl, {
         method: 'PATCH',
         headers: atHeaders,
-        body: JSON.stringify({ fields: updateFields })
+        body: JSON.stringify({ fields: updateFields, typecast: true })
       });
 
       if (!uRes.ok) {
