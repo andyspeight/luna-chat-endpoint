@@ -743,6 +743,22 @@
   .whisper-toggle:hover { background:rgba(0,180,216,0.15); }
   .whisper-toggle.off { background:transparent; border-color:var(--border); color:var(--text-muted); }
   .whisper-toggle.off:hover { background:var(--navy-light); }
+  /* ═══ WEBSITE SCANNING ═══ */
+  .scan-page-item { display:flex; align-items:flex-start; gap:var(--space-3); padding:var(--space-3); border-radius:var(--radius-md); border:1px solid var(--border); margin-bottom:var(--space-2); transition:border-color 0.15s; }
+  .scan-page-item:hover { border-color:var(--teal); }
+  .scan-page-status { width:28px; height:28px; border-radius:var(--radius-full); display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px; }
+  .scan-page-status.success { background:var(--green-glow); color:var(--green); }
+  .scan-page-status.error { background:rgba(239,68,68,0.1); color:var(--red); }
+  .scan-page-status.pending { background:var(--navy-light); color:var(--text-muted); }
+  .scan-page-status.scanning { background:var(--teal-glow); color:var(--teal); animation:pulse 1.2s infinite; }
+  .scan-page-info { flex:1; min-width:0; }
+  .scan-page-url { font-size:var(--text-sm); font-family:var(--mono); color:var(--text); word-break:break-all; font-weight:500; }
+  .scan-page-meta { font-size:var(--text-xs); color:var(--text-muted); margin-top:2px; display:flex; gap:var(--space-3); flex-wrap:wrap; }
+  .scan-page-preview { font-size:var(--text-xs); color:var(--text-dim); margin-top:var(--space-1); line-height:1.5; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .scan-page-remove { background:none; border:none; color:var(--text-muted); cursor:pointer; padding:var(--space-1); border-radius:var(--radius-sm); transition:all 0.15s; flex-shrink:0; }
+  .scan-page-remove:hover { color:var(--red); background:rgba(239,68,68,0.1); }
+  .scan-progress { width:100%; height:4px; border-radius:2px; background:var(--navy-light); margin-top:var(--space-3); overflow:hidden; }
+  .scan-progress-bar { height:100%; border-radius:2px; background:var(--teal); transition:width 0.4s ease-out; }
 </style>
 </head>
 <body>
@@ -969,6 +985,52 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
     <div>
       <button class="settings-save" id="settingsSaveBtn" onclick="window._saveSettings()">Save Profile</button>
       <span class="settings-saved" id="settingsSaved">Saved!</span>
+    </div>
+
+    <hr style="border:none;border-top:1px solid var(--border);margin:32px 0">
+
+    <div class="settings-title">Train Luna on Your Website</div>
+    <div class="settings-sub">Paste your website URLs below and Luna will read each page, learn your content, and use it to answer visitor questions accurately. The more pages you add, the smarter Luna gets about your business.</div>
+
+    <div class="settings-section">
+      <h4>Website Pages</h4>
+      <div class="settings-hint" style="margin-bottom:12px">Add the pages you want Luna to learn from — your About page, destinations, FAQ, terms, pricing, ATOL info, anything a customer might ask about. One URL per line.</div>
+      <div class="settings-row">
+        <textarea class="settings-textarea" id="setTrainUrls" placeholder="https://www.yoursite.com/about-us
+https://www.yoursite.com/faq
+https://www.yoursite.com/destinations/greece
+https://www.yoursite.com/terms-and-conditions
+https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(--mono);font-size:var(--text-sm);min-height:140px"></textarea>
+      </div>
+      <div style="display:flex;gap:var(--space-3);align-items:center;margin-top:var(--space-3)">
+        <button class="settings-save" id="trainScanBtn" onclick="window._startWebsiteScan()" style="margin:0;background:var(--teal)">Scan Pages</button>
+        <button class="settings-save" id="trainRescanBtn" onclick="window._rescanAll()" style="margin:0;background:transparent;border:1px solid var(--border);color:var(--text-dim)" disabled>Rescan All</button>
+        <span id="trainStatus" style="font-size:var(--text-sm);color:var(--text-muted)"></span>
+      </div>
+      <div class="settings-hint" style="margin-top:var(--space-2)">Scanning reads the visible text content from each page. It does not access anything behind a login.</div>
+    </div>
+
+    <div class="settings-section" id="trainResultsSection" style="display:none">
+      <h4>Scanned Pages</h4>
+      <div id="trainResults"></div>
+      <div style="margin-top:var(--space-3);padding:var(--space-3);border-radius:var(--radius-md);background:var(--navy-light);display:flex;align-items:center;gap:var(--space-3)" id="trainSummaryBar" style="display:none">
+        <div style="flex:1">
+          <span style="font-size:var(--text-sm);font-weight:600" id="trainSummaryText">0 pages scanned</span>
+          <span style="font-size:var(--text-xs);color:var(--text-muted);margin-left:var(--space-2)" id="trainSummaryDate"></span>
+        </div>
+        <div style="font-size:var(--text-xs);color:var(--text-muted)" id="trainSummaryChars"></div>
+      </div>
+    </div>
+
+    <div class="settings-section" id="trainScheduleSection" style="display:none">
+      <h4>Auto-Rescan</h4>
+      <div class="settings-hint" style="margin-bottom:8px">When enabled, Luna will automatically rescan your pages weekly to pick up any content changes on your website.</div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="setAutoRescan" style="width:18px;height:18px;accent-color:var(--teal)">
+          <span style="font-size:13px;font-weight:600">Enable weekly auto-rescan</span>
+        </label>
+      </div>
     </div>
 
     <hr style="border:none;border-top:1px solid var(--border);margin:32px 0">
@@ -3275,6 +3337,260 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
     if (toolbar) toolbar.style.display = 'none';
     // Reset to details tab
     window._switchInfoTab('details');
+  };
+
+  // ═══ WEBSITE SCANNING ═══
+  let scannedPages = [];
+
+  window._startWebsiteScan = async function() {
+    var textarea = document.getElementById('setTrainUrls');
+    var raw = textarea.value.trim();
+    if (!raw) { alert('Please paste at least one URL to scan.'); return; }
+
+    var urls = raw.split('\n').map(function(u) { return u.trim(); }).filter(function(u) {
+      return u && (u.startsWith('http://') || u.startsWith('https://'));
+    });
+
+    if (urls.length === 0) { alert('No valid URLs found. Each URL must start with http:// or https://'); return; }
+    if (urls.length > 20) { alert('Maximum 20 pages per scan. Please remove some URLs.'); return; }
+
+    var btn = document.getElementById('trainScanBtn');
+    var status = document.getElementById('trainStatus');
+    var resultsSection = document.getElementById('trainResultsSection');
+    var resultsEl = document.getElementById('trainResults');
+
+    btn.disabled = true;
+    btn.textContent = 'Scanning...';
+    resultsSection.style.display = 'block';
+    scannedPages = [];
+
+    // Show pending state for all URLs
+    resultsEl.innerHTML = urls.map(function(url, i) {
+      return '<div class="scan-page-item" id="scanItem' + i + '">'
+        + '<div class="scan-page-status pending"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>'
+        + '<div class="scan-page-info"><div class="scan-page-url">' + esc(url) + '</div><div class="scan-page-meta">Waiting...</div></div>'
+        + '</div>';
+    }).join('') + '<div class="scan-progress"><div class="scan-progress-bar" id="scanProgressBar" style="width:0%"></div></div>';
+
+    // Scan each URL sequentially
+    var successCount = 0;
+    var totalChars = 0;
+
+    for (var i = 0; i < urls.length; i++) {
+      var url = urls[i];
+      var item = document.getElementById('scanItem' + i);
+      if (!item) continue;
+
+      // Update to scanning state
+      item.querySelector('.scan-page-status').className = 'scan-page-status scanning';
+      item.querySelector('.scan-page-status').innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.912 5.813a2 2 0 0 0 1.275 1.275L21 12l-5.813 1.912a2 2 0 0 0-1.275 1.275L12 21l-1.912-5.813a2 2 0 0 0-1.275-1.275L3 12l5.813-1.912a2 2 0 0 0 1.275-1.275L12 3Z"/></svg>';
+      item.querySelector('.scan-page-meta').textContent = 'Scanning...';
+      status.textContent = 'Scanning page ' + (i + 1) + ' of ' + urls.length + '...';
+
+      try {
+        var res = await fetch('https://luna-chat-endpoint.vercel.app/api/scan-page', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Client-Name': CONFIG.CLIENT_NAME,
+            'X-Client-Pass': CONFIG.PASSWORD
+          },
+          body: JSON.stringify({ url: url })
+        });
+
+        var data = await res.json();
+
+        if (res.ok && data.success) {
+          var charCount = (data.content || '').length;
+          var wordCount = (data.content || '').split(/\s+/).length;
+          totalChars += charCount;
+          successCount++;
+
+          scannedPages.push({
+            url: url,
+            title: data.title || url,
+            content: data.content || '',
+            charCount: charCount,
+            wordCount: wordCount,
+            scannedAt: new Date().toISOString(),
+            status: 'success'
+          });
+
+          // Update UI
+          item.querySelector('.scan-page-status').className = 'scan-page-status success';
+          item.querySelector('.scan-page-status').innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>';
+          item.querySelector('.scan-page-url').textContent = data.title || url;
+          item.querySelector('.scan-page-meta').innerHTML = '<span>' + esc(url.replace(/^https?:\/\//, '').slice(0, 60)) + '</span><span>' + wordCount.toLocaleString() + ' words</span><span>' + (charCount / 1024).toFixed(1) + ' KB</span>';
+
+          // Add preview
+          var preview = (data.content || '').slice(0, 200).replace(/\s+/g, ' ');
+          if (preview) {
+            var previewEl = document.createElement('div');
+            previewEl.className = 'scan-page-preview';
+            previewEl.textContent = preview + '...';
+            item.querySelector('.scan-page-info').appendChild(previewEl);
+          }
+        } else {
+          throw new Error(data.error || 'Scan failed');
+        }
+      } catch(e) {
+        scannedPages.push({ url: url, status: 'error', error: e.message, scannedAt: new Date().toISOString() });
+        item.querySelector('.scan-page-status').className = 'scan-page-status error';
+        item.querySelector('.scan-page-status').innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+        item.querySelector('.scan-page-meta').innerHTML = '<span style="color:var(--red)">' + esc(e.message || 'Failed to scan') + '</span>';
+      }
+
+      // Update progress bar
+      var progress = Math.round(((i + 1) / urls.length) * 100);
+      var bar = document.getElementById('scanProgressBar');
+      if (bar) bar.style.width = progress + '%';
+
+      // Small delay between requests to be polite
+      if (i < urls.length - 1) await new Promise(function(r) { setTimeout(r, 500); });
+    }
+
+    // Done — save to Airtable
+    btn.disabled = false;
+    btn.textContent = 'Scan Pages';
+    document.getElementById('trainRescanBtn').disabled = false;
+    status.textContent = successCount + ' of ' + urls.length + ' pages scanned successfully.';
+
+    // Show summary
+    var summaryText = document.getElementById('trainSummaryText');
+    var summaryDate = document.getElementById('trainSummaryDate');
+    var summaryChars = document.getElementById('trainSummaryChars');
+    if (summaryText) summaryText.textContent = successCount + ' page' + (successCount !== 1 ? 's' : '') + ' scanned';
+    if (summaryDate) summaryDate.textContent = 'Last scan: ' + new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    if (summaryChars) summaryChars.textContent = (totalChars / 1024).toFixed(1) + ' KB of knowledge';
+    document.getElementById('trainSummaryBar').style.display = 'flex';
+    document.getElementById('trainScheduleSection').style.display = 'block';
+
+    // Remove progress bar
+    var progressEl = document.querySelector('.scan-progress');
+    if (progressEl) progressEl.remove();
+
+    // Add remove buttons
+    document.querySelectorAll('.scan-page-item').forEach(function(item, idx) {
+      if (!item.querySelector('.scan-page-remove')) {
+        var removeBtn = document.createElement('button');
+        removeBtn.className = 'scan-page-remove';
+        removeBtn.title = 'Remove';
+        removeBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+        removeBtn.onclick = function() { window._removeScanPage(idx); };
+        item.appendChild(removeBtn);
+      }
+    });
+
+    // Save scanned content to server
+    window._saveScannedContent();
+  };
+
+  window._rescanAll = function() {
+    // Re-trigger scan with existing URLs
+    var textarea = document.getElementById('setTrainUrls');
+    if (textarea.value.trim()) window._startWebsiteScan();
+  };
+
+  window._removeScanPage = function(idx) {
+    scannedPages.splice(idx, 1);
+    window._renderScannedPages();
+    window._saveScannedContent();
+  };
+
+  window._renderScannedPages = function() {
+    var resultsEl = document.getElementById('trainResults');
+    if (scannedPages.length === 0) {
+      document.getElementById('trainResultsSection').style.display = 'none';
+      return;
+    }
+    resultsEl.innerHTML = scannedPages.map(function(p, i) {
+      var isOk = p.status === 'success';
+      var statusClass = isOk ? 'success' : 'error';
+      var icon = isOk
+        ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>'
+        : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+      var preview = isOk ? (p.content || '').slice(0, 200).replace(/\s+/g, ' ') : (p.error || 'Failed');
+      return '<div class="scan-page-item">'
+        + '<div class="scan-page-status ' + statusClass + '">' + icon + '</div>'
+        + '<div class="scan-page-info">'
+        + '<div class="scan-page-url">' + esc(p.title || p.url) + '</div>'
+        + '<div class="scan-page-meta"><span>' + esc(p.url.replace(/^https?:\/\//, '').slice(0, 60)) + '</span>'
+        + (isOk ? '<span>' + (p.wordCount || 0).toLocaleString() + ' words</span>' : '')
+        + '</div>'
+        + (preview ? '<div class="scan-page-preview">' + esc(preview) + (isOk ? '...' : '') + '</div>' : '')
+        + '</div>'
+        + '<button class="scan-page-remove" title="Remove" onclick="window._removeScanPage(' + i + ')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>'
+        + '</div>';
+    }).join('');
+  };
+
+  window._saveScannedContent = async function() {
+    var successPages = scannedPages.filter(function(p) { return p.status === 'success'; });
+    // Build a combined knowledge text from all scanned pages
+    var knowledgeText = successPages.map(function(p) {
+      return '--- PAGE: ' + (p.title || p.url) + ' ---\nURL: ' + p.url + '\n' + (p.content || '');
+    }).join('\n\n');
+
+    // Save URLs list and scanned knowledge to profile
+    var urlsList = scannedPages.map(function(p) { return p.url; }).join('\n');
+    try {
+      await fetch('https://luna-chat-endpoint.vercel.app/api/profile', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Client-Name': CONFIG.CLIENT_NAME,
+          'X-Client-Pass': CONFIG.PASSWORD
+        },
+        body: JSON.stringify({
+          scannedUrls: urlsList,
+          scannedKnowledge: knowledgeText,
+          scannedAt: new Date().toISOString(),
+          scannedPageCount: successPages.length,
+          autoRescan: document.getElementById('setAutoRescan')?.checked || false
+        })
+      });
+    } catch(e) {
+      console.warn('Failed to save scanned content:', e.message);
+    }
+  };
+
+  // Load scanned data when settings open
+  var _origLoadProfile = loadProfile;
+  loadProfile = async function() {
+    await _origLoadProfile();
+    // Load scanned URLs and results
+    try {
+      var res = await fetch('https://luna-chat-endpoint.vercel.app/api/profile', {
+        headers: { 'X-Client-Name': CONFIG.CLIENT_NAME, 'X-Client-Pass': CONFIG.PASSWORD }
+      });
+      if (!res.ok) return;
+      var data = await res.json();
+      var p = data.profile || {};
+
+      // Populate URLs textarea
+      if (p.scannedUrls) {
+        document.getElementById('setTrainUrls').value = p.scannedUrls;
+      }
+
+      // Show scan summary if pages were previously scanned
+      if (p.scannedPageCount && p.scannedPageCount > 0) {
+        document.getElementById('trainResultsSection').style.display = 'block';
+        document.getElementById('trainScheduleSection').style.display = 'block';
+        document.getElementById('trainRescanBtn').disabled = false;
+        var summaryText = document.getElementById('trainSummaryText');
+        var summaryDate = document.getElementById('trainSummaryDate');
+        var summaryChars = document.getElementById('trainSummaryChars');
+        if (summaryText) summaryText.textContent = p.scannedPageCount + ' page' + (p.scannedPageCount !== 1 ? 's' : '') + ' scanned';
+        if (summaryDate && p.scannedAt) summaryDate.textContent = 'Last scan: ' + new Date(p.scannedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        if (summaryChars && p.scannedKnowledge) summaryChars.textContent = (p.scannedKnowledge.length / 1024).toFixed(1) + ' KB of knowledge';
+        document.getElementById('trainSummaryBar').style.display = 'flex';
+      }
+
+      // Auto-rescan checkbox
+      if (p.autoRescan) document.getElementById('setAutoRescan').checked = true;
+    } catch(e) {
+      console.warn('Failed to load scan data:', e.message);
+    }
   };
 
 })();
