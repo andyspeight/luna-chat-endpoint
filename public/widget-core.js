@@ -294,9 +294,9 @@ function injectCSS() {
   +'#tgx-cw .tgx-date{text-align:center;padding:6px 0 10px;font-size:10px;color:'+T.text3+';font-weight:500}'
 
   /* Typing indicator */
-  +'#tgx-cw .tgx-typing-row{display:flex;gap:7px;align-items:flex-end;margin-top:4px}'
-  +'#tgx-cw .tgx-typing{padding:10px 16px;border-radius:14px 14px 14px 4px;background:'+T.botBubble+';display:none;gap:4px;align-items:center}'
-  +'#tgx-cw .tgx-typing.active{display:flex}'
+  +'#tgx-cw .tgx-typing-row{display:none;gap:7px;align-items:flex-end;margin-top:4px;padding:0 14px}'
+  +'#tgx-cw .tgx-typing-row.active{display:flex}'
+  +'#tgx-cw .tgx-typing{padding:10px 16px;border-radius:14px 14px 14px 4px;background:'+T.botBubble+';display:flex;gap:4px;align-items:center}'
   +'#tgx-cw .tgx-typing span{display:inline-block;width:6px;height:6px;border-radius:50%;background:'+T.text3+';animation:tgxDot 1.4s infinite}'
   +'#tgx-cw .tgx-typing span:nth-child(2){animation-delay:.2s}'
   +'#tgx-cw .tgx-typing span:nth-child(3){animation-delay:.4s}'
@@ -805,12 +805,13 @@ function showNameOverlay() {
         }).catch(function(e){ console.warn("Luna widget: subscribe error:", e); });
       }
       ov.remove();
-      switchToChat();
+      /* Home screen is already visible underneath — no need to switch */
     }
     document.getElementById("tgxNameGo").addEventListener("click", doSubmit);
     document.getElementById("tgxNameSkip").addEventListener("click", function(){
       userName = ""; visitorEmail = ""; marketingConsent = false; nameCollected = true;
-      ov.remove(); switchToChat();
+      ov.remove();
+      /* Home screen is already visible underneath */
     });
     ni.addEventListener("keydown", function(e){ if (e.key === "Enter") { e.preventDefault(); ei.focus(); } });
     ei.addEventListener("keydown", function(e){ if (e.key === "Enter") { e.preventDefault(); doSubmit(); } });
@@ -1056,7 +1057,7 @@ async function boot() {
   $input = document.getElementById("tgxInput");
   $send = document.getElementById("tgxSend");
   $pills = document.getElementById("tgxPills");
-  $typing = document.getElementById("tgxTyping");
+  $typing = document.getElementById("tgxTypingRow");
   $badge = document.getElementById("tgxBadge");
   $escBar = document.getElementById("tgxEscBar");
   $emailBar = document.getElementById("tgxEmailBar");
