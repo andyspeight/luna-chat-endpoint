@@ -155,6 +155,14 @@ module.exports = async function handler(req, res) {
     /* ── Privacy policy ── */
     if (f.PrivacyPolicyUrl) config.privacyUrl = f.PrivacyPolicyUrl;
 
+    /* ── Capability cards (JSON array) ── */
+    if (f.CapabilityCards) {
+      try {
+        var parsed = JSON.parse(f.CapabilityCards);
+        if (Array.isArray(parsed)) config.capabilityCards = parsed;
+      } catch(e) { /* ignore bad JSON */ }
+    }
+
     return res.status(200).json(config);
   } catch (e) {
     console.warn('Widget config fetch error:', e.message);
