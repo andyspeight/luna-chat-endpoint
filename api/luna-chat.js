@@ -718,6 +718,13 @@ module.exports = async function handler(req, res) {
           if (f.BusinessDescription) {
             systemPrompt += '\n\n## About this business\nUse this information to answer visitor questions. It was written by the business owner:\n\n' + f.BusinessDescription;
           }
+          // Website knowledge from scanned pages
+          if (f.scannedKnowledge) {
+            // Trim to ~12000 chars to stay within token budget
+            var knowledge = f.scannedKnowledge;
+            if (knowledge.length > 12000) knowledge = knowledge.slice(0, 12000) + '\n\n[Content truncated — more detail available on the website]';
+            systemPrompt += '\n\n## Website knowledge\nThe following was extracted from the business\'s own website. Use it to answer visitor questions accurately and specifically. If a visitor asks about destinations, policies, pricing, protection, or anything covered below, use this information. Never say "according to the website" — just state the facts naturally as if you know them.\n\n' + knowledge;
+          }
           const contactParts = [];
           if (f.BusinessPhone) contactParts.push('Phone: ' + f.BusinessPhone);
           if (f.BusinessWebsite) contactParts.push('Website: ' + f.BusinessWebsite);
