@@ -1039,8 +1039,30 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     <div class="settings-sub">Customise how the chat widget looks on your website. Changes take effect within a minute.</div>
 
     <div class="settings-section">
-      <h4>Theme</h4>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px" id="themeGrid"></div>
+      <h4>Brand Colour</h4>
+      <div class="settings-hint" style="margin-bottom:8px">Your primary colour — used for the header, FAB button, and user message bubbles.</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px" id="brandColorGrid"></div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <input type="color" id="setBrandColorPicker" value="#1B2B5B" style="width:48px;height:40px;border-radius:8px;border:1px solid var(--border);cursor:pointer;padding:2px;background:var(--navy-mid)">
+        <input class="settings-input mono" id="setBrandColorHex" value="#1B2B5B" maxlength="7" style="width:100px;text-transform:uppercase">
+        <div id="brandColorPreview" style="width:40px;height:40px;border-radius:8px;border:1px solid var(--border)"></div>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h4>Accent Colour</h4>
+      <div class="settings-hint" style="margin-bottom:8px">Used for links, CTA buttons, quick reply pills, and highlights.</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px" id="accentColorGrid"></div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <input type="color" id="setAccentColorPicker" value="#00B4D8" style="width:48px;height:40px;border-radius:8px;border:1px solid var(--border);cursor:pointer;padding:2px;background:var(--navy-mid)">
+        <input class="settings-input mono" id="setAccentColorHex" value="#00B4D8" maxlength="7" style="width:100px;text-transform:uppercase">
+        <div id="accentColorPreview" style="width:40px;height:40px;border-radius:8px;border:1px solid var(--border)"></div>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h4>Theme Mode</h4>
+      <div style="display:flex;gap:8px" id="themeModeGrid"></div>
     </div>
 
     <div class="settings-section">
@@ -1049,8 +1071,9 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     </div>
 
     <div class="settings-section">
-      <h4>Bubble Position</h4>
-      <div style="display:flex;gap:8px" id="positionGrid"></div>
+      <h4>Button Position</h4>
+      <div class="settings-hint" style="margin-bottom:8px">Where the chat button appears on the page. Side positions stick halfway down the screen.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px" id="positionGrid"></div>
     </div>
 
     <div class="settings-section">
@@ -1087,19 +1110,50 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     </div>
 
     <div class="settings-section">
-      <h4>Chat Settings</h4>
+      <h4>Chat Identity</h4>
       <div class="settings-row">
         <label class="settings-label">Bot Name</label>
         <input class="settings-input" id="setBotName" placeholder="Luna AI" value="Luna AI">
       </div>
       <div class="settings-row">
-        <label class="settings-label">Welcome Message</label>
-        <input class="settings-input" id="setWelcome" placeholder="Hey there! I'm Luna, your AI assistant. How can I help you today?">
+        <label class="settings-label">Tagline</label>
+        <input class="settings-input" id="setTagline" placeholder="AI ASSISTANT">
+        <div class="settings-hint">Subtitle shown under the bot name. e.g. "Your travel expert", "AI ASSISTANT"</div>
       </div>
       <div class="settings-row">
-        <label class="settings-label">Prompt Hints (one per line)</label>
-        <textarea class="settings-textarea" id="setHints" placeholder="How much does it cost?&#10;What destinations do you cover?&#10;Can I book online?&#10;Tell me about your services" rows="4"></textarea>
-        <div class="settings-hint">These appear as clickable suggestion buttons when a visitor opens the chat.</div>
+        <label class="settings-label">Fallback Letter</label>
+        <input class="settings-input" id="setLogoText" placeholder="L" maxlength="2" style="width:60px;text-align:center;font-weight:700">
+        <div class="settings-hint">Shown when no profile image is set. 1-2 characters.</div>
+      </div>
+      <div class="settings-row">
+        <label class="settings-label">Profile Image URL</label>
+        <input class="settings-input" id="setProfileImage" placeholder="https://yoursite.com/logo.png">
+        <div class="settings-hint">Appears in the header and beside bot messages. Square image, PNG or SVG.</div>
+      </div>
+      <div class="settings-row">
+        <label class="settings-label">Custom FAB Icon URL</label>
+        <input class="settings-input" id="setBubbleIcon" placeholder="https://yoursite.com/chat-icon.svg">
+        <div class="settings-hint">Replaces the default chat icon in the floating button. PNG or SVG, 28×28px.</div>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h4>Content</h4>
+      <div class="settings-row">
+        <label class="settings-label">Welcome Message</label>
+        <input class="settings-input" id="setWelcome" placeholder="Hey there! How can we help you today?">
+      </div>
+      <div class="settings-row">
+        <label class="settings-label">Quick Starters (one per line)</label>
+        <textarea class="settings-textarea" id="setHints" placeholder="All-inclusive under £800&#10;Best Greek islands for families&#10;Last-minute deals&#10;Do you do Maldives?" rows="4"></textarea>
+        <div class="settings-hint">These appear as tappable pills on the home screen. Use travel-specific prompts that show what Luna can do.</div>
+      </div>
+      <div class="settings-row">
+        <label class="settings-label">Name Collection</label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:4px">
+          <input type="checkbox" id="setCollectName" checked style="width:18px;height:18px;accent-color:var(--teal)">
+          <span style="font-size:13px">Ask for name and email before starting chat</span>
+        </label>
       </div>
     </div>
 
@@ -2473,29 +2527,74 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     if (settingsOpen && !profileLoaded) loadProfile();
   };
 
-  // Widget theme presets
-  const THEMES = {
-    dark: { label: 'Dark', bg: '#1C1C1E', accent: '#0A84FF', bubble: '#2C2C2E' },
-    light: { label: 'Light', bg: '#FFFFFF', accent: '#0A84FF', bubble: '#F1F3F5' },
-    ocean: { label: 'Ocean', bg: '#0B1D3A', accent: '#00B4D8', bubble: '#15304D' },
-    emerald: { label: 'Emerald', bg: '#0F1A14', accent: '#10B981', bubble: '#1A3426' },
-    sunset: { label: 'Sunset', bg: '#1A1020', accent: '#F97316', bubble: '#2D1A3A' },
-    rose: { label: 'Rose', bg: '#FFF5F7', accent: '#E11D48', bubble: '#FFE4E9' }
+  // Widget colour presets
+  const BRAND_PRESETS = [
+    { label:'Navy', value:'#1B2B5B' }, { label:'Teal', value:'#0D9488' },
+    { label:'Royal', value:'#4338CA' }, { label:'Rose', value:'#BE185D' },
+    { label:'Emerald', value:'#047857' }, { label:'Charcoal', value:'#334155' },
+    { label:'Coral', value:'#DC2626' }, { label:'Indigo', value:'#4F46E5' }
+  ];
+  const ACCENT_PRESETS = [
+    { label:'Cyan', value:'#00B4D8' }, { label:'Amber', value:'#F59E0B' },
+    { label:'Violet', value:'#8B5CF6' }, { label:'Pink', value:'#EC4899' },
+    { label:'Lime', value:'#84CC16' }, { label:'Orange', value:'#F97316' },
+    { label:'Sky', value:'#38BDF8' }, { label:'Fuchsia', value:'#D946EF' }
+  ];
+  const WIDGET_SIZES = { small: 'Small', medium: 'Medium', large: 'Large' };
+  const FAB_POSITIONS = {
+    'bottom-right': 'Bottom Right', 'bottom-left': 'Bottom Left',
+    'mid-right': 'Side Right', 'mid-left': 'Side Left'
   };
-  const WIDGET_SIZES = { compact: 'Compact', standard: 'Standard', large: 'Large' };
-  let selectedTheme = 'dark';
-  let selectedSize = 'standard';
-  let selectedPosition = 'right';
+
+  let selectedBrandColor = '#1B2B5B';
+  let selectedAccentColor = '#00B4D8';
+  let selectedThemeMode = 'light';
+  let selectedSize = 'medium';
+  let selectedPosition = 'bottom-right';
   let selectedMobileBubble = 'normal';
   let selectedSearchTypes = [];
 
-  function renderThemeGrid() {
-    const el = document.getElementById('themeGrid');
-    el.innerHTML = Object.entries(THEMES).map(([k, t]) => {
-      const active = selectedTheme === k;
-      return '<div onclick="window._selectTheme(\'' + k + '\')" style="padding:12px;border-radius:8px;cursor:pointer;border:2px solid ' + (active ? 'var(--teal)' : 'var(--border)') + ';background:' + (active ? 'var(--teal-glow)' : 'var(--navy-mid)') + '">'
-        + '<div style="display:flex;gap:3px;margin-bottom:6px"><div style="width:14px;height:14px;border-radius:3px;background:' + t.bg + ';border:1px solid var(--border)"></div><div style="width:14px;height:14px;border-radius:3px;background:' + t.accent + '"></div><div style="width:14px;height:14px;border-radius:3px;background:' + t.bubble + ';border:1px solid var(--border)"></div></div>'
-        + '<div style="font-size:var(--text-sm);font-weight:600;color:' + (active ? 'var(--teal)' : 'var(--text)') + '">' + t.label + '</div></div>';
+  function makeSwatchGrid(presets, selected, onSelect, containerId) {
+    var el = document.getElementById(containerId);
+    el.innerHTML = presets.map(function(p) {
+      var active = selected === p.value;
+      return '<div onclick="window._select' + containerId + '(\'' + p.value + '\')" title="' + p.label + '" style="width:36px;height:36px;border-radius:10px;background:' + p.value + ';cursor:pointer;border:' + (active ? '3px solid var(--teal)' : '2px solid var(--border)') + ';transition:transform 0.1s;display:flex;align-items:center;justify-content:center">'
+        + (active ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>' : '')
+        + '</div>';
+    }).join('');
+  }
+
+  function renderBrandColorGrid() {
+    makeSwatchGrid(BRAND_PRESETS, selectedBrandColor, null, 'brandColorGrid');
+    document.getElementById('setBrandColorPicker').value = selectedBrandColor;
+    document.getElementById('setBrandColorHex').value = selectedBrandColor;
+    document.getElementById('brandColorPreview').style.background = selectedBrandColor;
+  }
+  function renderAccentColorGrid() {
+    makeSwatchGrid(ACCENT_PRESETS, selectedAccentColor, null, 'accentColorGrid');
+    document.getElementById('setAccentColorPicker').value = selectedAccentColor;
+    document.getElementById('setAccentColorHex').value = selectedAccentColor;
+    document.getElementById('accentColorPreview').style.background = selectedAccentColor;
+  }
+
+  window._selectbrandColorGrid = function(v) { selectedBrandColor = v; renderBrandColorGrid(); };
+  window._selectaccentColorGrid = function(v) { selectedAccentColor = v; renderAccentColorGrid(); };
+
+  // Sync colour picker ↔ hex input
+  document.getElementById('setBrandColorPicker').addEventListener('input', function(e) { selectedBrandColor = e.target.value; renderBrandColorGrid(); });
+  document.getElementById('setBrandColorHex').addEventListener('input', function(e) { var v = e.target.value; if (/^#[0-9A-Fa-f]{6}$/.test(v)) { selectedBrandColor = v; renderBrandColorGrid(); } });
+  document.getElementById('setAccentColorPicker').addEventListener('input', function(e) { selectedAccentColor = e.target.value; renderAccentColorGrid(); });
+  document.getElementById('setAccentColorHex').addEventListener('input', function(e) { var v = e.target.value; if (/^#[0-9A-Fa-f]{6}$/.test(v)) { selectedAccentColor = v; renderAccentColorGrid(); } });
+
+  function renderThemeModeGrid() {
+    var el = document.getElementById('themeModeGrid');
+    el.innerHTML = ['light', 'dark'].map(function(k) {
+      var active = selectedThemeMode === k;
+      var icon = k === 'light'
+        ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>'
+        : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>';
+      return '<div onclick="window._selectThemeMode(\'' + k + '\')" style="flex:1;padding:12px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;border:2px solid ' + (active ? 'var(--teal)' : 'var(--border)') + ';background:' + (active ? 'var(--teal-glow)' : 'var(--navy-mid)') + '">'
+        + icon + '<span style="font-size:var(--text-sm);font-weight:600;color:' + (active ? 'var(--teal)' : 'var(--text)') + ';text-transform:capitalize">' + k + '</span></div>';
     }).join('');
   }
 
@@ -2508,7 +2607,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     }).join('');
   }
 
-  window._selectTheme = function(t) { selectedTheme = t; renderThemeGrid(); };
+  window._selectThemeMode = function(m) { selectedThemeMode = m; renderThemeModeGrid(); };
   window._selectSize = function(s) { selectedSize = s; renderSizeGrid(); };
   window._selectPosition = function(p) { selectedPosition = p; renderPositionGrid(); };
   window._selectMobileBubble = function(m) { selectedMobileBubble = m; renderMobileBubbleGrid(); };
@@ -2520,11 +2619,10 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
 
   function renderPositionGrid() {
     var el = document.getElementById('positionGrid');
-    ['right', 'left'].forEach(function(){});
-    el.innerHTML = ['right', 'left'].map(function(k) {
+    el.innerHTML = Object.entries(FAB_POSITIONS).map(function([k, label]) {
       var active = selectedPosition === k;
-      return '<div onclick="window._selectPosition(\'' + k + '\')" style="flex:1;padding:12px;border-radius:8px;cursor:pointer;text-align:center;border:2px solid ' + (active ? 'var(--teal)' : 'var(--border)') + ';background:' + (active ? 'var(--teal-glow)' : 'var(--navy-mid)') + '">'
-        + '<div style="font-size:var(--text-sm);font-weight:600;color:' + (active ? 'var(--teal)' : 'var(--text)') + '">' + k.charAt(0).toUpperCase() + k.slice(1) + '</div></div>';
+      return '<div onclick="window._selectPosition(\'' + k + '\')" style="padding:12px;border-radius:8px;cursor:pointer;text-align:center;border:2px solid ' + (active ? 'var(--teal)' : 'var(--border)') + ';background:' + (active ? 'var(--teal-glow)' : 'var(--navy-mid)') + '">'
+        + '<div style="font-size:var(--text-sm);font-weight:600;color:' + (active ? 'var(--teal)' : 'var(--text)') + '">' + label + '</div></div>';
     }).join('');
   }
 
@@ -2573,6 +2671,17 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
 
   window._selectEmailPlatform = function(p) { selectedEmailPlatform = p; renderEmailPlatformGrid(); };
 
+  // ─── Map old theme names to new brand/accent for backwards compat ───
+  const THEME_MIGRATION = {
+    dark:    { brand:'#0A84FF', accent:'#64D2FF', mode:'dark' },
+    light:   { brand:'#0A84FF', accent:'#0A84FF', mode:'light' },
+    ocean:   { brand:'#0077B6', accent:'#00B4D8', mode:'dark' },
+    emerald: { brand:'#059669', accent:'#10B981', mode:'dark' },
+    sunset:  { brand:'#F97316', accent:'#FB923C', mode:'dark' },
+    rose:    { brand:'#E11D48', accent:'#FB7185', mode:'light' }
+  };
+  const SIZE_MIGRATION = { compact:'small', standard:'medium', large:'large' };
+
   async function loadProfile() {
     try {
       const res = await fetch('https://luna-chat-endpoint.vercel.app/api/profile', {
@@ -2597,15 +2706,45 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       document.getElementById('setAddress').value = p.address || '';
       document.getElementById('setHours').value = p.hours || '';
 
-      // Widget appearance
-      selectedTheme = p.widgetTheme || 'dark';
-      selectedSize = p.widgetSize || 'standard';
-      selectedPosition = p.widgetPosition || 'right';
+      // Widget colours — new fields take priority, fall back to old theme name
+      if (p.brandColor) {
+        selectedBrandColor = p.brandColor;
+        selectedAccentColor = p.accentColor || p.brandColor;
+        selectedThemeMode = p.themeMode || 'light';
+      } else if (p.widgetTheme && THEME_MIGRATION[p.widgetTheme]) {
+        var m = THEME_MIGRATION[p.widgetTheme];
+        selectedBrandColor = m.brand;
+        selectedAccentColor = m.accent;
+        selectedThemeMode = m.mode;
+      }
+
+      // Size — new field takes priority
+      if (p.widgetSizeV2) {
+        selectedSize = p.widgetSizeV2;
+      } else {
+        selectedSize = SIZE_MIGRATION[p.widgetSize] || p.widgetSize || 'medium';
+      }
+
+      selectedPosition = p.fabPosition || p.widgetPosition || 'bottom-right';
       selectedMobileBubble = p.mobileBubble || 'normal';
       selectedSearchTypes = Array.isArray(p.searchTypes) ? p.searchTypes : [];
+
+      // Auto-trigger
       document.getElementById('setAutoTriggerEnabled').checked = !!p.autoTriggerEnabled;
       document.getElementById('setAutoTriggerDelay').value = p.autoTriggerDelay || 30;
       document.getElementById('setAutoTriggerMessage').value = p.autoTriggerMessage || '';
+
+      // Chat settings
+      document.getElementById('setBotName').value = p.widgetBotName || 'Luna AI';
+      document.getElementById('setTagline').value = p.widgetTagline || '';
+      document.getElementById('setWelcome').value = p.widgetWelcome || '';
+      document.getElementById('setHints').value = p.widgetHints || '';
+      document.getElementById('setCollectName').checked = p.collectName !== false;
+      document.getElementById('setProfileImage').value = p.profileImage || '';
+      document.getElementById('setLogoText').value = p.logoText || 'L';
+      document.getElementById('setBubbleIcon').value = p.bubbleIcon || '';
+
+      // Privacy, multilingual, email
       document.getElementById('setPrivacyUrl').value = p.privacyPolicyUrl || '';
       selectedEmailPlatform = p.emailPlatform || 'none';
       document.getElementById('setEmailApiKey').value = p.emailPlatformApiKey || '';
@@ -2613,11 +2752,10 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       document.getElementById('setMultilingualEnabled').checked = !!p.multilingualEnabled;
       document.getElementById('setSupportedLanguages').value = p.supportedLanguages || '';
       document.getElementById('multilingualFields').style.display = p.multilingualEnabled ? 'block' : 'none';
-      document.getElementById('setBotName').value = p.widgetBotName || 'Luna AI';
-      document.getElementById('setWelcome').value = p.widgetWelcome || '';
-      document.getElementById('setHints').value = p.widgetHints || '';
 
-      renderThemeGrid();
+      renderBrandColorGrid();
+      renderAccentColorGrid();
+      renderThemeModeGrid();
       renderSizeGrid();
       renderPositionGrid();
       renderMobileBubbleGrid();
@@ -2648,9 +2786,11 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
           website: document.getElementById('setWebsite').value,
           address: document.getElementById('setAddress').value,
           hours: document.getElementById('setHours').value,
-          widgetTheme: selectedTheme,
-          widgetSize: selectedSize,
-          widgetPosition: selectedPosition,
+          brandColor: selectedBrandColor,
+          accentColor: selectedAccentColor,
+          themeMode: selectedThemeMode,
+          widgetSizeV2: selectedSize,
+          fabPosition: selectedPosition,
           mobileBubble: selectedMobileBubble,
           searchTypes: selectedSearchTypes,
           autoTriggerEnabled: document.getElementById('setAutoTriggerEnabled').checked,
@@ -2663,8 +2803,13 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
           multilingualEnabled: document.getElementById('setMultilingualEnabled').checked,
           supportedLanguages: document.getElementById('setSupportedLanguages').value,
           widgetBotName: document.getElementById('setBotName').value,
+          widgetTagline: document.getElementById('setTagline').value,
           widgetWelcome: document.getElementById('setWelcome').value,
-          widgetHints: document.getElementById('setHints').value
+          widgetHints: document.getElementById('setHints').value,
+          collectName: document.getElementById('setCollectName').checked,
+          profileImage: document.getElementById('setProfileImage').value,
+          logoText: document.getElementById('setLogoText').value,
+          bubbleIcon: document.getElementById('setBubbleIcon').value
         })
       });
       if (!res.ok) throw new Error('Save failed: ' + res.status);
@@ -2672,11 +2817,13 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     } catch (e) {
       alert('Failed to save: ' + e.message);
     }
-    btns.forEach(b => { b.disabled = false; b.textContent = 'Save Profile'; });
+    btns.forEach(b => { b.disabled = false; b.textContent = 'Save Appearance'; });
   };
 
   // Render grids on first settings open
-  renderThemeGrid();
+  renderBrandColorGrid();
+  renderAccentColorGrid();
+  renderThemeModeGrid();
   renderSizeGrid();
   renderPositionGrid();
   renderMobileBubbleGrid();
