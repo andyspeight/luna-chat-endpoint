@@ -721,6 +721,28 @@
   .luna-msg.from-luna .luna-msg-bubble { background:var(--navy-light); color:var(--text-dim); }
   .luna-msg.from-visitor .luna-msg-bubble { background:var(--navy-mid); color:var(--text); }
   .luna-msg-time { font-size:9px; color:var(--text-muted); margin-top:2px; font-family:var(--mono); }
+  /* ═══ WHISPER MODE ═══ */
+  .whisper-panel { border-top:1px solid rgba(0,180,216,0.15); background:linear-gradient(180deg, rgba(0,180,216,0.04) 0%, var(--surface) 100%); padding:var(--space-3) var(--space-5); display:none; }
+  .whisper-panel.active { display:block; }
+  .whisper-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:var(--space-2); }
+  .whisper-label { display:flex; align-items:center; gap:var(--space-2); font-size:var(--text-xs); font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:var(--teal); }
+  .whisper-label svg { animation:pulse 2s infinite; }
+  .whisper-dismiss { background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:var(--text-xs); font-family:var(--font); padding:2px var(--space-2); border-radius:var(--radius-sm); transition:all 0.15s; }
+  .whisper-dismiss:hover { background:var(--navy-light); color:var(--text); }
+  .whisper-replies { display:flex; flex-wrap:wrap; gap:var(--space-2); margin-bottom:var(--space-2); }
+  .whisper-reply-btn { padding:var(--space-2) var(--space-3); border-radius:var(--radius-lg); border:1px solid rgba(0,180,216,0.2); background:var(--surface); color:var(--text); font-size:var(--text-sm); cursor:pointer; font-family:var(--font); text-align:left; line-height:1.4; transition:all 0.15s; max-width:100%; }
+  .whisper-reply-btn:hover { border-color:var(--teal); background:var(--teal-glow); }
+  .whisper-tips { display:flex; flex-direction:column; gap:var(--space-1); }
+  .whisper-tip { display:flex; align-items:flex-start; gap:var(--space-2); padding:var(--space-2) var(--space-3); border-radius:var(--radius-md); background:var(--navy-light); font-size:var(--text-xs); color:var(--text-dim); line-height:1.5; border-left:2px solid var(--amber); }
+  .whisper-tip.upsell { border-left-color:var(--green); }
+  .whisper-tip.warning { border-left-color:var(--red); }
+  .whisper-tip-icon { flex-shrink:0; margin-top:1px; }
+  .whisper-loading { font-size:var(--text-xs); color:var(--text-muted); display:flex; align-items:center; gap:var(--space-2); padding:var(--space-1) 0; }
+  .whisper-loading .typing-dot { width:4px; height:4px; }
+  .whisper-toggle { display:flex; align-items:center; gap:var(--space-1); padding:var(--space-2) var(--space-3); border-radius:var(--radius-md); border:1px solid rgba(0,180,216,0.2); background:var(--teal-glow); color:var(--teal); font-family:var(--font); font-size:var(--text-sm); font-weight:600; cursor:pointer; transition:all 0.15s; height:36px; }
+  .whisper-toggle:hover { background:rgba(0,180,216,0.15); }
+  .whisper-toggle.off { background:transparent; border-color:var(--border); color:var(--text-muted); }
+  .whisper-toggle.off:hover { background:var(--navy-light); }
 </style>
 </head>
 <body>
@@ -807,6 +829,7 @@
           </div>
         </div>
         <div class="chat-header-actions">
+          <button class="whisper-toggle" id="btnWhisper" onclick="window._toggleWhisper()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.912 5.813a2 2 0 0 0 1.275 1.275L21 12l-5.813 1.912a2 2 0 0 0-1.275 1.275L12 21l-1.912-5.813a2 2 0 0 0-1.275-1.275L3 12l5.813-1.912a2 2 0 0 0 1.275-1.275L12 3Z"/></svg> Whisper</button>
           <button class="chat-action-btn takeover" id="btnTakeover">Take Over</button>
           <button class="chat-action-btn resolve" id="btnResolve">Resolve</button>
           <button class="chat-action-btn" id="btnBlock" style="background:rgba(239,68,68,0.15);color:var(--red);border-color:rgba(239,68,68,0.3)">Block</button>
@@ -816,7 +839,13 @@
       <div class="typing-indicator" id="typingIndicator">
         <div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>
       </div>
-      <div id="suggestionsBar" style="display:none;flex-wrap:wrap;gap:var(--space-2);padding:var(--space-2) var(--space-4);border-top:1px solid var(--border);background:var(--navy-light)"></div>
+      <div class="whisper-panel" id="whisperPanel">
+        <div class="whisper-header">
+          <span class="whisper-label"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.912 5.813a2 2 0 0 0 1.275 1.275L21 12l-5.813 1.912a2 2 0 0 0-1.275 1.275L12 21l-1.912-5.813a2 2 0 0 0-1.275-1.275L3 12l5.813-1.912a2 2 0 0 0 1.275-1.275L12 3Z"/></svg> Luna Whisper</span>
+          <button class="whisper-dismiss" onclick="document.getElementById('whisperPanel').classList.remove('active')">Dismiss</button>
+        </div>
+        <div id="whisperContent"></div>
+      </div>
       <div id="filePreviewBar" style="display:none"></div>
       <div class="compose-toolbar" id="composeToolbar" style="display:none">
         <button class="compose-toolbar-btn" id="btnQuickReplies" onclick="window._toggleQuickRepliesDrawer()" title="Quick Replies"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> Quick Replies</button>
@@ -1678,40 +1707,117 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
     showHistoryDetail(hId);
   };
 
-  // ─── SMART SUGGESTIONS ───
-  async function fetchSuggestions(visitorMessage) {
-    const sugBar = document.getElementById('suggestionsBar');
-    if (!sugBar || !visitorMessage) return;
-    sugBar.innerHTML = '<span style="font-size:var(--text-xs);color:var(--text-muted)">Luna is thinking...</span>';
-    sugBar.style.display = 'flex';
+  // ─── WHISPER MODE ───
+  let whisperEnabled = true;
+
+  window._toggleWhisper = function() {
+    whisperEnabled = !whisperEnabled;
+    var btn = document.getElementById('btnWhisper');
+    btn.classList.toggle('off', !whisperEnabled);
+    btn.title = whisperEnabled ? 'Whisper Mode on' : 'Whisper Mode off';
+    if (!whisperEnabled) {
+      document.getElementById('whisperPanel').classList.remove('active');
+    }
+  };
+
+  async function fetchWhispers(visitorMessage, conv) {
+    if (!whisperEnabled) return;
+    var panel = document.getElementById('whisperPanel');
+    var content = document.getElementById('whisperContent');
+    if (!panel || !content) return;
+
+    panel.classList.add('active');
+    content.innerHTML = '<div class="whisper-loading"><div class="typing-dot" style="animation:typingBounce 1.4s infinite"></div><div class="typing-dot" style="animation:typingBounce 1.4s infinite 0.2s"></div><div class="typing-dot" style="animation:typingBounce 1.4s infinite 0.4s"></div><span>Luna is thinking...</span></div>';
+
+    // Build context from conversation history
+    var msgs = (conv.messages || []).slice(-10); // Last 10 messages for context
+    var history = msgs.map(function(m) {
+      return (m.from === 'visitor' ? 'Visitor' : m.from === 'ai' ? 'Luna AI' : 'Agent') + ': ' + (m.text || '');
+    }).join('\n');
+
+    // Extract preferences for context
+    var prefs = typeof extractPreferences === 'function' ? extractPreferences(conv.messages || []) : {};
+    var prefsContext = '';
+    if (prefs.destination) prefsContext += 'Destination: ' + prefs.destination + '. ';
+    if (prefs.dates) prefsContext += 'Dates: ' + prefs.dates + '. ';
+    if (prefs.passengers) prefsContext += 'Travellers: ' + prefs.passengers + '. ';
+    if (prefs.budget) prefsContext += 'Budget: ' + prefs.budget + '. ';
+    if (prefs.board) prefsContext += 'Board: ' + prefs.board + '. ';
+    if (prefs.wants && prefs.wants.length) prefsContext += 'Wants: ' + prefs.wants.join(', ') + '. ';
+    if (prefs.avoids && prefs.avoids.length) prefsContext += 'Avoids: ' + prefs.avoids.join(', ') + '. ';
+
+    var prompt = 'You are Luna Whisper, an AI copilot helping a travel agent during a live chat. '
+      + 'The agent can see your suggestions but the visitor CANNOT. '
+      + 'Based on the conversation below, provide:\n\n'
+      + '1. Exactly 2 short reply suggestions the agent could send (1-2 sentences each). '
+      + 'These should sound natural and human, NOT like an AI wrote them. '
+      + 'Format each on its own line starting with [REPLY]\n\n'
+      + '2. 0-2 contextual tips — facts the agent should know, upsell opportunities, or warnings. '
+      + 'Only include tips that are genuinely useful RIGHT NOW. Do not force tips if none are relevant. '
+      + 'Format each on its own line starting with [TIP], [UPSELL], or [WARNING]\n\n'
+      + (prefsContext ? 'VISITOR PREFERENCES: ' + prefsContext + '\n\n' : '')
+      + 'CONVERSATION:\n' + history + '\n\n'
+      + 'The visitor just said: "' + visitorMessage + '"\n\n'
+      + 'Respond with ONLY the tagged lines. Nothing else.';
 
     try {
-      const res = await fetch('https://luna-chat-endpoint.vercel.app/api/luna-chat', {
+      var res = await fetch('https://luna-chat-endpoint.vercel.app/api/luna-chat', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
-          message: 'The visitor just said: "' + visitorMessage + '". Generate 3 short agent reply suggestions (1 sentence each). Format each on its own line starting with [SUG]. Nothing else.',
-          convId: 'suggestions-' + Date.now(),
+          message: prompt,
+          convId: 'whisper-' + Date.now(),
           clientName: CONFIG.CLIENT_NAME,
           history: []
         })
       });
-      if (!res.ok) throw new Error('Suggestions failed');
-      const data = await res.json();
-      const sugs = (data.reply || '').split('\n').filter(l => /^\[SUG\]/i.test(l.trim())).map(l => l.trim().replace(/^\[SUG\]\s*/i, '')).slice(0,3);
+      if (!res.ok) throw new Error('Whisper failed');
+      var data = await res.json();
+      var lines = (data.reply || '').split('\n').map(function(l) { return l.trim(); }).filter(Boolean);
 
-      if (sugs.length > 0) {
-        sugBar.innerHTML = sugs.map(s =>
-          '<button style="padding:var(--space-2) var(--space-3);border-radius:var(--radius-full);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);font-size:var(--text-sm);cursor:pointer;font-family:var(--font);text-align:left;line-height:1.3;transition:border-color .15s" onmouseover="this.style.borderColor=\'var(--teal)\'" onmouseout="this.style.borderColor=\'var(--border)\'" onclick="document.getElementById(\'msgInput\').value=this.textContent;document.getElementById(\'suggestionsBar\').style.display=\'none\';document.getElementById(\'msgInput\').focus();document.getElementById(\'sendBtn\').disabled=false">' + esc(s) + '</button>'
-        ).join('');
+      var replies = lines.filter(function(l) { return /^\[REPLY\]/i.test(l); }).map(function(l) { return l.replace(/^\[REPLY\]\s*/i, ''); }).slice(0, 3);
+      var tips = lines.filter(function(l) { return /^\[(TIP|UPSELL|WARNING)\]/i.test(l); }).map(function(l) {
+        var type = 'tip';
+        if (/^\[UPSELL\]/i.test(l)) type = 'upsell';
+        if (/^\[WARNING\]/i.test(l)) type = 'warning';
+        return { type: type, text: l.replace(/^\[(TIP|UPSELL|WARNING)\]\s*/i, '') };
+      }).slice(0, 2);
+
+      var html = '';
+
+      if (replies.length > 0) {
+        html += '<div class="whisper-replies">';
+        replies.forEach(function(r) {
+          html += '<button class="whisper-reply-btn" onclick="document.getElementById(\'msgInput\').value=this.textContent;document.getElementById(\'msgInput\').dispatchEvent(new Event(\'input\'));document.getElementById(\'msgInput\').focus();document.getElementById(\'whisperPanel\').classList.remove(\'active\')">' + esc(r) + '</button>';
+        });
+        html += '</div>';
+      }
+
+      if (tips.length > 0) {
+        html += '<div class="whisper-tips">';
+        tips.forEach(function(t) {
+          var icon = t.type === 'upsell' ? '💰' : t.type === 'warning' ? '⚠️' : '💡';
+          html += '<div class="whisper-tip ' + t.type + '"><span class="whisper-tip-icon">' + icon + '</span>' + esc(t.text) + '</div>';
+        });
+        html += '</div>';
+      }
+
+      if (!html) {
+        panel.classList.remove('active');
       } else {
-        sugBar.style.display = 'none';
+        content.innerHTML = html;
       }
     } catch(e) {
-      sugBar.style.display = 'none';
-      console.warn('Suggestions error:', e.message);
+      panel.classList.remove('active');
+      console.warn('Whisper error:', e.message);
     }
   }
+
+  // Keep backward compat
+  var fetchSuggestions = function(msg) {
+    var conv = activeConvId ? conversations[activeConvId] : null;
+    if (conv) fetchWhispers(msg, conv);
+  };
 
   // ─── SEND MESSAGE ───
   const msgInput = document.getElementById('msgInput');
@@ -1765,7 +1871,7 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
     msgInput.value = '';
     msgInput.style.height = 'auto';
     sendBtn.disabled = true;
-    document.getElementById('suggestionsBar').style.display = 'none';
+    document.getElementById('whisperPanel').classList.remove('active');
   }
 
   // ─── TAKEOVER & RESOLVE ───
@@ -3141,7 +3247,7 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
       msgInput.style.height = 'auto';
       sendBtn.disabled = true;
       window._removeFile();
-      document.getElementById('suggestionsBar').style.display = 'none';
+      document.getElementById('whisperPanel').classList.remove('active');
       return;
     }
     // No file — use original send
