@@ -120,10 +120,10 @@
   .login-error { color:var(--red); font-size:var(--text-sm); margin-top:var(--space-3); min-height:18px; }
 
   /* ── MAIN LAYOUT ── */
-  .app { display:none; height:100vh; grid-template-columns:320px 1fr 320px; grid-template-rows:56px 1fr; max-width:1440px; margin:0 auto; }
+  .app { display:none; height:100vh; grid-template-columns:300px 1fr 380px; grid-template-rows:56px 1fr; max-width:1440px; margin:0 auto; }
   .app.active { display:grid; }
-  @media (max-width:1280px) { .app { grid-template-columns:280px 1fr 280px; } }
-  @media (max-width:1024px) { .app { grid-template-columns:260px 1fr 260px; } }
+  @media (max-width:1280px) { .app { grid-template-columns:260px 1fr 340px; } }
+  @media (max-width:1024px) { .app { grid-template-columns:240px 1fr 300px; } }
 
   /* ── TOP BAR ── */
   .topbar {
@@ -833,8 +833,8 @@
   <!-- INFO PANEL -->
   <div class="info-panel">
     <div class="info-panel-tabs" id="infoPanelTabs" style="display:none">
-      <button class="info-panel-tab active" onclick="window._switchInfoTab('intel')">Conversation Intel</button>
-      <button class="info-panel-tab" onclick="window._switchInfoTab('session')">Live Session</button>
+      <button class="info-panel-tab active" onclick="window._switchInfoTab('intel')">Intel</button>
+      <button class="info-panel-tab" onclick="window._switchInfoTab('session')">Session</button>
       <button class="info-panel-tab" onclick="window._switchInfoTab('details')">Details &amp; Replies</button>
     </div>
     <div class="info-tab-content" id="infoTabIntel">
@@ -2834,9 +2834,12 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
   window._switchInfoTab = function(tab) {
     activeInfoTab = tab;
     document.querySelectorAll('.info-panel-tab').forEach(function(t) {
-      t.classList.toggle('active', t.textContent.toLowerCase().includes(
-        tab === 'intel' ? 'intel' : tab === 'session' ? 'session' : 'details'
-      ));
+      var txt = t.textContent.toLowerCase();
+      t.classList.toggle('active',
+        (tab === 'intel' && txt === 'intel') ||
+        (tab === 'session' && txt === 'session') ||
+        (tab === 'details' && txt.includes('details'))
+      );
     });
     document.querySelectorAll('.info-tab-content').forEach(function(el) { el.classList.remove('active'); });
     var tabEl = document.getElementById(tab === 'intel' ? 'infoTabIntel' : tab === 'session' ? 'infoTabSession' : 'infoTabDetails');
