@@ -77,7 +77,12 @@ module.exports = async function handler(req, res) {
           emailPlatformListId: fields.EmailPlatformListId || '',
           multilingualEnabled: !!fields.MultilingualEnabled,
           supportedLanguages: fields.SupportedLanguages || '',
-          cannedResponses: fields.CannedResponses || ''
+          cannedResponses: fields.CannedResponses || '',
+          scannedUrls: fields.scannedUrls || '',
+          scannedKnowledge: fields.scannedKnowledge || '',
+          scannedAt: fields.scannedAt || '',
+          scannedPageCount: fields.scannedPageCount || 0,
+          autoRescan: !!fields.autoRescan
         }
       });
     }
@@ -119,6 +124,13 @@ module.exports = async function handler(req, res) {
 
       // Canned responses
       if (body.cannedResponses !== undefined) updateFields.CannedResponses = body.cannedResponses;
+
+      // Website scanning fields
+      if (body.scannedUrls !== undefined) updateFields.scannedUrls = body.scannedUrls;
+      if (body.scannedKnowledge !== undefined) updateFields.scannedKnowledge = body.scannedKnowledge;
+      if (body.scannedAt !== undefined) updateFields.scannedAt = body.scannedAt;
+      if (body.scannedPageCount !== undefined) updateFields.scannedPageCount = parseInt(body.scannedPageCount) || 0;
+      if (body.autoRescan !== undefined) updateFields.autoRescan = !!body.autoRescan;
 
       if (Object.keys(updateFields).length === 0) {
         return res.status(400).json({ error: 'No fields to update' });
