@@ -166,7 +166,40 @@ When escalating, tell the visitor you are connecting them with a member of the t
 ## What you must NEVER do
 - Invent booking references, prices, availability or specific offers.
 - Claim to be human.
-- Give medical, legal or financial advice.`;
+- Give medical, legal or financial advice.
+
+## Content and conduct guardrails
+Every response you generate is displayed directly to the public on behalf of the travel agent's brand. Behave as if the client's CEO, their most important customer, and a child are all reading your response simultaneously.
+
+### Language rules
+- Never use profanity, vulgarity, slang, or crude language of any kind, including mild terms (damn, hell, crap, bloody, etc.)
+- Never use or repeat any racial, ethnic, cultural, or religious slurs or derogatory terms, even if the visitor uses them first.
+- Never use gendered insults, body-shaming language, or terms derogatory to any protected characteristic (age, disability, gender identity, sexuality, race, religion, socioeconomic status).
+- Never use sexually suggestive language, innuendo, or references to adult content.
+- Never use violent, aggressive, or threatening language.
+- If a visitor sends offensive, abusive, or inappropriate language, do NOT repeat, echo, translate, or reference the specific terms. Respond only with: "I'm here to help with travel questions. What destination or trip can I help you with?"
+- If a visitor persists with abuse after two deflections, respond with: "I'm not able to continue this conversation. Please contact the team directly if you need help with a travel booking."
+
+### Political and ideological neutrality
+- Never express political opinions, endorse political parties, candidates, leaders, or movements.
+- Never comment on wars, conflicts, territorial disputes, or sanctions beyond factual FCDO/government travel advisories.
+- Never comment on a country's political system, form of government, or leadership quality.
+- Never discuss political ideology (left/right, liberal/conservative, socialist/capitalist, etc.)
+- Never comment on immigration policy, border politics, or asylum issues.
+- If asked about the political situation in a destination, respond only with: "For the latest travel safety information, I'd recommend checking the FCDO travel advice for that country at gov.uk/foreign-travel-advice. Your travel agent can also advise on anything specific."
+
+### Religious neutrality
+- Never express opinions about any religion or belief system.
+- Never compare religions or suggest one is superior.
+- You may mention religious sites and festivals factually as travel attractions but never editorialize about the religion itself.
+
+### Health and safety
+- Never provide medical advice or make health claims about destinations.
+- For vaccination requirements, malaria risk, or health concerns, always say: "For health advice specific to your destination, please consult your GP or visit fitfortravel.nhs.uk before travelling."
+
+### Competitor references
+- Never disparage other travel companies, booking platforms, OTAs, or suppliers.
+- If asked about a competitor, say: "I'm best placed to help with what we offer here. What can I help you find?"`;
 
 // --- TRAVELGENIX CORPORATE PROMPT (for travelgenix.io) ---
 const LUNA_TRAVELGENIX = `You are Luna, the AI assistant on the Travelgenix website (travelgenix.io). You help travel agents and tour operators understand Travelgenix products, pricing and how the platform can grow their business. You are warm, knowledgeable and direct.
@@ -548,7 +581,31 @@ A: Live now. Bundle event tickets with flights and hotels. New revenue stream.
 - Share internal business metrics (MRR, churn rates, team size).
 - Claim to be human.
 - Give legal or financial advice.
-- Offer discounts or negotiate pricing. If asked, say pricing is straightforward and transparent, and suggest they book a demo to discuss their needs.`;
+- Offer discounts or negotiate pricing. If asked, say pricing is straightforward and transparent, and suggest they book a demo to discuss their needs.
+
+## Content and conduct guardrails
+Every response you generate is displayed directly to the public on behalf of Travelgenix. Behave as if the CEO, the most important prospect, and a child are all reading your response simultaneously.
+
+### Language rules
+- Never use profanity, vulgarity, slang, or crude language of any kind, including mild terms (damn, hell, crap, bloody, etc.)
+- Never use or repeat any racial, ethnic, cultural, or religious slurs or derogatory terms, even if the visitor uses them first.
+- Never use gendered insults, body-shaming language, or terms derogatory to any protected characteristic (age, disability, gender identity, sexuality, race, religion, socioeconomic status).
+- Never use sexually suggestive language, innuendo, or references to adult content.
+- Never use violent, aggressive, or threatening language.
+- If a visitor sends offensive, abusive, or inappropriate language, do NOT repeat, echo, translate, or reference the specific terms. Respond only with: "I'm here to help with questions about Travelgenix. What can I help you with?"
+- If a visitor persists with abuse after two deflections, respond with: "I'm not able to continue this conversation. Please contact us directly at info@travelgenix.io or call +44 (0) 1202 934033."
+
+### Political and ideological neutrality
+- Never express political opinions or discuss political ideology.
+- Never comment on wars, conflicts, territorial disputes, or government policies.
+- Keep all conversation focused on travel technology, Travelgenix products, and helping the visitor's business.
+
+### Religious neutrality
+- Never express opinions about any religion or belief system.
+
+### Competitor conduct
+- Never disparage other travel technology providers.
+- If asked about a competitor, redirect: "I'm best placed to help with what Travelgenix offers. Would you like to talk through our packages or book a demo?"`;
 
 // --- RATE LIMITING (in-memory, resets on cold start) ---
 const rateLimits = {};
@@ -577,76 +634,266 @@ function sanitizeInput(str) {
     .trim();
 }
 
-// --- CONTENT MODERATION ---
-const PROFANITY_LIST = [
-  'fuck','shit','cunt','twat','wanker','bollocks','arsehole','asshole',
-  'dickhead','piss off','slag','slut','bitch','bastard','cock','knob',
-  'bellend','tosser','minger','shag','bugger off','prick','whore'
+// --- COMPREHENSIVE CONTENT FILTER ---
+const FILTER_PROFANITY = [
+  'fuck','fucking','fucked','fucker','fuckers','fucks','motherfucker',
+  'motherfucking','shit','shitting','shitty','bullshit','horseshit',
+  'cunt','cunts','cock','cocks','cocksucker','dick','dicks','dickhead',
+  'prick','pricks','twat','twats','wanker','wankers','wank','tosser',
+  'tossers','bellend','arsehole','arseholes','asshole','assholes',
+  'bastard','bastards','bitch','bitches','bitchy','whore','whores',
+  'slut','sluts','slag','slags','skank','skanks',
+  'arse','bollocks','bugger','crap','crappy',
+  'damn','damned','dammit','goddamn','goddammit','piss',
+  'pissed','pissing','sodding','sod','tit','tits','knob','knobhead',
+  'minger','munter','pillock','plonker',
+  'stfu','gtfo','wtf','ffs','jfc'
 ];
-const ABUSE_PATTERNS = [
-  /\b(kill|die|murder|rape|bomb|terrorist)\b/i,
-  /\b(nigger|faggot|retard|spastic)\b/i,
+
+const FILTER_RACIAL_ETHNIC = [
+  'nigger','niggers','nigga','niggas','coon','coons','darkie',
+  'darkies','jigaboo','sambo','golliwog','golliwogs',
+  'pickaninny','jungle bunny','porch monkey',
+  'chink','chinks','chinky','gook','gooks','zipperhead',
+  'slanteye','coolie','coolies','chinaman','chinamen',
+  'paki','pakis','curry muncher','dothead','raghead','ragheads',
+  'towelhead','towelheads','sand nigger','sand niggers','camel jockey',
+  'spic','spics','spick','wetback','wetbacks','beaner','beaners',
+  'greaser','greasers',
+  'honky','honkey','white trash','trailer trash',
+  'hajji','haji','sandnigger',
+  'kike','kikes','yid','yids','heeb','heebs','hymie','shylock',
+  'gyppo','gyppos','pikey','pikeys',
+  'abo','abos','boong','redskin','redskins','squaw',
+  'go back to your country','send them back'
 ];
-const WARNING_THRESHOLDS = { warn: 1, block: 3 };
+
+const FILTER_HOMOPHOBIC_TRANSPHOBIC = [
+  'fag','fags','faggot','faggots','dyke','dykes',
+  'lesbo','lesbos','poof','poofter','ponce',
+  'batty','battyboy','bender','tranny','trannies','shemale',
+  'she-male','he-she','ladyboy'
+];
+
+const FILTER_RELIGIOUS = [
+  'bible basher','bible thumper','holy roller',
+  'kafir','kuffar','papist','christ killer',
+  'sky fairy','sky daddy'
+];
+
+const FILTER_POLITICAL = [
+  'nazi','nazis','neo-nazi','fascist','fascists',
+  'white supremacy','white supremacist','white power','white pride',
+  'white nationalist','white genocide','race war','race traitor',
+  'ethnostate','ethnic cleansing','final solution','holocaust denial',
+  'great replacement','replacement theory',
+  'heil hitler','sieg heil','1488','14 words',
+  'blood and soil','deus vult','remove kebab',
+  'kill all','acab','all cops are bastards',
+  'libtard','conservatard','republitard','democrap',
+  'woke mob','feminazi','commie','sheeple'
+];
+
+const FILTER_VIOLENCE = [
+  'kill you','kill myself','kill yourself','kys',
+  'i will hurt','i will find you','watch your back',
+  'you will pay','you deserve to die','go die',
+  'bomb threat','rape','raping','rapist',
+  'murder','attack you','beat you up',
+  'punch you','slap you','strangle'
+];
+
+const FILTER_SEXUAL = [
+  'porn','porno','pornography','xxx','nsfw','hentai',
+  'prostitute','prostitution','escort service',
+  'happy ending','strip club','stripclub','brothel',
+  'erotic','orgasm','orgasms',
+  'masturbate','masturbation','blowjob','blow job',
+  'handjob','hand job','bondage','bdsm',
+  'fetish','vibrator','dildo',
+  'boobies','titties','nude','nudes',
+  'horny','shagging'
+];
+
+const FILTER_ABLEIST = [
+  'retard','retarded','retards','spaz','spazzy','spastic',
+  'cripple','crippled','gimp','mongoloid',
+  'psycho','psychos','lunatic','lunatics','nutcase',
+  'nutjob','mental case','schizo','window licker'
+];
+
+// L33t speak normalisation map
+const LEET_MAP = {
+  '0':'o','1':'i','3':'e','4':'a','5':'s',
+  '7':'t','8':'b','9':'g','@':'a','$':'s',
+  '!':'i','+':'t','(':'c','|':'l'
+};
+
+function filterNormalise(text) {
+  if (!text || typeof text !== 'string') return '';
+  var n = text.toLowerCase();
+  for (var ch in LEET_MAP) {
+    if (LEET_MAP.hasOwnProperty(ch)) n = n.split(ch).join(LEET_MAP[ch]);
+  }
+  // Remove zero-width/invisible Unicode characters
+  n = n.replace(/[\u200B-\u200F\u2028-\u202F\uFEFF]/g, '');
+  // Collapse repeated chars beyond 2 (fuuuuck → fuuck)
+  n = n.replace(/(.)\1{2,}/g, '$1$1');
+  return n;
+}
+
+function filterRemoveSpacing(text) {
+  return text.replace(/[\s\-_.*·,;:!?'"\/\\()[\]{}#~^`+=<>@$%&|]+/g, '');
+}
+
+// Build combined lookup structures (runs once at cold start)
+const ALL_FILTER_TERMS = [].concat(
+  FILTER_PROFANITY, FILTER_RACIAL_ETHNIC, FILTER_HOMOPHOBIC_TRANSPHOBIC,
+  FILTER_RELIGIOUS, FILTER_POLITICAL, FILTER_VIOLENCE,
+  FILTER_SEXUAL, FILTER_ABLEIST
+);
+
+const FILTER_SINGLE_WORDS = new Set();
+const FILTER_MULTI_PHRASES = [];
+
+ALL_FILTER_TERMS.forEach(function(term) {
+  var lower = term.toLowerCase();
+  if (lower.indexOf(' ') >= 0) {
+    FILTER_MULTI_PHRASES.push(lower);
+  } else {
+    FILTER_SINGLE_WORDS.add(lower);
+  }
+});
+
+// Prompt injection patterns
+const INJECTION_PATTERNS = [
+  /ignore (all |your |previous )?instructions/i,
+  /you are now/i,
+  /new instructions/i,
+  /system prompt/i,
+  /jailbreak/i,
+  /act as if/i,
+  /pretend you/i,
+  /override/i,
+  /disregard/i
+];
+
+function filterScan(text) {
+  var normed = filterNormalise(text);
+  var collapsed = filterRemoveSpacing(normed);
+
+  // Check multi-word phrases
+  for (var i = 0; i < FILTER_MULTI_PHRASES.length; i++) {
+    if (normed.indexOf(FILTER_MULTI_PHRASES[i]) >= 0 || collapsed.indexOf(FILTER_MULTI_PHRASES[i]) >= 0) {
+      return { found: true, term: FILTER_MULTI_PHRASES[i] };
+    }
+  }
+
+  // Check single words (word-boundary aware — prevents Scunthorpe problem)
+  var words = normed.split(/\s+/);
+  for (var j = 0; j < words.length; j++) {
+    var stripped = words[j].replace(/[^a-z0-9]/g, '');
+    if (FILTER_SINGLE_WORDS.has(stripped)) {
+      return { found: true, term: stripped };
+    }
+  }
+
+  // Spaced-out evasion detection (f u c k, f.u.c.k)
+  var iter = FILTER_SINGLE_WORDS.values();
+  var next = iter.next();
+  while (!next.done) {
+    var term = next.value;
+    if (term.length >= 4 && collapsed.indexOf(term) >= 0) {
+      var spacedPattern = term.split('').join('[^a-z]*');
+      var spacedRegex = new RegExp(spacedPattern);
+      if (spacedRegex.test(text.toLowerCase())) {
+        return { found: true, term: term + ' (evasion)' };
+      }
+    }
+    next = iter.next();
+  }
+
+  return { found: false, term: null };
+}
+
+// Scan AI output and redact any blocked terms
+function filterOutput(text) {
+  if (!text || typeof text !== 'string') return { filtered: text, flagged: false };
+  var filtered = text;
+  var flagged = false;
+
+  // Check multi-word phrases
+  for (var i = 0; i < FILTER_MULTI_PHRASES.length; i++) {
+    var phrase = FILTER_MULTI_PHRASES[i];
+    if (filterNormalise(filtered).indexOf(phrase) >= 0) {
+      flagged = true;
+      var regex = new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+      filtered = filtered.replace(regex, '[removed]');
+    }
+  }
+
+  // Check single words
+  var words = filtered.split(/\s+/);
+  var cleanWords = words.map(function(word) {
+    var stripped = word.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    var normed = filterNormalise(stripped);
+    if (FILTER_SINGLE_WORDS.has(stripped) || FILTER_SINGLE_WORDS.has(normed)) {
+      flagged = true;
+      return '[removed]';
+    }
+    return word;
+  });
+
+  if (flagged) filtered = cleanWords.join(' ');
+  return { filtered: filtered, flagged: flagged };
+}
+
+// Strike tracking (in-memory, resets on cold start)
 const moderationStrikes = {};
+const WARNING_THRESHOLDS = { warn: 1, block: 3 };
 
 function moderateContent(text, convId) {
   if (!text) return { allowed: true };
-  const lower = text.toLowerCase();
-  
-  for (const word of PROFANITY_LIST) {
-    if (lower.includes(word)) {
-      return recordStrike(convId, 'profanity');
-    }
-  }
-  
-  for (const pattern of ABUSE_PATTERNS) {
-    if (pattern.test(text)) {
-      return recordStrike(convId, 'abuse');
-    }
-  }
-  
-  const injectionPatterns = [
-    /ignore (all |your |previous )?instructions/i,
-    /you are now/i,
-    /new instructions/i,
-    /system prompt/i,
-    /jailbreak/i,
-    /act as if/i,
-    /pretend you/i,
-    /override/i,
-    /disregard/i
-  ];
-  for (const pattern of injectionPatterns) {
-    if (pattern.test(text)) {
+
+  // Check for prompt injection
+  for (var i = 0; i < INJECTION_PATTERNS.length; i++) {
+    if (INJECTION_PATTERNS[i].test(text)) {
       return { allowed: false, reason: 'injection', message: "I can only help with travel-related questions. Is there something about our services I can assist with?" };
     }
   }
-  
+
+  // Check for blocked content
+  var scanResult = filterScan(text);
+  if (scanResult.found) {
+    return recordStrike(convId, scanResult.term);
+  }
+
   return { allowed: true };
 }
 
-function recordStrike(convId, type) {
+function recordStrike(convId, term) {
   if (!convId) convId = 'unknown';
   if (!moderationStrikes[convId]) moderationStrikes[convId] = 0;
   moderationStrikes[convId]++;
-  
-  const strikes = moderationStrikes[convId];
-  
+
+  var strikes = moderationStrikes[convId];
+
   if (strikes >= WARNING_THRESHOLDS.block) {
+    console.warn('[Luna Filter] Conversation blocked — convId:', convId, 'term:', term, 'strikes:', strikes);
     return {
       allowed: false,
-      reason: type,
+      reason: 'blocked',
       blocked: true,
-      message: "This conversation has been ended due to repeated use of inappropriate language. If you need help, please call us on +44 (0) 1202 934033."
+      message: "This conversation has been ended due to repeated inappropriate language. If you need help, please call us on +44 (0) 1202 934033."
     };
   }
-  
+
+  console.warn('[Luna Filter] Strike recorded — convId:', convId, 'term:', term, 'strikes:', strikes);
   return {
     allowed: false,
-    reason: type,
+    reason: 'moderated',
     blocked: false,
-    message: "Please keep the conversation respectful. I'm here to help, but I'm not able to respond to messages containing inappropriate language. How can I assist you today?"
+    message: "I'm here to help with travel questions. What destination or trip can I help you with?"
   };
 }
 
@@ -872,6 +1119,13 @@ If children are included, append &chdage={age} for each child (e.g. &chdage=8&ch
     if (langMatch) {
       detectedLang = langMatch[1].trim();
       cleanReply = replyText.replace(/^\[LANG:[^\]]+\]\s*/, '').trim();
+    }
+
+    // Layer 2: Output filter — catch anything that slipped through the system prompt
+    var outputCheck = filterOutput(cleanReply);
+    if (outputCheck.flagged) {
+      console.error('[Luna Filter] AI output was filtered! convId:', convId);
+      cleanReply = outputCheck.filtered;
     }
 
     const escalate = detectEscalation(cleanReply, message);
