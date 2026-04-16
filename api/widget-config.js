@@ -88,6 +88,14 @@ module.exports = async function handler(req, res) {
     if (f.LogoText) config.logoText = f.LogoText;
     if (f.ClientName) config.clientName = f.ClientName;
 
+    /* ── Business types (multi-select) ── */
+    if (f.BusinessTypes && Array.isArray(f.BusinessTypes)) {
+      config.businessTypes = f.BusinessTypes.map(function(t) { return typeof t === 'object' ? t.name : t; });
+    } else if (f.BusinessType) {
+      /* Backwards compat with old single select */
+      config.businessTypes = [typeof f.BusinessType === 'object' ? f.BusinessType.name : f.BusinessType];
+    }
+
     /* ── Profile image (attachment or URL) ── */
     if (f.ProfileImage) {
       if (Array.isArray(f.ProfileImage) && f.ProfileImage.length > 0) {
