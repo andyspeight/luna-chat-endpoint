@@ -1203,6 +1203,12 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     <div class="wst-panel" id="wstContent" style="display:none">
 
     <div class="settings-section">
+      <h4>Business Type</h4>
+      <div class="settings-hint" style="margin-bottom:8px">Select all services this client offers. The first type determines default home screen cards. Starters are combined from all selected types. You can override any defaults below.</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px" id="businessTypeGrid"></div>
+    </div>
+
+    <div class="settings-section">
       <h4>Welcome Message</h4>
       <div class="settings-row">
         <input class="settings-input" id="setWelcome" placeholder="Hey there! How can we help you today?">
@@ -2663,6 +2669,57 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
   let selectedPosition = 'bottom-right';
   let selectedMobileBubble = 'normal';
   let selectedSearchTypes = [];
+  let selectedBusinessType = '';
+  let selectedBusinessTypes = [];
+
+  var BUSINESS_TYPES = [
+    'Travel Agent', 'Tour Operator', 'Cruise Specialist', 'Ski Specialist',
+    'Car Rental', 'Tickets & Attractions', 'Corporate Travel', 'B2B / Tech'
+  ];
+
+  function renderBusinessTypeGrid() {
+    var el = document.getElementById('businessTypeGrid');
+    el.innerHTML = BUSINESS_TYPES.map(function(bt) {
+      var active = selectedBusinessTypes.indexOf(bt) !== -1;
+      return '<div onclick="window._toggleBusinessType(\'' + bt.replace(/'/g, "\\'") + '\')" style="padding:8px 14px;border-radius:8px;cursor:pointer;border:2px solid ' + (active ? 'var(--teal)' : 'var(--border)') + ';background:' + (active ? 'var(--teal-glow)' : 'var(--navy-mid)') + ';transition:all .15s">'
+        + '<div style="font-size:12px;font-weight:' + (active ? '600' : '500') + ';color:' + (active ? 'var(--teal)' : 'var(--text)') + ';white-space:nowrap">' + bt + '</div></div>';
+    }).join('');
+  }
+
+  window._toggleBusinessType = function(bt) {
+    var idx = selectedBusinessTypes.indexOf(bt);
+    if (idx === -1) selectedBusinessTypes.push(bt);
+    else selectedBusinessTypes.splice(idx, 1);
+    renderBusinessTypeGrid();
+  };
+
+  window._selectBusinessType = function(bt) {
+    selectedBusinessType = bt;
+    renderBusinessTypeGrid();
+    /* Auto-fill capability cards and hints if they're currently empty/default */
+    var BT_DEFAULTS_DASH = {
+      "Travel Agent": { cards: [{icon:"plane",title:"Find me a holiday",desc:"Search thousands of packages, flights and hotels"},{icon:"compass",title:"Help me decide",desc:"Compare destinations, get recommendations, check what's included"},{icon:"helpCircle",title:"Answer my questions",desc:"Pricing, what's included, luggage, transfers — ask me anything"}], hints: "All-inclusive under £800\nBest Greek islands for families\nLast-minute deals\nDo you do Maldives?\nFlights to Tenerife" },
+      "Tour Operator": { cards: [{icon:"compass",title:"Explore our tours",desc:"Browse our collection of expertly crafted tours and itineraries"},{icon:"plane",title:"Check availability",desc:"Find dates and prices for the trip you have in mind"},{icon:"helpCircle",title:"Ask about a trip",desc:"Inclusions, visa requirements, group sizes — ask me anything"}], hints: "What tours do you have?\nEgypt trips\nFamily-friendly tours\nWhat's included?\nGroup discounts" },
+      "Cruise Specialist": { cards: [{icon:"compass",title:"Find a cruise",desc:"Search sailings by destination, date, cruise line, or ship"},{icon:"star",title:"Compare ships",desc:"Cabin types, on-board facilities, dining options"},{icon:"helpCircle",title:"Ask about sailings",desc:"Ports of call, excursions, what's included — I know it all"}], hints: "Mediterranean cruises\nFamily cabin options\nWhat's included?\nBest cruise for couples\nRiver cruises" },
+      "Ski Specialist": { cards: [{icon:"compass",title:"Find a ski trip",desc:"Search resorts, chalets, and ski packages across the Alps and beyond"},{icon:"star",title:"Compare resorts",desc:"Snow conditions, piste maps, après-ski, beginner vs advanced"},{icon:"helpCircle",title:"Ask me anything",desc:"Transfers, equipment hire, lessons, lift passes — I can help"}], hints: "Best beginner resorts\nHalf term availability\nChalet holidays\nSnow conditions\nFamily ski deals" },
+      "Car Rental": { cards: [{icon:"search",title:"Find a rental car",desc:"Search cars by location, dates, and vehicle type — instant quotes"},{icon:"compass",title:"Compare options",desc:"Economy to luxury, automatic or manual, insurance options"},{icon:"helpCircle",title:"Ask me anything",desc:"Pick-up points, age limits, one-way rentals — I can help"}], hints: "Cars in Malaga airport\nAutomatic SUV\nOne-way rental\nUnder 25 insurance\nWeekly rates" },
+      "Tickets & Attractions": { cards: [{icon:"star",title:"Find tickets",desc:"Theme parks, attractions, tours, and experiences"},{icon:"compass",title:"Explore what's on",desc:"Browse attractions near you or at your holiday destination"},{icon:"helpCircle",title:"Ask me anything",desc:"Prices, opening times, family tickets, skip-the-line — I can help"}], hints: "Theme park tickets\nThings to do in London\nFamily day out\nSkip the line passes\nBest attractions near me" },
+      "Corporate Travel": { cards: [{icon:"plane",title:"Arrange travel",desc:"Flights, hotels, transfers, and car hire for business trips"},{icon:"star",title:"Manage bookings",desc:"Amendments, cancellations, and group travel coordination"},{icon:"helpCircle",title:"Get a quote",desc:"Multi-city itineraries, conference travel, executive packages"}], hints: "Multi-city flights\nHotel near Heathrow\nGroup booking for 20\nConference travel\nExecutive lounge" },
+      "B2B / Tech": { cards: [{icon:"monitor",title:"Tell me about your platform",desc:"Features, integrations, technology stack"},{icon:"star",title:"See pricing & packages",desc:"Plans, pricing, setup costs — find the right fit"},{icon:"helpCircle",title:"Ask me anything",desc:"Features, integrations, setup, support — any question"}], hints: "How much does it cost?\nWhat's included?\nCan I see a demo?\nWhat makes you different?" }
+    };
+    var defaults = BT_DEFAULTS_DASH[bt];
+    if (!defaults || bt === 'Custom') return;
+    /* Only auto-fill if cards are empty */
+    if (capCards.length === 0) {
+      capCards = JSON.parse(JSON.stringify(defaults.cards));
+      renderCapCards();
+    }
+    /* Only auto-fill hints if empty */
+    var hintsEl = document.getElementById('setHints');
+    if (!hintsEl.value.trim()) {
+      hintsEl.value = defaults.hints;
+    }
+  };
 
   function makeSwatchGrid(presets, selected, onSelect, containerId) {
     var el = document.getElementById(containerId);
@@ -2965,6 +3022,10 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       document.getElementById('setLogoText').value = p.logoText || 'L';
       document.getElementById('setBubbleIcon').value = p.bubbleIcon || '';
 
+      // Business type(s)
+      selectedBusinessType = p.businessType || '';
+      selectedBusinessTypes = Array.isArray(p.businessTypes) ? p.businessTypes : (p.businessType ? [p.businessType] : []);
+
       // Capability cards
       if (p.capabilityCards) {
         try {
@@ -2993,6 +3054,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       renderSearchTypesGrid();
       renderEmailPlatformGrid();
       renderCapCards();
+      renderBusinessTypeGrid();
       window._updateAvatarPreview();
       window._updateFabPreview();
       profileLoaded = true;
@@ -3044,7 +3106,9 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
           profileImage: document.getElementById('setProfileImage').value,
           logoText: document.getElementById('setLogoText').value,
           bubbleIcon: document.getElementById('setBubbleIcon').value,
-          capabilityCards: capCards.length > 0 ? JSON.stringify(capCards) : ''
+          capabilityCards: capCards.length > 0 ? JSON.stringify(capCards) : '',
+          businessType: selectedBusinessTypes.length > 0 ? selectedBusinessTypes[0] : selectedBusinessType,
+          businessTypes: selectedBusinessTypes
         })
       });
       if (!res.ok) throw new Error('Save failed: ' + res.status);
@@ -3065,6 +3129,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
   renderSearchTypesGrid();
   renderEmailPlatformGrid();
   renderCapCards();
+  renderBusinessTypeGrid();
 
   // ─── LOGOUT ───
   window._logout = function() {
