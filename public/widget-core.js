@@ -125,6 +125,45 @@ var autoTriggered = false;
 var visitorInteracted = false;
 var conversationLang = "";
 var currentScreen = "home"; /* "home" or "chat" */
+var sessionRestored = false;
+
+/* ─── SESSION PERSISTENCE ───────────────────────────────── */
+var SESSION_KEY = "luna_session";
+function saveSession() {
+  try {
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify({
+      userName: userName,
+      visitorEmail: visitorEmail,
+      marketingConsent: marketingConsent,
+      nameCollected: nameCollected,
+      msgs: msgs,
+      history: history,
+      convId: convId,
+      convStarted: convStarted,
+      conversationLang: conversationLang,
+      currentScreen: currentScreen
+    }));
+  } catch(e) {}
+}
+function restoreSession() {
+  try {
+    var raw = sessionStorage.getItem(SESSION_KEY);
+    if (!raw) return false;
+    var s = JSON.parse(raw);
+    if (!s.convId) return false;
+    userName = s.userName || "";
+    visitorEmail = s.visitorEmail || "";
+    marketingConsent = !!s.marketingConsent;
+    nameCollected = !!s.nameCollected;
+    msgs = s.msgs || [];
+    history = s.history || [];
+    convId = s.convId;
+    convStarted = !!s.convStarted;
+    conversationLang = s.conversationLang || "";
+    currentScreen = s.currentScreen || "home";
+    return true;
+  } catch(e) { return false; }
+}
 
 /* ─── AUTO-TRIGGER HELPERS ───────────────────────────────── */
 function cancelAutoTrigger() {
@@ -507,6 +546,7 @@ function switchToHome() {
   currentScreen = "home";
   document.getElementById("tgxHomeScreen").classList.remove("hidden");
   document.getElementById("tgxChatScreen").classList.add("hidden");
+  saveSession();
 }
 function switchToChat() {
   currentScreen = "chat";
@@ -514,6 +554,7 @@ function switchToChat() {
   document.getElementById("tgxHomeScreen").classList.add("hidden");
   if (msgs.length === 0) startChat();
   setTimeout(function(){ $input.focus(); }, 100);
+  saveSession();
 }
 
 /* ─── HELPERS ────────────────────────────────────────────── */
@@ -544,7 +585,12 @@ function addMsg(role, text, noStore, originalText) {
     var html = text
       .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
       .replace(/\*(.+?)\*/g, "<em>$1</em>")
-      .replace(/\[(.+?)\]\((https?:\/\/.+?)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+      .replace(/\[(.+?)\]\((https?:\/\/.+?)\)/g, function(m, label, url) {
+        if (/dl\.tvllnk\.com|travellinx/i.test(url)) {
+          return '<a href="' + url + '" target="_self" rel="noopener" class="tgx-search-link">' + label + '</a>';
+        }
+        return '<a href="' + url + '" target="_blank" rel="noopener">' + label + '</a>';
+      })
       .replace(/\n/g, "<br>");
     bubble.innerHTML = html;
     col.appendChild(bubble);
@@ -560,7 +606,7 @@ function addMsg(role, text, noStore, originalText) {
     $msgs.appendChild(row);
   }
 
-  if (!noStore) msgs.push({role:role, content:text, original:originalText||null, ts:Date.now()});
+  if (!noStore) { msgs.push({role:role, content:text, original:originalText||null, ts:Date.now()}); saveSession(); }
   scrollBottom();
 
   /* Show email link after 3+ messages */
@@ -652,7 +698,7 @@ function initAbly() {
     console.warn("Luna widget: Ably not available, real-time disabled");
     return;
   }
-  convId = "conv_" + Date.now() + "_" + Math.random().toString(36).substr(2,6);
+  if (!convId) convId = "conv_" + Date.now() + "_" + Math.random().toString(36).substr(2,6);
   ably = new Ably.Realtime({key: C.ablyKey, clientId: "visitor_" + convId});
   dashChannel = ably.channels.get("luna-dashboard");
   chatChannel = ably.channels.get("luna-chat:" + convId);
@@ -810,12 +856,14 @@ function showNameOverlay() {
           body: JSON.stringify({ clientName: C.clientName, name: userName, email: visitorEmail })
         }).catch(function(e){ console.warn("Luna widget: subscribe error:", e); });
       }
+      saveSession();
       ov.remove();
       /* Home screen is already visible underneath — no need to switch */
     }
     document.getElementById("tgxNameGo").addEventListener("click", doSubmit);
     document.getElementById("tgxNameSkip").addEventListener("click", function(){
       userName = ""; visitorEmail = ""; marketingConsent = false; nameCollected = true;
+      saveSession();
       ov.remove();
       /* Home screen is already visible underneath */
     });
@@ -927,6 +975,7 @@ async function callLuna(userText) {
     var reply = data.reply || "Sorry, I'm having trouble connecting right now.";
     history.push({role: "assistant", content: reply});
     if (data.detectedLanguage) conversationLang = data.detectedLanguage;
+    saveSession();
     return data;
   } catch(e) {
     console.error("Luna widget: fetch error:", e.message);
@@ -956,6 +1005,15 @@ async function sendToAI(text) {
   var parsed = parseResponse(data.reply || "");
   addMsg("bot", parsed.body);
   publishMessage("ai", parsed.body);
+
+  /* Auto-redirect for search deep links (same tab) */
+  var deepLinkMatch = (data.reply || "").match(/\[.+?\]\((https?:\/\/(?:dl\.tvllnk\.com|.*travellinx)[^\)]+)\)/i);
+  if (deepLinkMatch) {
+    saveSession();
+    setTimeout(function(){ window.location.href = deepLinkMatch[1]; }, 1500);
+    $input.disabled = false;
+    return;
+  }
 
   if (data.escalate === true) setTimeout(function(){ escalateToHuman(); }, 100);
 
@@ -1054,6 +1112,9 @@ async function boot() {
     if (geoRes.ok) { var geoData = await geoRes.json(); visitorCountry = geoData.country_code || ""; }
   } catch(e) {}
 
+  /* Restore session (name, messages, convId) from previous page */
+  sessionRestored = restoreSession();
+
   injectCSS();
   buildDOM();
 
@@ -1067,6 +1128,17 @@ async function boot() {
   $badge = document.getElementById("tgxBadge");
   $escBar = document.getElementById("tgxEscBar");
   $emailBar = document.getElementById("tgxEmailBar");
+
+  /* Replay stored messages if session was restored */
+  if (sessionRestored && msgs.length > 0) {
+    var storedMsgs = msgs.slice();
+    msgs = []; /* clear so addMsg re-pushes them */
+    storedMsgs.forEach(function(m) { addMsg(m.role, m.content, false, m.original); });
+    if (currentScreen === "chat") {
+      document.getElementById("tgxChatScreen").classList.remove("hidden");
+      document.getElementById("tgxHomeScreen").classList.add("hidden");
+    }
+  }
 
   $send.addEventListener("click", handleSend);
   $input.addEventListener("keydown", function(e){
