@@ -1003,7 +1003,7 @@ module.exports = async function handler(req, res) {
             if (allowedTypes.length > 0) {
             var typeNames = { Packages: 'package holidays', Flights: 'flights', Accommodation: 'hotels/accommodation', DynamicPackaging: 'flight + hotel combos' };
             var typeList = allowedTypes.map(function(t) { return t + ' (' + (typeNames[t] || t) + ')'; }).join(', ');
-            var defaultType = allowedTypes.length === 1 ? allowedTypes[0] : (allowedTypes.includes('Packages') ? 'Packages' : (allowedTypes[0] || 'Packages'));
+            var defaultType = allowedTypes.length === 1 ? allowedTypes[0] : (allowedTypes.includes('DynamicPackaging') ? 'DynamicPackaging' : (allowedTypes[0] || 'DynamicPackaging'));
             var accommOnly = allowedTypes.length === 1 && allowedTypes[0] === 'Accommodation';
 
             systemPrompt += `\n\n## Holiday Search
@@ -1013,7 +1013,7 @@ You can help visitors search for holidays by building a deep link URL. This is o
 ### Search Types Available
 The client has enabled these search types: ${typeList}
 
-Use "${defaultType}" as the default unless the visitor specifically asks for something else (e.g. "just flights" = Flights, "just a hotel" = Accommodation).
+Use "${defaultType}" as the default unless the visitor specifically asks for something else (e.g. "just flights" = Flights, "just a hotel" = Accommodation, "package holiday" = Packages). When someone asks for "a holiday" or "holidays to X", always use DynamicPackaging (flight + hotel).
 
 ### Deep Link URL Templates
 
@@ -1041,7 +1041,7 @@ If the visitor says "London" use LON. If they name a specific London airport, us
 
 **LATITUDE / LONGITUDE** — approximate coordinates of the destination. Use your geographical knowledge. These do not need to be pinpoint accurate, the search uses a radius parameter, so being within a fraction of a degree is fine.
 
-**DATE** — format YYYY-MM-DD. If the visitor says a month without a specific date, use the 15th of that month. If they say "next summer" suggest dates. Always use future dates.
+**DATE** — format YYYY-MM-DD. Today's date is ${new Date().toISOString().split('T')[0]}. ALL dates MUST be in the future. If the visitor asks for a date that has already passed (e.g. "June 2026" but it's now July 2026), use the same month next year. If the visitor says a month without a specific date, use the 15th of that month. If they say "next summer" suggest dates. NEVER generate a URL with a date in the past — always check against today's date before outputting the link.
 
 **NIGHTS** — number of nights. Common options: 3, 4, 5, 7, 10, 14, 21, 28. If the visitor says "a week" use 7. "Two weeks" use 14. "Long weekend" use 3 or 4.
 
