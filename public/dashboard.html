@@ -587,6 +587,71 @@
   .settings-hint {
     font-size:var(--text-xs); color:var(--text-muted); margin-top:var(--space-1); line-height:1.4;
   }
+  /* Sub-tabs */
+  .wst-tab {
+    flex:1; padding:8px 0; border-radius:8px; font-size:12px; font-weight:600;
+    cursor:pointer; border:none; background:transparent; color:var(--text-muted);
+    font-family:var(--font); transition:all 0.15s;
+  }
+  .wst-tab.active {
+    background:var(--navy-deep); color:var(--text); box-shadow:0 1px 3px rgba(0,0,0,0.15);
+  }
+  .wst-tab:hover:not(.active) { color:var(--text-dim); }
+  /* Size silhouettes */
+  .size-card {
+    flex:1; padding:14px 8px 10px; border-radius:8px; cursor:pointer; text-align:center;
+    border:2px solid var(--border); background:var(--navy-mid); transition:all 0.15s;
+    display:flex; flex-direction:column; align-items:center; gap:8px;
+  }
+  .size-card.active { border-color:var(--teal); background:var(--teal-glow); }
+  .size-sil {
+    border:1.5px solid var(--text-muted); border-radius:4px; opacity:0.4; transition:all 0.15s;
+  }
+  .size-card.active .size-sil { border-color:var(--teal); opacity:1; }
+  .size-label { font-size:11px; font-weight:600; color:var(--text-muted); }
+  .size-card.active .size-label { color:var(--teal); }
+  .size-dims { font-size:10px; color:var(--text-muted); opacity:0.6; }
+  .size-card.active .size-dims { opacity:0.8; }
+  /* Capability card editor */
+  .cap-editor-card {
+    display:flex; gap:10px; align-items:flex-start; padding:12px; border-radius:10px;
+    background:var(--navy-mid); border:1px solid var(--border); margin-bottom:8px;
+    transition:border-color 0.15s;
+  }
+  .cap-editor-card:hover { border-color:var(--teal); }
+  .cap-icon-picker {
+    width:40px; height:40px; border-radius:8px; background:var(--teal); display:flex;
+    align-items:center; justify-content:center; cursor:pointer; flex-shrink:0;
+    position:relative; transition:all 0.15s;
+  }
+  .cap-icon-picker:hover { opacity:0.85; }
+  .cap-icon-picker svg { stroke:#fff; fill:none; }
+  .cap-icon-menu {
+    position:absolute; top:44px; left:0; background:var(--navy-deep); border:1px solid var(--border);
+    border-radius:8px; padding:6px; display:none; z-index:5; box-shadow:0 4px 12px rgba(0,0,0,0.3);
+    flex-wrap:wrap; gap:4px; width:140px;
+  }
+  .cap-icon-menu.open { display:flex; }
+  .cap-icon-opt {
+    width:32px; height:32px; border-radius:6px; display:flex; align-items:center; justify-content:center;
+    cursor:pointer; border:1.5px solid transparent; transition:all 0.1s;
+  }
+  .cap-icon-opt:hover { background:var(--navy-mid); border-color:var(--teal); }
+  .cap-icon-opt svg { stroke:var(--text); fill:none; }
+  .cap-fields { flex:1; display:flex; flex-direction:column; gap:6px; }
+  .cap-fields input {
+    width:100%; padding:7px 10px; border-radius:6px; border:1px solid var(--border);
+    background:var(--navy-deep); color:var(--text); font-size:12px; font-family:var(--font);
+    outline:none; transition:border-color 0.15s;
+  }
+  .cap-fields input:focus { border-color:var(--teal); }
+  .cap-fields input::placeholder { color:var(--text-muted); }
+  .cap-remove {
+    width:28px; height:28px; border-radius:6px; background:none; border:1px solid transparent;
+    cursor:pointer; display:flex; align-items:center; justify-content:center;
+    color:var(--text-muted); transition:all 0.15s; flex-shrink:0; margin-top:6px;
+  }
+  .cap-remove:hover { border-color:var(--red); color:var(--red); background:rgba(239,68,68,0.08); }
   .analytics-title { font-size:var(--text-xl); font-weight:700; margin-bottom:var(--space-1); }
   .analytics-sub { font-size:var(--text-sm); color:var(--text-dim); margin-bottom:var(--space-6); }
 
@@ -1038,6 +1103,16 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     <div class="settings-title">Widget Appearance</div>
     <div class="settings-sub">Customise how the chat widget looks on your website. Changes take effect within a minute.</div>
 
+    <!-- Sub-tabs -->
+    <div style="display:flex;gap:4px;margin:16px 0 20px;background:var(--navy-mid);border-radius:10px;padding:3px" id="widgetSubTabs">
+      <button class="wst-tab active" onclick="window._switchWidgetTab('appearance')" data-tab="appearance">Appearance</button>
+      <button class="wst-tab" onclick="window._switchWidgetTab('content')" data-tab="content">Content</button>
+      <button class="wst-tab" onclick="window._switchWidgetTab('advanced')" data-tab="advanced">Advanced</button>
+    </div>
+
+    <!-- ═══ APPEARANCE TAB ═══ -->
+    <div class="wst-panel" id="wstAppearance">
+
     <div class="settings-section">
       <h4>Brand Colour</h4>
       <div class="settings-hint" style="margin-bottom:8px">Your primary colour — used for the header, FAB button, and user message bubbles.</div>
@@ -1066,8 +1141,8 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     </div>
 
     <div class="settings-section">
-      <h4>Size</h4>
-      <div style="display:flex;gap:8px" id="sizeGrid"></div>
+      <h4>Widget Size</h4>
+      <div style="display:flex;gap:10px" id="sizeGrid"></div>
     </div>
 
     <div class="settings-section">
@@ -1083,10 +1158,100 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     </div>
 
     <div class="settings-section">
+      <h4>Chat Identity</h4>
+      <div class="settings-row">
+        <label class="settings-label">Bot Name</label>
+        <input class="settings-input" id="setBotName" placeholder="Luna AI" value="Luna AI">
+      </div>
+      <div class="settings-row">
+        <label class="settings-label">Tagline</label>
+        <input class="settings-input" id="setTagline" placeholder="AI ASSISTANT">
+        <div class="settings-hint">Subtitle shown under the bot name. e.g. "Your travel expert", "AI ASSISTANT"</div>
+      </div>
+      <div class="settings-row">
+        <label class="settings-label">Fallback Letter</label>
+        <input class="settings-input" id="setLogoText" placeholder="L" maxlength="2" style="width:60px;text-align:center;font-weight:700" oninput="window._updateAvatarPreview()">
+        <div class="settings-hint">Shown when no profile image is set. 1-2 characters.</div>
+      </div>
+      <div class="settings-row">
+        <label class="settings-label">Profile Image</label>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div id="avatarPreview" style="width:48px;height:48px;border-radius:12px;background:var(--teal);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:20px;overflow:hidden;flex-shrink:0;border:1px solid var(--border)">L</div>
+          <div style="flex:1">
+            <input class="settings-input" id="setProfileImage" placeholder="https://yoursite.com/logo.png" oninput="window._updateAvatarPreview()">
+            <div class="settings-hint">Appears in the header and beside bot messages. Square image, PNG or SVG.</div>
+          </div>
+        </div>
+      </div>
+      <div class="settings-row">
+        <label class="settings-label">Custom FAB Icon</label>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div id="fabPreview" style="width:48px;height:48px;border-radius:50%;background:var(--teal);display:flex;align-items:center;justify-content:center;flex-shrink:0;border:1px solid var(--border);overflow:hidden">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <div style="flex:1">
+            <input class="settings-input" id="setBubbleIcon" placeholder="https://yoursite.com/chat-icon.svg" oninput="window._updateFabPreview()">
+            <div class="settings-hint">Replaces the default chat icon in the floating button. PNG or SVG, 28×28px.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    </div><!-- end appearance tab -->
+
+    <!-- ═══ CONTENT TAB ═══ -->
+    <div class="wst-panel" id="wstContent" style="display:none">
+
+    <div class="settings-section">
+      <h4>Welcome Message</h4>
+      <div class="settings-row">
+        <input class="settings-input" id="setWelcome" placeholder="Hey there! How can we help you today?">
+        <div class="settings-hint">Shown in the home screen header when visitors open the widget.</div>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h4>Quick Starters</h4>
+      <div class="settings-hint" style="margin-bottom:8px">These appear as tappable pills on the home screen. Use prompts that show what your bot can do.</div>
+      <textarea class="settings-textarea" id="setHints" placeholder="All-inclusive under £800&#10;Best Greek islands for families&#10;Last-minute deals&#10;Do you do Maldives?" rows="4"></textarea>
+      <div class="settings-hint" style="margin-top:4px">One per line. Maximum 8.</div>
+    </div>
+
+    <div class="settings-section">
+      <h4>Home Screen Cards</h4>
+      <div class="settings-hint" style="margin-bottom:10px">The three capability cards on the home screen. Each card has an icon, title, and description. Leave empty to use defaults (holiday search cards).</div>
+      <div id="capCardsEditor"></div>
+      <button onclick="window._addCapCard()" id="addCapCardBtn" style="margin-top:8px;padding:8px 14px;border-radius:8px;background:var(--navy-mid);border:1px dashed var(--border);color:var(--text-muted);font-size:12px;font-weight:500;cursor:pointer;width:100%;text-align:center;transition:all .15s">+ Add card</button>
+    </div>
+
+    <div class="settings-section">
+      <h4>Name Collection</h4>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="setCollectName" checked style="width:18px;height:18px;accent-color:var(--teal)">
+        <span style="font-size:13px">Ask for name and email before starting chat</span>
+      </label>
+      <div class="settings-hint" style="margin-top:6px">When enabled, visitors see a name/email form before the home screen.</div>
+    </div>
+
+    <div class="settings-section">
       <h4>Holiday Search Types</h4>
       <div class="settings-hint" style="margin-bottom:8px">Select which search types Luna can offer visitors. You must select at least one for the holiday search feature to work.</div>
       <div style="display:flex;flex-wrap:wrap;gap:8px" id="searchTypesGrid"></div>
     </div>
+
+    <div class="settings-section">
+      <h4>Privacy Policy</h4>
+      <div class="settings-row">
+        <label class="settings-label">Privacy Policy URL</label>
+        <input class="settings-input" id="setPrivacyUrl" placeholder="https://yoursite.com/privacy-policy">
+        <div class="settings-hint">A link to your privacy policy. Shown at the bottom of the chat sign-in screen.</div>
+      </div>
+    </div>
+
+    </div><!-- end content tab -->
+
+    <!-- ═══ ADVANCED TAB ═══ -->
+    <div class="wst-panel" id="wstAdvanced" style="display:none">
 
     <div class="settings-section">
       <h4>Auto-Trigger</h4>
@@ -1106,63 +1271,6 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
         <label class="settings-label">Trigger Message</label>
         <input class="settings-input" id="setAutoTriggerMessage" placeholder="Hi there! I noticed you've been browsing. Can I help you find anything?">
         <div class="settings-hint">The message Luna displays when the chat auto-opens. Make it relevant and helpful.</div>
-      </div>
-    </div>
-
-    <div class="settings-section">
-      <h4>Chat Identity</h4>
-      <div class="settings-row">
-        <label class="settings-label">Bot Name</label>
-        <input class="settings-input" id="setBotName" placeholder="Luna AI" value="Luna AI">
-      </div>
-      <div class="settings-row">
-        <label class="settings-label">Tagline</label>
-        <input class="settings-input" id="setTagline" placeholder="AI ASSISTANT">
-        <div class="settings-hint">Subtitle shown under the bot name. e.g. "Your travel expert", "AI ASSISTANT"</div>
-      </div>
-      <div class="settings-row">
-        <label class="settings-label">Fallback Letter</label>
-        <input class="settings-input" id="setLogoText" placeholder="L" maxlength="2" style="width:60px;text-align:center;font-weight:700">
-        <div class="settings-hint">Shown when no profile image is set. 1-2 characters.</div>
-      </div>
-      <div class="settings-row">
-        <label class="settings-label">Profile Image URL</label>
-        <input class="settings-input" id="setProfileImage" placeholder="https://yoursite.com/logo.png">
-        <div class="settings-hint">Appears in the header and beside bot messages. Square image, PNG or SVG.</div>
-      </div>
-      <div class="settings-row">
-        <label class="settings-label">Custom FAB Icon URL</label>
-        <input class="settings-input" id="setBubbleIcon" placeholder="https://yoursite.com/chat-icon.svg">
-        <div class="settings-hint">Replaces the default chat icon in the floating button. PNG or SVG, 28×28px.</div>
-      </div>
-    </div>
-
-    <div class="settings-section">
-      <h4>Content</h4>
-      <div class="settings-row">
-        <label class="settings-label">Welcome Message</label>
-        <input class="settings-input" id="setWelcome" placeholder="Hey there! How can we help you today?">
-      </div>
-      <div class="settings-row">
-        <label class="settings-label">Quick Starters (one per line)</label>
-        <textarea class="settings-textarea" id="setHints" placeholder="All-inclusive under £800&#10;Best Greek islands for families&#10;Last-minute deals&#10;Do you do Maldives?" rows="4"></textarea>
-        <div class="settings-hint">These appear as tappable pills on the home screen. Use travel-specific prompts that show what Luna can do.</div>
-      </div>
-      <div class="settings-row">
-        <label class="settings-label">Name Collection</label>
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:4px">
-          <input type="checkbox" id="setCollectName" checked style="width:18px;height:18px;accent-color:var(--teal)">
-          <span style="font-size:13px">Ask for name and email before starting chat</span>
-        </label>
-      </div>
-    </div>
-
-    <div class="settings-section">
-      <h4>Privacy Policy</h4>
-      <div class="settings-row">
-        <label class="settings-label">Privacy Policy URL</label>
-        <input class="settings-input" id="setPrivacyUrl" placeholder="https://yoursite.com/privacy-policy">
-        <div class="settings-hint">A link to your privacy policy. Shown at the bottom of the chat sign-in screen.</div>
       </div>
     </div>
 
@@ -1204,6 +1312,8 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
         </div>
       </div>
     </div>
+
+    </div><!-- end advanced tab -->
 
     <div>
       <button class="settings-save" onclick="window._saveSettings()">Save Appearance</button>
@@ -2599,13 +2709,124 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
   }
 
   function renderSizeGrid() {
-    const el = document.getElementById('sizeGrid');
+    var el = document.getElementById('sizeGrid');
+    var dims = { small: { w: 22, h: 28, pw: '340', ph: '480' }, medium: { w: 26, h: 34, pw: '380', ph: '560' }, large: { w: 30, h: 40, pw: '420', ph: '640' } };
     el.innerHTML = Object.entries(WIDGET_SIZES).map(([k, label]) => {
-      const active = selectedSize === k;
-      return '<div onclick="window._selectSize(\'' + k + '\')" style="flex:1;padding:12px;border-radius:8px;cursor:pointer;text-align:center;border:2px solid ' + (active ? 'var(--teal)' : 'var(--border)') + ';background:' + (active ? 'var(--teal-glow)' : 'var(--navy-mid)') + '">'
-        + '<div style="font-size:var(--text-sm);font-weight:600;color:' + (active ? 'var(--teal)' : 'var(--text)') + '">' + label + '</div></div>';
+      var active = selectedSize === k;
+      var d = dims[k];
+      return '<div onclick="window._selectSize(\'' + k + '\')" class="size-card' + (active ? ' active' : '') + '">'
+        + '<div class="size-sil" style="width:' + d.w + 'px;height:' + d.h + 'px"></div>'
+        + '<div class="size-label">' + label + '</div>'
+        + '<div class="size-dims">' + d.pw + '×' + d.ph + '</div>'
+        + '</div>';
     }).join('');
   }
+
+  /* ── Tab switching ── */
+  window._switchWidgetTab = function(tab) {
+    ['appearance', 'content', 'advanced'].forEach(function(t) {
+      var panel = document.getElementById('wst' + t.charAt(0).toUpperCase() + t.slice(1));
+      if (panel) panel.style.display = t === tab ? 'block' : 'none';
+    });
+    document.querySelectorAll('.wst-tab').forEach(function(btn) {
+      btn.classList.toggle('active', btn.getAttribute('data-tab') === tab);
+    });
+  };
+
+  /* ── Avatar preview ── */
+  window._updateAvatarPreview = function() {
+    var url = document.getElementById('setProfileImage').value.trim();
+    var letter = document.getElementById('setLogoText').value || 'L';
+    var el = document.getElementById('avatarPreview');
+    if (url) {
+      el.innerHTML = '<img src="' + url + '" alt="" style="width:100%;height:100%;object-fit:cover">';
+    } else {
+      el.textContent = letter;
+      el.style.background = selectedBrandColor || 'var(--teal)';
+    }
+  };
+
+  /* ── FAB preview ── */
+  window._updateFabPreview = function() {
+    var url = document.getElementById('setBubbleIcon').value.trim();
+    var el = document.getElementById('fabPreview');
+    el.style.background = selectedBrandColor || 'var(--teal)';
+    if (url) {
+      el.innerHTML = '<img src="' + url + '" alt="" style="width:28px;height:28px;object-fit:contain">';
+    } else {
+      el.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+    }
+  };
+
+  /* ── Capability Cards Editor ── */
+  var CAP_ICONS = {
+    plane: '<path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2Z"/>',
+    compass: '<circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>',
+    helpCircle: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
+    star: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
+    monitor: '<rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>',
+    chat: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+    search: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>'
+  };
+  function capIconSvg(name, size) {
+    return '<svg width="'+(size||18)+'" height="'+(size||18)+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">'+(CAP_ICONS[name]||CAP_ICONS.helpCircle)+'</svg>';
+  }
+
+  var capCards = [];
+
+  function renderCapCards() {
+    var el = document.getElementById('capCardsEditor');
+    if (!capCards.length) {
+      el.innerHTML = '<div style="padding:12px;border-radius:8px;background:var(--navy-mid);border:1px dashed var(--border);color:var(--text-muted);font-size:12px;text-align:center">No custom cards. Default holiday search cards will be used.</div>';
+      document.getElementById('addCapCardBtn').style.display = capCards.length >= 4 ? 'none' : '';
+      return;
+    }
+    el.innerHTML = capCards.map(function(card, idx) {
+      return '<div class="cap-editor-card" data-idx="' + idx + '">'
+        + '<div class="cap-icon-picker" onclick="window._toggleIconMenu(' + idx + ')" style="background:' + (selectedBrandColor || 'var(--teal)') + '">' + capIconSvg(card.icon, 18) + '<div class="cap-icon-menu" id="capIconMenu' + idx + '">'
+        + Object.keys(CAP_ICONS).map(function(ic) {
+            return '<div class="cap-icon-opt" onclick="event.stopPropagation();window._setCapIcon(' + idx + ',\'' + ic + '\')">' + capIconSvg(ic, 16) + '</div>';
+          }).join('')
+        + '</div></div>'
+        + '<div class="cap-fields">'
+        + '<input type="text" value="' + (card.title || '').replace(/"/g, '&quot;') + '" placeholder="Card title" onchange="window._updateCapCard(' + idx + ',\'title\',this.value)">'
+        + '<input type="text" value="' + (card.desc || '').replace(/"/g, '&quot;') + '" placeholder="Description" onchange="window._updateCapCard(' + idx + ',\'desc\',this.value)">'
+        + '</div>'
+        + '<button class="cap-remove" onclick="window._removeCapCard(' + idx + ')" title="Remove card">'
+        + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'
+        + '</button></div>';
+    }).join('');
+    document.getElementById('addCapCardBtn').style.display = capCards.length >= 4 ? 'none' : '';
+  }
+
+  window._addCapCard = function() {
+    if (capCards.length >= 4) return;
+    capCards.push({ icon: 'helpCircle', title: '', desc: '' });
+    renderCapCards();
+  };
+  window._removeCapCard = function(idx) {
+    capCards.splice(idx, 1);
+    renderCapCards();
+  };
+  window._updateCapCard = function(idx, field, value) {
+    if (capCards[idx]) capCards[idx][field] = value;
+  };
+  window._toggleIconMenu = function(idx) {
+    var menu = document.getElementById('capIconMenu' + idx);
+    document.querySelectorAll('.cap-icon-menu.open').forEach(function(m) { if (m !== menu) m.classList.remove('open'); });
+    menu.classList.toggle('open');
+  };
+  window._setCapIcon = function(idx, icon) {
+    if (capCards[idx]) capCards[idx].icon = icon;
+    document.querySelectorAll('.cap-icon-menu.open').forEach(function(m) { m.classList.remove('open'); });
+    renderCapCards();
+  };
+  // Close icon menus on click outside
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('.cap-icon-picker')) {
+      document.querySelectorAll('.cap-icon-menu.open').forEach(function(m) { m.classList.remove('open'); });
+    }
+  });
 
   window._selectThemeMode = function(m) { selectedThemeMode = m; renderThemeModeGrid(); };
   window._selectSize = function(s) { selectedSize = s; renderSizeGrid(); };
@@ -2744,6 +2965,16 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       document.getElementById('setLogoText').value = p.logoText || 'L';
       document.getElementById('setBubbleIcon').value = p.bubbleIcon || '';
 
+      // Capability cards
+      if (p.capabilityCards) {
+        try {
+          var parsed = typeof p.capabilityCards === 'string' ? JSON.parse(p.capabilityCards) : p.capabilityCards;
+          if (Array.isArray(parsed)) capCards = parsed;
+        } catch(e) { capCards = []; }
+      } else {
+        capCards = [];
+      }
+
       // Privacy, multilingual, email
       document.getElementById('setPrivacyUrl').value = p.privacyPolicyUrl || '';
       selectedEmailPlatform = p.emailPlatform || 'none';
@@ -2761,6 +2992,9 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       renderMobileBubbleGrid();
       renderSearchTypesGrid();
       renderEmailPlatformGrid();
+      renderCapCards();
+      window._updateAvatarPreview();
+      window._updateFabPreview();
       profileLoaded = true;
     } catch (e) {
       console.warn('Profile load error:', e.message);
@@ -2809,7 +3043,8 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
           collectName: document.getElementById('setCollectName').checked,
           profileImage: document.getElementById('setProfileImage').value,
           logoText: document.getElementById('setLogoText').value,
-          bubbleIcon: document.getElementById('setBubbleIcon').value
+          bubbleIcon: document.getElementById('setBubbleIcon').value,
+          capabilityCards: capCards.length > 0 ? JSON.stringify(capCards) : ''
         })
       });
       if (!res.ok) throw new Error('Save failed: ' + res.status);
@@ -2829,6 +3064,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
   renderMobileBubbleGrid();
   renderSearchTypesGrid();
   renderEmailPlatformGrid();
+  renderCapCards();
 
   // ─── LOGOUT ───
   window._logout = function() {
