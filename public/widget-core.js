@@ -591,6 +591,7 @@ function addMsg(role, text, noStore, originalText) {
         }
         return '<a href="' + url + '" target="_blank" rel="noopener">' + label + '</a>';
       })
+      .replace(/(^|[^"(])(https?:\/\/dl\.tvllnk\.com[^\s<>")\]]+)/gi, '$1<a href="$2" target="_self" rel="noopener" class="tgx-search-link">Click here to view results</a>')
       .replace(/\n/g, "<br>");
     bubble.innerHTML = html;
     col.appendChild(bubble);
@@ -1007,7 +1008,7 @@ async function sendToAI(text) {
   publishMessage("ai", parsed.body);
 
   /* Auto-redirect for search deep links (same tab) */
-  var deepLinkMatch = (data.reply || "").match(/\[.+?\]\((https?:\/\/(?:dl\.tvllnk\.com|.*travellinx)[^\)]+)\)/i);
+  var deepLinkMatch = (data.reply || "").match(/(https?:\/\/dl\.tvllnk\.com[^\s\)\]"<>]+)/i);
   if (deepLinkMatch) {
     saveSession();
     setTimeout(function(){ window.location.href = deepLinkMatch[1]; }, 1500);
