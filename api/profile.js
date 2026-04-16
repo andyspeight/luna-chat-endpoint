@@ -78,6 +78,8 @@ module.exports = async function handler(req, res) {
           fabPosition: fields.FabPosition || '',
           collectName: fields.CollectName !== undefined ? !!fields.CollectName : true,
           capabilityCards: fields.CapabilityCards || '',
+          businessType: fields.BusinessType ? (typeof fields.BusinessType === 'object' ? fields.BusinessType.name : fields.BusinessType) : '',
+          businessTypes: Array.isArray(fields.BusinessTypes) ? fields.BusinessTypes.map(function(t) { return typeof t === 'object' ? t.name : t; }) : [],
           searchTypes: Array.isArray(fields.SearchTypes) ? fields.SearchTypes.map(function(t) { return typeof t === 'object' ? t.name : t; }) : [],
           autoTriggerEnabled: !!fields.AutoTriggerEnabled,
           autoTriggerDelay: fields.AutoTriggerDelay || 30,
@@ -133,6 +135,8 @@ module.exports = async function handler(req, res) {
       if (body.fabPosition !== undefined) updateFields.FabPosition = body.fabPosition;
       if (body.collectName !== undefined) updateFields.CollectName = !!body.collectName;
       if (body.capabilityCards !== undefined) updateFields.CapabilityCards = body.capabilityCards;
+      if (body.businessType !== undefined) updateFields.BusinessType = body.businessType;
+      if (body.businessTypes !== undefined) updateFields.BusinessTypes = body.businessTypes;
       if (body.searchTypes !== undefined) updateFields.SearchTypes = body.searchTypes;
       if (body.autoTriggerEnabled !== undefined) updateFields.AutoTriggerEnabled = body.autoTriggerEnabled;
       if (body.autoTriggerDelay !== undefined) updateFields.AutoTriggerDelay = parseInt(body.autoTriggerDelay) || 30;
