@@ -1038,28 +1038,18 @@ function sendToAgent(text) {
 /* ─── ESCALATE TO HUMAN ─────────────────────────────────── */
 async function escalateToHuman() {
   if (liveMode) return;
-  addMsg("system", "Connecting you to our team...");
-  ensureConversationStarted();
-  publishHandlerChange("waiting");
-
-  if (C.airtableKey && C.airtableBase && C.convTable) {
-    try {
-      var searchUrl = "https://api.airtable.com/v0/"+C.airtableBase+"/"+C.convTable+"?filterByFormula="+encodeURIComponent("{ConversationID}='"+convId+"'")+"&maxRecords=1";
-      var sRes = await fetch(searchUrl, {headers:{"Authorization":"Bearer "+C.airtableKey}});
-      var sData = await sRes.json();
-      if (sData.records && sData.records.length > 0) {
-        await fetch("https://api.airtable.com/v0/"+C.airtableBase+"/"+C.convTable+"/"+sData.records[0].id, {
-          method:"PATCH",
-          headers:{"Authorization":"Bearer "+C.airtableKey,"Content-Type":"application/json"},
-          body:JSON.stringify({fields:{"fldYdZq59FCpKQ7Hf":"Waiting"},typecast:true})
-        });
-      }
-    } catch(e) { console.warn("Airtable escalation error:", e); }
-  }
-
-  liveMode = true;
-  $escBar.classList.remove("active");
-  addMsg("system", "You're in the queue. An agent will be with you shortly.");
+  if (currentScreen !== "chat") switchToChat();
+  clearPills();
+  addMsg("system", "Sorry, there are no agents available right now. You can leave us a message and we'll get back to you, or you can carry on chatting with " + C.name + ".");
+  showPills(["Leave a message", "Continue chatting"], function(choice) {
+    if (choice === "Leave a message") {
+      showLeaveOverlay();
+    } else {
+      clearPills();
+      addMsg("system", "No problem! I'm still here to help. What can I do for you?");
+      $input.focus();
+    }
+  });
 }
 
 /* ─── START CHAT ─────────────────────────────────────────── */
