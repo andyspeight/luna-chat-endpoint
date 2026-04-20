@@ -4,6 +4,7 @@
 
 const dns = require('dns').promises;
 const net = require('net');
+const ratelimit = require('../lib/ratelimit');
 
 // ── SSRF PROTECTION ─────────────────────────────────────────
 // Block private, loopback, link-local, and cloud metadata addresses.
@@ -174,20 +175,8 @@ async function safeFetchWithRedirects(startUrl, fetchOptions, maxHops) {
 }
 
 // ── RATE LIMITING ──────────────────────────────────────────
-// Scanning is expensive (external fetch + processing). In-memory per-client limit.
-// Lives for the life of the serverless instance; a full rate limiter needs Upstash (fix 6).
-var scanRequests = {};
-var SCAN_RL_WINDOW = 60 * 1000;   // 1 minute
-var SCAN_RL_MAX = 10;             // 10 scans per minute per client
-
-function checkScanRateLimit(clientKey) {
-  var now = Date.now();
-  if (!scanRequests[clientKey]) scanRequests[clientKey] = [];
-  scanRequests[clientKey] = scanRequests[clientKey].filter(function(t) { return now - t < SCAN_RL_WINDOW; });
-  if (scanRequests[clientKey].length >= SCAN_RL_MAX) return false;
-  scanRequests[clientKey].push(now);
-  return true;
-}
+// Scanning is expensive (external fetch + processing).
+// Upstash-backed: per-IP + per-client, survives cold starts.
 
 module.exports = async function handler(req, res) {
   // CORS
@@ -207,8 +196,16 @@ module.exports = async function handler(req, res) {
     return res.status(401).json({ error: 'Missing authentication headers' });
   }
 
-  // Rate limit per client
-  if (!checkScanRateLimit(clientName)) {
+  // Rate limit: per-IP + per-client (fails open on Redis error)
+  var rlResult = await ratelimit.checkIpAndKey(req, {
+    ipKey: 'scan-page',
+    ipMax: 20,            // 20 scans/min/IP
+    ipWindowSecs: 60,
+    keyKey: 'scan-page:client:' + clientName,
+    keyMax: 10,           // 10 scans/min/client
+    keyWindowSecs: 60
+  });
+  if (!rlResult.allowed) {
     return res.status(429).json({
       success: false,
       error: 'Too many scan requests. Please wait a minute and try again.'
