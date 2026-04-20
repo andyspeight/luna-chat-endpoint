@@ -8,6 +8,22 @@ const AT_TABLE = 'tbl6CZ7aVzq1wHF2v';
 const ADMIN_PASS = process.env.ADMIN_PASSWORD || 'travelgenix2026';
 const VERCEL_HOST = 'luna-chat-endpoint.vercel.app';
 
+// CORS allowlist — only our own Vercel deploy can call the authenticated routes.
+// Add custom client domains here if/when they start using them.
+const ALLOWED_ORIGINS = [
+  'https://luna-chat-endpoint.vercel.app'
+];
+
+function applyCors(req, res) {
+  var origin = req.headers.origin;
+  if (origin && ALLOWED_ORIGINS.indexOf(origin) !== -1) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Admin-Pass');
+}
+
 // Timing-safe string comparison — prevents timing attacks on password comparison.
 // Returns false immediately for wrong-length inputs (safe: length is not secret).
 function safeCompare(a, b) {
@@ -21,9 +37,7 @@ function safeCompare(a, b) {
 }
 
 module.exports = async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Admin-Pass');
+  applyCors(req, res);
   res.setHeader('X-Content-Type-Options', 'nosniff');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
