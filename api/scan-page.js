@@ -1,121 +1,64 @@
-// api/scan-page.js
-// Fetches a webpage URL and extracts clean text content for Luna's knowledge base
-// Called by the dashboard Settings > Train Luna feature
+// Luna Widget Legacy Loader
+// ═══════════════════════════════════════════════════════════════════
+// This file used to serve an older, insecure copy of the Luna widget.
+// It has been replaced with a loader that redirects to the current
+// secure widget (/widget-core.js) so any legacy embed code still works.
+//
+// The old widget contained a hardcoded Ably root key and XSS
+// vulnerabilities. Any embed code still pointing at this path will
+// now load the secure version transparently.
+//
+// DO NOT add widget logic back to this file.
+// All widget development happens in /public/widget-core.js.
+// ═══════════════════════════════════════════════════════════════════
 
-export default async function handler(req, res) {
-  // CORS
+module.exports = async function handler(req, res) {
+  // Security headers
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+
+  // CORS — widget can be loaded from any client site
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Client-Name, X-Client-Pass');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+
   if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
-  const clientName = req.headers['x-client-name'];
-  const clientPass = req.headers['x-client-pass'];
-  const { url } = req.body || {};
+  // Preserve any data-* attributes from the original embed by passing
+  // through the full query string. The browser's <script> tag won't forward
+  // query params, but if anyone is calling this via fetch() they'll still get
+  // the right response.
+  var qs = req.url.indexOf('?');
+  var queryString = qs >= 0 ? req.url.slice(qs) : '';
 
-  if (!clientName || !clientPass) {
-    return res.status(401).json({ error: 'Missing authentication headers' });
-  }
+  // Build the target URL. Use the same host the request came to, so it works
+  // whether we're on luna-chat-endpoint.vercel.app, a preview deploy, or a
+  // custom domain.
+  var host = req.headers.host || 'luna-chat-endpoint.vercel.app';
+  var protocol = req.headers['x-forwarded-proto'] || 'https';
+  var targetUrl = protocol + '://' + host + '/widget-core.js' + queryString;
 
-  if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) {
-    return res.status(400).json({ error: 'Invalid URL. Must start with http:// or https://' });
-  }
+  // Shim approach: serve a tiny JS stub that injects the real widget script.
+  // We do this instead of a 301 redirect because a <script src="..."> tag
+  // does follow redirects, but we want to be extra safe — some older browsers
+  // and some proxies handle script-tag redirects inconsistently. A stub
+  // guarantees the real widget loads cleanly.
+  var stub = '(function(){'
+    + 'var s=document.createElement("script");'
+    + 's.src=' + JSON.stringify(targetUrl) + ';'
+    + 's.async=true;'
+    // Forward any data-* attributes from the original <script> tag
+    + 'var old=document.currentScript||document.querySelector(\'script[src*="widget.js"]\');'
+    + 'if(old&&old.attributes){'
+    + 'for(var i=0;i<old.attributes.length;i++){'
+    + 'var a=old.attributes[i];'
+    + 'if(a.name.indexOf("data-")===0)s.setAttribute(a.name,a.value);'
+    + '}'
+    + '}'
+    + 'document.head.appendChild(s);'
+    + '})();';
 
-  try {
-    // Fetch the page
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; LunaBot/1.0; +https://travelgenix.io)',
-        'Accept': 'text/html,application/xhtml+xml',
-        'Accept-Language': 'en-GB,en;q=0.9',
-      },
-      redirect: 'follow',
-      signal: AbortSignal.timeout(15000), // 15 second timeout
-    });
-
-    if (!response.ok) {
-      return res.status(200).json({
-        success: false,
-        error: `Page returned ${response.status} ${response.statusText}`
-      });
-    }
-
-    const contentType = response.headers.get('content-type') || '';
-    if (!contentType.includes('text/html') && !contentType.includes('text/plain')) {
-      return res.status(200).json({
-        success: false,
-        error: 'Not an HTML page (got ' + contentType.split(';')[0] + ')'
-      });
-    }
-
-    const html = await response.text();
-
-    // Extract title
-    const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
-    const title = titleMatch ? titleMatch[1].trim().replace(/\s+/g, ' ') : '';
-
-    // Extract clean text content
-    let content = html;
-
-    // Remove script, style, nav, footer, header tags and their content
-    content = content.replace(/<script[\s\S]*?<\/script>/gi, ' ');
-    content = content.replace(/<style[\s\S]*?<\/style>/gi, ' ');
-    content = content.replace(/<nav[\s\S]*?<\/nav>/gi, ' ');
-    content = content.replace(/<footer[\s\S]*?<\/footer>/gi, ' ');
-    content = content.replace(/<header[\s\S]*?<\/header>/gi, ' ');
-    content = content.replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ');
-    content = content.replace(/<iframe[\s\S]*?<\/iframe>/gi, ' ');
-    content = content.replace(/<svg[\s\S]*?<\/svg>/gi, ' ');
-
-    // Remove all remaining HTML tags
-    content = content.replace(/<[^>]+>/g, ' ');
-
-    // Decode HTML entities
-    content = content.replace(/&amp;/g, '&');
-    content = content.replace(/&lt;/g, '<');
-    content = content.replace(/&gt;/g, '>');
-    content = content.replace(/&quot;/g, '"');
-    content = content.replace(/&#39;/g, "'");
-    content = content.replace(/&nbsp;/g, ' ');
-    content = content.replace(/&#\d+;/g, ' ');
-    content = content.replace(/&\w+;/g, ' ');
-
-    // Clean up whitespace
-    content = content.replace(/\s+/g, ' ').trim();
-
-    // Remove very short content (likely just boilerplate)
-    if (content.length < 50) {
-      return res.status(200).json({
-        success: false,
-        error: 'Page has very little readable content (' + content.length + ' chars)'
-      });
-    }
-
-    // Truncate very long pages to keep token budget reasonable
-    // ~15,000 chars ≈ ~3,500 tokens — enough to capture the page's key content
-    const maxChars = 15000;
-    if (content.length > maxChars) {
-      content = content.slice(0, maxChars) + '... [truncated]';
-    }
-
-    return res.status(200).json({
-      success: true,
-      url: url,
-      title: title || url,
-      content: content,
-      charCount: content.length,
-      wordCount: content.split(/\s+/).length,
-    });
-
-  } catch (e) {
-    const msg = e.name === 'TimeoutError' || e.name === 'AbortError'
-      ? 'Page took too long to respond (15s timeout)'
-      : e.message || 'Unknown error';
-
-    return res.status(200).json({
-      success: false,
-      error: msg
-    });
-  }
-}
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=3600'); // 1 hour — short so we can update the stub if needed
+  return res.status(200).send(stub);
+};
