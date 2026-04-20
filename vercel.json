@@ -6,6 +6,30 @@
     "api/clients.js": { "maxDuration": 10, "memory": 128 },
     "api/profile.js": { "maxDuration": 10, "memory": 128 },
     "api/auth.js": { "maxDuration": 10, "memory": 128 },
-    "api/widget-config.js": { "maxDuration": 10, "memory": 128 }
-  }
+    "api/widget-config.js": { "maxDuration": 10, "memory": 128 },
+    "api/ably-token.js": { "maxDuration": 5, "memory": 128 }
+  },
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Strict-Transport-Security", "value": "max-age=31536000; includeSubDomains" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" }
+      ]
+    },
+    {
+      "source": "/dashboard.html",
+      "headers": [
+        { "key": "X-Frame-Options", "value": "SAMEORIGIN" }
+      ]
+    },
+    {
+      "source": "/onboard.html",
+      "headers": [
+        { "key": "X-Frame-Options", "value": "SAMEORIGIN" }
+      ]
+    }
+  ]
 }
