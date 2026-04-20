@@ -10,27 +10,10 @@
 //   luna-dashboard    — subscribe only (to hear dashboard events about this convo)
 //   luna-agents       — subscribe only (presence checks)
 
+const ratelimit = require('../lib/ratelimit');
+
 const AT_BASE = 'app6Ot3eOb3DangkB';
 const AT_TABLE = 'tbl6CZ7aVzq1wHF2v';
-
-// In-memory per-IP counter to limit token requests (primary limiter is still Upstash once wired)
-const tokenRequests = {};
-const TOKEN_RL_WINDOW = 60_000;  // 1 minute
-const TOKEN_RL_MAX = 10;         // 10 token requests per IP per minute
-
-function getClientIp(req) {
-  var fwd = (req.headers['x-forwarded-for'] || '').split(',')[0].trim();
-  return fwd || req.headers['x-real-ip'] || req.socket?.remoteAddress || 'unknown';
-}
-
-function checkIpRateLimit(ip) {
-  var now = Date.now();
-  if (!tokenRequests[ip]) tokenRequests[ip] = [];
-  tokenRequests[ip] = tokenRequests[ip].filter(function(t) { return now - t < TOKEN_RL_WINDOW; });
-  if (tokenRequests[ip].length >= TOKEN_RL_MAX) return false;
-  tokenRequests[ip].push(now);
-  return true;
-}
 
 function isValidConvId(id) {
   // convId format from widget: conv_{timestamp}_{6 random chars}
@@ -55,9 +38,13 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  // Rate limit per IP
-  var ip = getClientIp(req);
-  if (!checkIpRateLimit(ip)) {
+  // Rate limit per IP — Upstash-backed, survives cold starts
+  var rlResult = await ratelimit.checkIpAndKey(req, {
+    ipKey: 'ably-token',
+    ipMax: 30,            // 30 token requests/minute/IP
+    ipWindowSecs: 60
+  });
+  if (!rlResult.allowed) {
     return res.status(429).json({ error: 'Too many token requests' });
   }
 
