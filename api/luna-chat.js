@@ -41,6 +41,24 @@ function getCacheKey(query) {
   return extractKeywords(query).sort().join('_').slice(0, 100);
 }
 
+// Strip everything that isn't alphanumeric or space — safe for Airtable SEARCH() literals.
+// Belt and braces: even if a keyword escapes extractKeywords(), this closes the formula injection surface.
+function sanitizeFormulaLiteral(str) {
+  if (typeof str !== 'string') return '';
+  return str.replace(/[^a-zA-Z0-9 ]/g, '').trim().slice(0, 100);
+}
+
+// For client-name lookups in Airtable formulas — allows a slightly wider character set
+// (letters, numbers, spaces, &, ., ', -) since business names legitimately contain these.
+// Escapes single quotes and backslashes for safe embedding in '...' literals.
+function sanitizeClientNameForFormula(str) {
+  if (typeof str !== 'string') return '';
+  // Allowlist: letters, digits, space, &, period, apostrophe, hyphen
+  var cleaned = str.replace(/[^a-zA-Z0-9 &.'\-]/g, '').trim().slice(0, 100);
+  // Escape backslashes first, then single quotes — order matters
+  return cleaned.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
 async function searchLunaBrain(message, atKey) {
   if (!atKey || !isTravelQuestion(message)) return '';
 
@@ -61,7 +79,7 @@ async function searchLunaBrain(message, atKey) {
     var searches = LB_TABLES.map(function(table) {
       var url = 'https://api.airtable.com/v0/' + LB_BASE + '/' + table.id
         + '?pageSize=5'
-        + '&filterByFormula=' + encodeURIComponent('SEARCH("' + searchQuery.replace(/"/g, '') + '", {Search Index})');
+        + '&filterByFormula=' + encodeURIComponent('SEARCH("' + sanitizeFormulaLiteral(searchQuery) + '", {Search Index})');
 
       return fetch(url, {
         headers: { 'Authorization': 'Bearer ' + atKey }
@@ -81,7 +99,7 @@ async function searchLunaBrain(message, atKey) {
       var fallbackSearches = LB_TABLES.map(function(table) {
         var url = 'https://api.airtable.com/v0/' + LB_BASE + '/' + table.id
           + '?pageSize=5'
-          + '&filterByFormula=' + encodeURIComponent('SEARCH("' + topKw.replace(/"/g, '') + '", {Search Index})');
+          + '&filterByFormula=' + encodeURIComponent('SEARCH("' + sanitizeFormulaLiteral(topKw) + '", {Search Index})');
         return fetch(url, {
           headers: { 'Authorization': 'Bearer ' + atKey }
         }).then(function(r) {
@@ -956,7 +974,7 @@ module.exports = async function handler(req, res) {
     if (profileAtKey) {
       try {
         const profileUrl = 'https://api.airtable.com/v0/app6Ot3eOb3DangkB/tbl6CZ7aVzq1wHF2v'
-          + '?filterByFormula=' + encodeURIComponent("{ClientName}='" + clientName.replace(/'/g, "\\'") + "'")
+          + '?filterByFormula=' + encodeURIComponent("{ClientName}='" + sanitizeClientNameForFormula(clientName) + "'")
           + '&maxRecords=1';
         const pRes = await fetch(profileUrl, { headers: { 'Authorization': 'Bearer ' + profileAtKey } });
         const pData = await pRes.json();
