@@ -1,5 +1,7 @@
 // Luna Subscribe API — pushes visitor email to client's email marketing platform
 
+const ratelimit = require('../lib/ratelimit');
+
 const AT_BASE = 'app6Ot3eOb3DangkB';
 const AT_TABLE = 'tbl6CZ7aVzq1wHF2v';
 
@@ -7,9 +9,20 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  // Rate limit: 5 subscribes/minute/IP — prevents spam signups and email-platform abuse
+  var rlResult = await ratelimit.checkIpAndKey(req, {
+    ipKey: 'subscribe',
+    ipMax: 5,
+    ipWindowSecs: 60
+  });
+  if (!rlResult.allowed) {
+    return res.status(429).json({ error: 'Too many requests. Please wait a minute and try again.' });
+  }
 
   var body = req.body || {};
   var clientName = (body.clientName || '').trim();
