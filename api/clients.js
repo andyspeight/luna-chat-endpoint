@@ -1,10 +1,24 @@
 // Luna Client Management API
 // Handles listing and creating clients via Airtable
 
+const crypto = require('crypto');
+
 const AT_BASE = 'app6Ot3eOb3DangkB';
 const AT_TABLE = 'tbl6CZ7aVzq1wHF2v';
 const ADMIN_PASS = process.env.ADMIN_PASSWORD || 'travelgenix2026';
 const VERCEL_HOST = 'luna-chat-endpoint.vercel.app';
+
+// Timing-safe string comparison — prevents timing attacks on password comparison.
+// Returns false immediately for wrong-length inputs (safe: length is not secret).
+function safeCompare(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  if (a.length !== b.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+  } catch (e) {
+    return false;
+  }
+}
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -15,7 +29,7 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   var adminPass = req.headers['x-admin-pass'] || '';
-  if (adminPass !== ADMIN_PASS) {
+  if (!safeCompare(adminPass, ADMIN_PASS)) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -61,7 +75,9 @@ module.exports = async function handler(req, res) {
     var email = (body.email || '').trim();
     var ably = (body.ablyKey || '').trim();
     var siteId = (body.siteId || '').trim();
-    var pass = (body.password || slug.replace(/-/g, '') + Math.floor(Math.random() * 9000 + 1000)).trim();
+    // Cryptographically secure password generation — 4 random bytes → 8 hex chars
+    var generatedSuffix = crypto.randomBytes(4).toString('hex');
+    var pass = (body.password || slug.replace(/-/g, '') + generatedSuffix).trim();
 
     if (!name || !slug || !email) {
       return res.status(400).json({ error: 'Missing required fields: name, slug, email' });
