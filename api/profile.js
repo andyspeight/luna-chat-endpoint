@@ -4,10 +4,24 @@
 const AT_BASE = 'app6Ot3eOb3DangkB';
 const AT_TABLE = 'tbl6CZ7aVzq1wHF2v';
 
-module.exports = async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+// CORS allowlist — only our own Vercel deploy can call the authenticated routes.
+// Add custom client domains here if/when they start using them.
+const ALLOWED_ORIGINS = [
+  'https://luna-chat-endpoint.vercel.app'
+];
+
+function applyCors(req, res) {
+  var origin = req.headers.origin;
+  if (origin && ALLOWED_ORIGINS.indexOf(origin) !== -1) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Client-Slug, X-Client-Pass');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Client-Slug, X-Client-Pass, X-Client-Name');
+}
+
+module.exports = async function handler(req, res) {
+  applyCors(req, res);
   res.setHeader('X-Content-Type-Options', 'nosniff');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
