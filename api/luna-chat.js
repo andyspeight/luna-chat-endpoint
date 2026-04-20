@@ -1,4 +1,5 @@
 const Anthropic = require('@anthropic-ai/sdk');
+const ratelimit = require('../lib/ratelimit');
 
 // ─── LUNA BRAIN KNOWLEDGE BASE ───
 const LB_BASE = 'appPKx77relfeiqmq';
@@ -625,20 +626,16 @@ Every response you generate is displayed directly to the public on behalf of Tra
 - Never disparage other travel technology providers.
 - If asked about a competitor, redirect: "I'm best placed to help with what Travelgenix offers. Would you like to talk through our packages or book a demo?"`;
 
-// --- RATE LIMITING (in-memory, resets on cold start) ---
-const rateLimits = {};
-const RATE_LIMIT_WINDOW = 60000; // 1 minute
-const RATE_LIMIT_MAX = 15;       // max messages per minute per conversation
+// --- RATE LIMITING ---
+// Backed by Upstash Redis via lib/ratelimit.js. Fails open if Redis is unreachable.
+// Two layers:
+//   1. Per-IP: stops a single attacker spamming by rotating convIds
+//   2. Per-convId: stops a single visitor session flooding the endpoint
+//
+// Also a global daily counter on Anthropic spend — hard stop before bills spiral.
 
-function checkRateLimit(convId) {
-  if (!convId) return true;
-  const now = Date.now();
-  if (!rateLimits[convId]) rateLimits[convId] = [];
-  rateLimits[convId] = rateLimits[convId].filter(t => now - t < RATE_LIMIT_WINDOW);
-  if (rateLimits[convId].length >= RATE_LIMIT_MAX) return false;
-  rateLimits[convId].push(now);
-  return true;
-}
+const DAILY_CHAT_CAP = parseInt(process.env.LUNA_DAILY_CHAT_CAP || '10000', 10); // global daily hard-cap on chat requests
+const DAILY_CHAT_KEY = 'luna-chat';
 
 // --- INPUT SANITIZATION ---
 function sanitizeInput(str) {
@@ -944,10 +941,30 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: 'Missing or invalid message' });
   }
 
-  if (!checkRateLimit(convId)) {
+  // Rate limiting: per-IP (stops convId rotation) and per-convId (stops session flooding)
+  const rlResult = await ratelimit.checkIpAndKey(req, {
+    ipKey: 'chat',
+    ipMax: 60,            // 60 requests/minute/IP — generous for a busy visitor, instant block for a bot
+    ipWindowSecs: 60,
+    keyKey: convId ? 'chat:conv:' + convId : null,
+    keyMax: 20,           // 20/minute per convId
+    keyWindowSecs: 60
+  });
+  if (!rlResult.allowed) {
     return res.status(429).json({
       reply: "You're sending messages quite quickly. Please wait a moment before trying again.",
       escalate: false,
+      rateLimited: true
+    });
+  }
+
+  // Global daily cap on Anthropic spend — prevents runaway bills if every other limit is bypassed
+  const dailyCount = await ratelimit.incrDaily(DAILY_CHAT_KEY, 1);
+  if (dailyCount !== null && dailyCount > DAILY_CHAT_CAP) {
+    console.error('[luna-chat] Daily cap exceeded:', dailyCount, 'of', DAILY_CHAT_CAP);
+    return res.status(429).json({
+      reply: "Our AI assistant is experiencing high demand right now. Please try again shortly or contact us directly.",
+      escalate: true,
       rateLimited: true
     });
   }
