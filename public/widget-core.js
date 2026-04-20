@@ -25,8 +25,10 @@ var D = {
 
   /* Endpoints & keys */
   endpoint: "https://luna-chat-endpoint.vercel.app/api/luna-chat",
+  ablyTokenEndpoint: "https://luna-chat-endpoint.vercel.app/api/ably-token",
   clientName: "Travelgenix",
-  ablyKey: "3FpMVA.yN0QIQ:QPBUpoTRGPQkTMkB0GMADarQE96XgRbkRs7C030bxTw",
+  /* NOTE: ablyKey removed — tokens are now fetched server-side via ablyTokenEndpoint.
+     The widget never holds a root Ably key. */
   airtableKey: "",
   airtableBase: "",
   convTable: "",
@@ -439,12 +441,125 @@ function makeAvatar(size, forHeader) {
   var el = document.createElement("div");
   el.className = "tgx-avatar " + (forHeader ? "tgx-avatar-hdr" : "tgx-avatar-msg");
   el.style.cssText = "width:"+size+"px;height:"+size+"px;border-radius:"+(size>30?"11px":"7px")+";font-size:"+Math.round(size*0.45)+"px";
-  if (C.profileImage) {
-    el.innerHTML = '<img src="'+C.profileImage+'" alt="">';
+  if (C.profileImage && isSafeUrl(C.profileImage)) {
+    /* Build <img> via createElement — never innerHTML with Airtable-sourced URLs */
+    var img = document.createElement("img");
+    img.src = C.profileImage;
+    img.alt = "";
+    img.referrerPolicy = "no-referrer";
+    el.appendChild(img);
   } else {
-    el.textContent = C.logoText;
+    el.textContent = C.logoText || "";
   }
   return el;
+}
+
+/* ─── URL SAFETY ─────────────────────────────────────────── */
+/* Only allow http(s) URLs. Blocks javascript:, data:, vbscript: etc. */
+function isSafeUrl(url) {
+  if (typeof url !== "string" || url.length === 0 || url.length > 2000) return false;
+  /* Strip control chars and whitespace that could be used for evasion */
+  var cleaned = url.replace(/[\s\u0000-\u001F\u007F]/g, "");
+  return /^https?:\/\//i.test(cleaned);
+}
+
+/* ─── SAFE MARKDOWN RENDERER ─────────────────────────────── */
+/* Renders the small markdown subset Luna uses (**bold**, *italic*, [label](url),
+   bare deep-link URLs, \n -> <br>) into a parent element using DOM nodes only.
+   Never calls innerHTML with text content. XSS-safe by construction. */
+function renderSafeMarkdown(parent, text) {
+  if (typeof text !== "string") return;
+
+  /* Tokeniser: walk the string and emit tokens for links, bold, italic, newlines, and plain text.
+     Regex chosen to match the original rendering (so nothing visible changes for users). */
+  var PATTERNS = [
+    { name: "link",     re: /\[([^\]]+?)\]\((https?:\/\/[^\s)]+?)\)/g },
+    { name: "deeplink", re: /(^|[^"(\w])(https?:\/\/dl\.tvllnk\.com[^\s<>")\]]+)/g },
+    { name: "bold",     re: /\*\*([^*]+?)\*\*/g },
+    { name: "italic",   re: /\*([^*]+?)\*/g }
+  ];
+
+  /* First pass: find all matches and their positions */
+  var matches = [];
+  PATTERNS.forEach(function(p) {
+    p.re.lastIndex = 0;
+    var m;
+    while ((m = p.re.exec(text)) !== null) {
+      matches.push({
+        type: p.name,
+        start: m.index + (p.name === "deeplink" ? m[1].length : 0),
+        end: m.index + m[0].length,
+        groups: m.slice(1),
+        full: m[0]
+      });
+    }
+  });
+
+  /* Sort by start, remove overlaps (first match wins) */
+  matches.sort(function(a, b) { return a.start - b.start; });
+  var filtered = [];
+  var lastEnd = -1;
+  matches.forEach(function(m) {
+    if (m.start >= lastEnd) { filtered.push(m); lastEnd = m.end; }
+  });
+
+  /* Emit tokens: plain text (with \n handling) + DOM nodes for markdown matches */
+  function emitPlain(str) {
+    if (!str) return;
+    var parts = str.split("\n");
+    for (var i = 0; i < parts.length; i++) {
+      if (parts[i].length > 0) parent.appendChild(document.createTextNode(parts[i]));
+      if (i < parts.length - 1) parent.appendChild(document.createElement("br"));
+    }
+  }
+
+  var cursor = 0;
+  filtered.forEach(function(m) {
+    emitPlain(text.slice(cursor, m.start));
+
+    if (m.type === "bold") {
+      var b = document.createElement("strong");
+      b.textContent = m.groups[0];
+      parent.appendChild(b);
+    } else if (m.type === "italic") {
+      var i = document.createElement("em");
+      i.textContent = m.groups[0];
+      parent.appendChild(i);
+    } else if (m.type === "link") {
+      var label = m.groups[0];
+      var url = m.groups[1];
+      if (isSafeUrl(url)) {
+        var a = document.createElement("a");
+        a.href = url;
+        var isSearch = /dl\.tvllnk\.com|travellinx/i.test(url);
+        a.target = isSearch ? "_self" : "_blank";
+        a.rel = "noopener noreferrer";
+        if (isSearch) a.className = "tgx-search-link";
+        a.textContent = label;
+        parent.appendChild(a);
+      } else {
+        /* Unsafe URL — render as plain text */
+        parent.appendChild(document.createTextNode(m.full));
+      }
+    } else if (m.type === "deeplink") {
+      var url2 = m.groups[1];
+      if (isSafeUrl(url2)) {
+        var a2 = document.createElement("a");
+        a2.href = url2;
+        a2.target = "_self";
+        a2.rel = "noopener noreferrer";
+        a2.className = "tgx-search-link";
+        a2.textContent = "Click here to view results";
+        parent.appendChild(a2);
+      } else {
+        parent.appendChild(document.createTextNode(m.full));
+      }
+    }
+
+    cursor = m.end;
+  });
+
+  emitPlain(text.slice(cursor));
 }
 
 /* ─── BUILD DOM ──────────────────────────────────────────── */
@@ -453,13 +568,9 @@ function buildDOM() {
   var root = document.createElement("div");
   root.id = "tgx-cw";
 
-  /* FAB */
-  var fabIconHTML = C.bubbleIcon
-    ? '<img class="tgx-fab-icon" src="'+C.bubbleIcon+'" alt="Chat">'
-    : svgIcon("chat",24,"#fff");
-
+  /* FAB — icon injected safely below; use a placeholder span */
   root.innerHTML = ''
-  +'<button class="tgx-fab" id="tgxFab">'+fabIconHTML+'<span class="tgx-badge" id="tgxBadge">0</span></button>'
+  +'<button class="tgx-fab" id="tgxFab"><span id="tgxFabIcon"></span><span class="tgx-badge" id="tgxBadge">0</span></button>'
   +'<div class="tgx-panel" id="tgxPanel">'
 
     /* ── HOME SCREEN ── */
@@ -469,10 +580,10 @@ function buildDOM() {
         +'<div class="tgx-hdr-bg" style="bottom:-40px;left:-20px;width:90px;height:90px"></div>'
         +'<div class="tgx-hdr-row">'
           +'<div id="tgxHomeAvatar"></div>'
-          +'<div style="flex:1;min-width:0"><div class="tgx-hdr-name" style="font-size:16px">'+C.name+'</div><div class="tgx-hdr-sub"><div class="tgx-status"></div>Online now</div></div>'
-          +'<button class="tgx-hdr-btn" id="tgxHomeClose">'+svgIcon("minus",16,"rgba(255,255,255,0.65)")+'</button>'
+          +'<div style="flex:1;min-width:0"><div class="tgx-hdr-name" id="tgxHomeName" style="font-size:16px"></div><div class="tgx-hdr-sub"><div class="tgx-status"></div>Online now</div></div>'
+          +'<button class="tgx-hdr-btn" id="tgxHomeClose"></button>'
         +'</div>'
-        +'<div class="tgx-welcome">'+C.welcome+'</div>'
+        +'<div class="tgx-welcome" id="tgxWelcome"></div>'
       +'</div>'
       +'<div class="tgx-home-body">'
         +'<div class="tgx-section-label">What I can help with</div>'
@@ -481,50 +592,107 @@ function buildDOM() {
         +'<div id="tgxStarters" style="display:flex;flex-wrap:wrap;gap:6px"></div>'
         +'<div class="tgx-demoted">'
           +'<span>Prefer a person?</span>'
-          +'<button id="tgxDemotedHuman">'+C.escalateLabel+'</button>'
+          +'<button id="tgxDemotedHuman"></button>'
           +'<span>·</span>'
-          +'<button id="tgxDemotedLeave">'+C.leaveLabel+'</button>'
+          +'<button id="tgxDemotedLeave"></button>'
         +'</div>'
       +'</div>'
-      +'<div class="tgx-footer">'+C.footer+'</div>'
+      +'<div class="tgx-footer" id="tgxFooterHome"></div>'
     +'</div>'
 
     /* ── CHAT SCREEN ── */
     +'<div class="tgx-screen hidden" id="tgxChatScreen">'
       +'<div class="tgx-hdr-compact">'
-        +'<button class="tgx-hdr-btn" id="tgxBackHome">'+svgIcon("arrowLeft",17,"rgba(255,255,255,0.7)")+'</button>'
+        +'<button class="tgx-hdr-btn" id="tgxBackHome"></button>'
         +'<div id="tgxChatAvatar"></div>'
-        +'<div style="flex:1;min-width:0"><div class="tgx-hdr-name" style="font-size:14px">'+C.name+'</div><div class="tgx-hdr-sub"><div class="tgx-status"></div>Online</div></div>'
-        +'<button class="tgx-hdr-btn" id="tgxChatClose">'+svgIcon("minus",16,"rgba(255,255,255,0.65)")+'</button>'
+        +'<div style="flex:1;min-width:0"><div class="tgx-hdr-name" id="tgxChatName" style="font-size:14px"></div><div class="tgx-hdr-sub"><div class="tgx-status"></div>Online</div></div>'
+        +'<button class="tgx-hdr-btn" id="tgxChatClose"></button>'
       +'</div>'
       +'<div class="tgx-date" id="tgxDateDiv">Today</div>'
       +'<div class="tgx-msgs" id="tgxMsgs"></div>'
       +'<div class="tgx-typing-row" id="tgxTypingRow"><div id="tgxTypingAvatar"></div><div class="tgx-typing" id="tgxTyping"><span></span><span></span><span></span></div></div>'
       +'<div id="tgxPills" class="tgx-pills"></div>'
       +'<div class="tgx-email-bar" id="tgxEmailBar"><span class="tgx-email-link" id="tgxEmailLink">&#128231; Email this chat</span></div>'
-      +'<div class="tgx-input-wrap"><div class="tgx-input-inner"><input class="tgx-input" id="tgxInput" placeholder="Ask me anything..." autocomplete="off"></div><button class="tgx-send" id="tgxSend">'+svgIcon("send",16,"#fff")+'</button></div>'
-      +'<div class="tgx-esc-bar" id="tgxEscBar"><button class="tgx-esc-btn human" id="tgxHuman">'+C.escalateLabel+'</button><button class="tgx-esc-btn leave" id="tgxLeave">'+C.leaveLabel+'</button></div>'
-      +'<div class="tgx-footer">'+C.footer+'</div>'
+      +'<div class="tgx-input-wrap"><div class="tgx-input-inner"><input class="tgx-input" id="tgxInput" placeholder="Ask me anything..." autocomplete="off"></div><button class="tgx-send" id="tgxSend"></button></div>'
+      +'<div class="tgx-esc-bar" id="tgxEscBar"><button class="tgx-esc-btn human" id="tgxHuman"></button><button class="tgx-esc-btn leave" id="tgxLeave"></button></div>'
+      +'<div class="tgx-footer" id="tgxFooterChat"></div>'
     +'</div>'
 
   +'</div>';
 
   document.body.appendChild(root);
 
+  /* ── Populate tainted fields via textContent / safe DOM — never innerHTML ── */
+  function setText(id, val) { var el = document.getElementById(id); if (el) el.textContent = val || ""; }
+
+  /* FAB icon: custom image (validated URL) or built-in SVG */
+  var fabIconEl = document.getElementById("tgxFabIcon");
+  if (C.bubbleIcon && isSafeUrl(C.bubbleIcon)) {
+    var fabImg = document.createElement("img");
+    fabImg.className = "tgx-fab-icon";
+    fabImg.src = C.bubbleIcon;
+    fabImg.alt = "Chat";
+    fabImg.referrerPolicy = "no-referrer";
+    fabIconEl.appendChild(fabImg);
+  } else {
+    /* svgIcon returns a trusted static string — safe to innerHTML */
+    fabIconEl.innerHTML = svgIcon("chat", 24, "#fff");
+  }
+
+  /* Static SVG icons in buttons — safe because svgIcon args are all internal constants */
+  document.getElementById("tgxHomeClose").innerHTML = svgIcon("minus",16,"rgba(255,255,255,0.65)");
+  document.getElementById("tgxBackHome").innerHTML = svgIcon("arrowLeft",17,"rgba(255,255,255,0.7)");
+  document.getElementById("tgxChatClose").innerHTML = svgIcon("minus",16,"rgba(255,255,255,0.65)");
+  document.getElementById("tgxSend").innerHTML = svgIcon("send",16,"#fff");
+
+  /* Tainted Airtable fields — textContent only */
+  setText("tgxHomeName", C.name);
+  setText("tgxChatName", C.name);
+  setText("tgxWelcome", C.welcome);
+  setText("tgxFooterHome", C.footer);
+  setText("tgxFooterChat", C.footer);
+  setText("tgxDemotedHuman", C.escalateLabel);
+  setText("tgxDemotedLeave", C.leaveLabel);
+  setText("tgxHuman", C.escalateLabel);
+  setText("tgxLeave", C.leaveLabel);
+
   /* Insert avatars */
   document.getElementById("tgxHomeAvatar").appendChild(makeAvatar(42, true));
   document.getElementById("tgxChatAvatar").appendChild(makeAvatar(32, true));
   document.getElementById("tgxTypingAvatar").appendChild(makeAvatar(26, false));
 
-  /* Build capability cards */
+  /* Build capability cards — safely */
   var cards = C.capabilityCards || D.capabilityCards;
   var cardsEl = document.getElementById("tgxCapCards");
   cards.forEach(function(card){
     var btn = document.createElement("button");
     btn.className = "tgx-cap-card";
-    btn.innerHTML = '<div class="tgx-cap-icon">'+svgIcon(card.icon,18,"#fff")+'</div>'
-      +'<div style="flex:1;min-width:0"><div class="tgx-cap-title">'+card.title+'</div><div class="tgx-cap-desc">'+card.desc+'</div></div>'
-      +svgIcon("chevronRight",15,getTokens().text3);
+
+    var iconWrap = document.createElement("div");
+    iconWrap.className = "tgx-cap-icon";
+    iconWrap.innerHTML = svgIcon(card.icon, 18, "#fff"); /* svgIcon validates name against whitelist */
+
+    var textWrap = document.createElement("div");
+    textWrap.style.cssText = "flex:1;min-width:0";
+
+    var titleEl = document.createElement("div");
+    titleEl.className = "tgx-cap-title";
+    titleEl.textContent = card.title || "";
+
+    var descEl = document.createElement("div");
+    descEl.className = "tgx-cap-desc";
+    descEl.textContent = card.desc || "";
+
+    textWrap.appendChild(titleEl);
+    textWrap.appendChild(descEl);
+
+    var chevron = document.createElement("span");
+    chevron.innerHTML = svgIcon("chevronRight", 15, getTokens().text3);
+
+    btn.appendChild(iconWrap);
+    btn.appendChild(textWrap);
+    btn.appendChild(chevron);
+
     btn.addEventListener("click", function(){ switchToChat(); sendToAI(card.title); });
     cardsEl.appendChild(btn);
   });
@@ -583,18 +751,9 @@ function addMsg(role, text, noStore, originalText) {
   } else {
     var bubble = document.createElement("div");
     bubble.className = "tgx-msg " + role;
-    var html = text
-      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-      .replace(/\*(.+?)\*/g, "<em>$1</em>")
-      .replace(/\[(.+?)\]\((https?:\/\/.+?)\)/g, function(m, label, url) {
-        if (/dl\.tvllnk\.com|travellinx/i.test(url)) {
-          return '<a href="' + url + '" target="_self" rel="noopener" class="tgx-search-link">' + label + '</a>';
-        }
-        return '<a href="' + url + '" target="_blank" rel="noopener">' + label + '</a>';
-      })
-      .replace(/(^|[^"(])(https?:\/\/dl\.tvllnk\.com[^\s<>")\]]+)/gi, '$1<a href="$2" target="_self" rel="noopener" class="tgx-search-link">Click here to view results</a>')
-      .replace(/\n/g, "<br>");
-    bubble.innerHTML = html;
+    /* SAFE RENDERING: build DOM nodes programmatically, never innerHTML with untrusted content.
+       Supports: **bold**, *italic*, [label](url), bare deep-link URLs, and \n -> <br>. */
+    renderSafeMarkdown(bubble, text);
     col.appendChild(bubble);
 
     /* Timestamp */
@@ -694,14 +853,42 @@ function handleEmailChat() {
   }
 }
 
-/* ─── ABLY: init ─────────────────────────────────────────── */
+/* ─── ABLY: init (capability token auth) ───────────────────── */
 function initAbly() {
-  if (!C.ablyKey || !window.Ably) {
-    console.warn("Luna widget: Ably not available, real-time disabled");
+  if (!window.Ably) {
+    console.warn("Luna widget: Ably SDK not loaded, real-time disabled");
+    return;
+  }
+  if (!C.ablyTokenEndpoint) {
+    console.warn("Luna widget: no ablyTokenEndpoint configured, real-time disabled");
     return;
   }
   if (!convId) convId = "conv_" + Date.now() + "_" + Math.random().toString(36).substr(2,6);
-  ably = new Ably.Realtime({key: C.ablyKey, clientId: "visitor_" + convId});
+
+  /* authCallback: Ably SDK calls this when it needs a token, and whenever the
+     current token is near expiry. We never hold a root key client-side. */
+  function authCallback(tokenParams, callback) {
+    fetch(C.ablyTokenEndpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ convId: convId, clientName: C.clientName })
+    })
+    .then(function(r) {
+      if (!r.ok) throw new Error("Token endpoint returned " + r.status);
+      return r.json();
+    })
+    .then(function(tokenDetails) { callback(null, tokenDetails); })
+    .catch(function(err) {
+      console.error("Luna widget: Ably token fetch failed:", err.message);
+      callback(err, null);
+    });
+  }
+
+  ably = new Ably.Realtime({
+    authCallback: authCallback,
+    clientId: "visitor_" + convId
+  });
+
   dashChannel = ably.channels.get("luna-dashboard");
   chatChannel = ably.channels.get("luna-chat:" + convId);
   agentsChannel = ably.channels.get("luna-agents");
@@ -753,7 +940,11 @@ function initAbly() {
   });
 
   ably.connection.on("connected", function(){
-    console.log("Luna widget: Ably connected, convId=" + convId);
+    console.log("Luna widget: Ably connected (token auth), convId=" + convId);
+  });
+
+  ably.connection.on("failed", function(err){
+    console.error("Luna widget: Ably connection failed:", err && err.reason);
   });
 }
 
