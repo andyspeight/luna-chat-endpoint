@@ -1,18 +1,34 @@
 // Luna Translate API — translates text between languages using Claude Haiku
 
 const Anthropic = require('@anthropic-ai/sdk');
+const ratelimit = require('../lib/ratelimit');
 
 // Simple cache to avoid re-translating identical text
 const translateCache = {};
 const CACHE_TTL = 24 * 60 * 60 * 1000;
 
+// Daily cap for Anthropic calls from this endpoint (separate bucket to chat)
+const DAILY_TRANSLATE_CAP = parseInt(process.env.LUNA_DAILY_TRANSLATE_CAP || '5000', 10);
+const DAILY_TRANSLATE_KEY = 'luna-translate';
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  // Rate limit: 30 translations/minute/IP
+  var rlResult = await ratelimit.checkIpAndKey(req, {
+    ipKey: 'translate',
+    ipMax: 30,
+    ipWindowSecs: 60
+  });
+  if (!rlResult.allowed) {
+    return res.status(429).json({ error: 'Too many translation requests' });
+  }
 
   var body = req.body || {};
   var text = (body.text || '').trim();
@@ -30,6 +46,13 @@ module.exports = async function handler(req, res) {
   }
 
   try {
+    // Global daily cap on Anthropic calls from this endpoint
+    var dailyCount = await ratelimit.incrDaily(DAILY_TRANSLATE_KEY, 1);
+    if (dailyCount !== null && dailyCount > DAILY_TRANSLATE_CAP) {
+      console.error('[translate] Daily cap exceeded:', dailyCount, 'of', DAILY_TRANSLATE_CAP);
+      return res.status(429).json({ error: 'Translation service temporarily unavailable', original: text });
+    }
+
     var client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
     var prompt = sourceLang
