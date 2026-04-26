@@ -13,6 +13,55 @@ const LB_TABLES = [
 const kbCache = {};
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
+// ─── BOOKING LOOKUP INTEGRATION ───
+// Discovers whether a Luna client has linked a My Booking widget over on
+// tg-widgets. Cached per clientName for the lifetime of the function.
+const TG_WIDGETS_BASE = 'https://widgets.travelify.io';
+const lunaBookingCache = {};
+const LUNA_BOOKING_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+async function findLinkedBookingWidget(clientName) {
+  if (!clientName || typeof clientName !== 'string') return null;
+  const key = clientName.trim().toLowerCase();
+  if (!key) return null;
+
+  const cached = lunaBookingCache[key];
+  if (cached && (Date.now() - cached.ts < LUNA_BOOKING_CACHE_TTL)) {
+    return cached.data;
+  }
+
+  try {
+    const url = TG_WIDGETS_BASE + '/api/find-booking-widget?lunaClientName=' + encodeURIComponent(clientName);
+    const controller = new AbortController();
+    const timeout = setTimeout(function() { controller.abort(); }, 3000);
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+    if (res.status === 404) {
+      lunaBookingCache[key] = { data: null, ts: Date.now() };
+      return null;
+    }
+    if (!res.ok) {
+      console.warn('[luna-chat] find-booking-widget returned', res.status);
+      return null;
+    }
+    const data = await res.json();
+    if (!data || !data.widgetId) {
+      lunaBookingCache[key] = { data: null, ts: Date.now() };
+      return null;
+    }
+    const result = { widgetId: data.widgetId };
+    lunaBookingCache[key] = { data: result, ts: Date.now() };
+    return result;
+  } catch (err) {
+    console.warn('[luna-chat] find-booking-widget error:', err.message);
+    return null;
+  }
+}
+
 // Stop words for keyword extraction
 const STOP_WORDS = new Set(['tell','me','about','the','a','an','what','which','where','how','is','are','in','for','to','do','you','have','can','i','my','best','good','great','top','most','popular','like','want','go','visit','travel','holiday','trip','please','some','any','need','should','there','when','does','much','cost','get','take','long','far','would','know','could','also','very','just','been','more','than','from','with','this','that','they','will','were','was','has','had','yes','no','yeah','sure','ok','okay','its','hi','hello','hey','thanks','thank','bye','goodbye','chat','help']);
 
@@ -1205,6 +1254,60 @@ Do NOT respond with generic clarifying questions only ("what kind of trip", "wha
       } catch (e) {
         console.warn('Profile fetch failed:', e.message);
       }
+    }
+
+    // Booking lookup integration — if this client has linked a My Booking widget
+    // on tg-widgets, give Luna the marker syntax to trigger embedded booking lookup.
+    try {
+      var linkedBooking = await findLinkedBookingWidget(clientName);
+      if (linkedBooking && linkedBooking.widgetId) {
+        systemPrompt += `
+
+## Booking Lookup
+You can help visitors retrieve their existing booking confirmation through an inline form.
+
+When a visitor expresses they want to find, view, check, or look up an EXISTING booking they already have, respond with a brief friendly acknowledgement (one short sentence) followed by this marker on its own line:
+
+[BOOKING_LOOKUP:${linkedBooking.widgetId}]
+
+After the marker, do not say anything else. The widget below your message will show the visitor a secure form where they enter their email, departure date and booking reference. Once they look up their booking, they can download a PDF copy of their confirmation.
+
+### When to trigger booking lookup
+- "Where's my booking" / "Find my reservation" / "I have a booking"
+- "Look up my booking" / "Manage my booking" / "View my booking"
+- "I want to see my confirmation" / "Pull up my trip"
+- "Booking reference [code]" / "Order ref [code]"
+- "Check my booking" / "Find my trip"
+- Anyone mentioning they already have a booking and want details
+
+### When NOT to trigger
+- "I want to book a holiday" — they don't have a booking yet, this is a search
+- "How do I book?" — process question
+- Payment questions
+- General enquiries about destinations
+- Questions about a booking that aren't about retrieving it (e.g. "can I add a meal to my booking?" — escalate to a human)
+
+### Examples
+Visitor: "I have a booking with you, can you find it?"
+You: Of course, pop your details in and I'll pull it up for you.
+[BOOKING_LOOKUP:${linkedBooking.widgetId}]
+
+Visitor: "where's my reservation"
+You: Sure thing, let me grab the lookup form for you.
+[BOOKING_LOOKUP:${linkedBooking.widgetId}]
+
+Visitor: "I want to look up booking REF12345"
+You: No problem, drop your email and departure date in below and I'll find it.
+[BOOKING_LOOKUP:${linkedBooking.widgetId}]
+
+### Important
+- Use the marker exactly as shown, including the widget ID.
+- Only ONE marker per response.
+- Don't add explanations after the marker, the form speaks for itself.
+- If the visitor's lookup fails (the form will tell them), they may need to double-check their details. Offer to escalate to a human if they keep having trouble.`;
+      }
+    } catch (e) {
+      console.warn('[luna-chat] Booking lookup integration check failed:', e.message);
     }
   }
   if (page) systemPrompt += `\nThe visitor is currently viewing: ${page}`;
