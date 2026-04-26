@@ -143,14 +143,22 @@ function loadBookingWidgetScript() {
   return _tgBookingScriptPromise;
 }
 
-/* Strict widget ID validator. Airtable record IDs are always 17 chars,
-   start with "rec", and use [A-Za-z0-9] only. Anything else is rejected
-   before it goes anywhere near the DOM. */
+/* Strict widget ID validator. The tg-widgets dashboard mints IDs in the
+   form "tgw_<timestamp>_<6chars>" (sometimes with extra underscored
+   suffixes from earlier formats, e.g. "tgw_1776433139217_ksgj_l9q4w").
+   We accept that pattern conservatively: must start with "tgw_", then
+   only [a-z0-9_], up to 80 chars total. Older "rec..." IDs (Airtable
+   record IDs) are also accepted as a fallback for any legacy data. */
 function isSafeWidgetId(id) {
-  return typeof id === "string" && /^rec[A-Za-z0-9]{14}$/.test(id);
+  if (typeof id !== "string") return false;
+  if (id.length < 4 || id.length > 80) return false;
+  return /^tgw_[a-z0-9_]+$/i.test(id) || /^rec[A-Za-z0-9]{14}$/.test(id);
 }
 
-/* Fetches and caches the booking widget's config. Returns null on failure. */
+/* Fetches and caches the booking widget's config. Returns null on failure.
+   /api/widget-config returns the config object directly (not wrapped under
+   a `config` key), so we use the response body as-is and tag on the widget
+   ID and forced compact layout for the chat embed context. */
 function fetchBookingConfig(widgetId) {
   if (_tgConfigCache[widgetId]) return Promise.resolve(_tgConfigCache[widgetId]);
   return fetch(TG_CONFIG_API + "?id=" + encodeURIComponent(widgetId), {
@@ -162,8 +170,9 @@ function fetchBookingConfig(widgetId) {
     return res.json();
   })
   .then(function(data) {
-    if (!data) return null;
-    var config = data.config || {};
+    if (!data || typeof data !== "object") return null;
+    /* Defensive copy so we don't mutate any cached fetch internals */
+    var config = Object.assign({}, data);
     config.widgetId = widgetId;
     config.layout = "compact"; /* Force compact for chat embed */
     _tgConfigCache[widgetId] = config;
@@ -179,7 +188,10 @@ function fetchBookingConfig(widgetId) {
    Returns { cleanText, widgetId? }. */
 function extractBookingLookupMarker(text) {
   if (typeof text !== "string" || !text) return { cleanText: text };
-  var re = /\[BOOKING_LOOKUP:(rec[A-Za-z0-9]{14})\]/;
+  /* Accept both the new "tgw_..." widget IDs and legacy "rec..." Airtable
+     record IDs. The captured ID is then re-validated by isSafeWidgetId
+     before it goes anywhere near the DOM. */
+  var re = /\[BOOKING_LOOKUP:(tgw_[a-z0-9_]+|rec[A-Za-z0-9]{14})\]/i;
   var m = text.match(re);
   if (!m) return { cleanText: text };
   var cleanText = text.replace(re, "").trim();
