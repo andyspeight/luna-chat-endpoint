@@ -104,6 +104,88 @@ var SIZES = {
 };
 function getSize() { return SIZES[C.widgetSize] || SIZES.medium; }
 
+/* ─── BOOKING LOOKUP INTEGRATION (tg-widgets bridge) ─────── */
+/* Loads widget-mybooking.js cross-origin on demand and instantiates a compact
+   booking widget inside a chat bubble when Luna outputs the marker. */
+var TG_WIDGETS_BASE = "https://widgets.travelify.io";
+var TG_BOOKING_SCRIPT = TG_WIDGETS_BASE + "/widget-mybooking.js";
+var TG_CONFIG_API = TG_WIDGETS_BASE + "/api/widget-config";
+var _tgBookingScriptPromise = null;
+var _tgConfigCache = {};
+
+function loadBookingWidgetScript() {
+  if (window.TGMyBookingWidget) return Promise.resolve();
+  if (_tgBookingScriptPromise) return _tgBookingScriptPromise;
+  _tgBookingScriptPromise = new Promise(function(resolve, reject) {
+    var s = document.createElement("script");
+    s.src = TG_BOOKING_SCRIPT;
+    s.async = true;
+    s.onload = function() {
+      if (window.TGMyBookingWidget) return resolve();
+      var tries = 0;
+      var interval = setInterval(function() {
+        tries++;
+        if (window.TGMyBookingWidget) {
+          clearInterval(interval);
+          resolve();
+        } else if (tries > 30) {
+          clearInterval(interval);
+          reject(new Error("TGMyBookingWidget did not load"));
+        }
+      }, 100);
+    };
+    s.onerror = function() {
+      _tgBookingScriptPromise = null;
+      reject(new Error("Failed to load booking widget script"));
+    };
+    document.head.appendChild(s);
+  });
+  return _tgBookingScriptPromise;
+}
+
+/* Strict widget ID validator. Airtable record IDs are always 17 chars,
+   start with "rec", and use [A-Za-z0-9] only. Anything else is rejected
+   before it goes anywhere near the DOM. */
+function isSafeWidgetId(id) {
+  return typeof id === "string" && /^rec[A-Za-z0-9]{14}$/.test(id);
+}
+
+/* Fetches and caches the booking widget's config. Returns null on failure. */
+function fetchBookingConfig(widgetId) {
+  if (_tgConfigCache[widgetId]) return Promise.resolve(_tgConfigCache[widgetId]);
+  return fetch(TG_CONFIG_API + "?id=" + encodeURIComponent(widgetId), {
+    method: "GET",
+    headers: { "Accept": "application/json" }
+  })
+  .then(function(res) {
+    if (!res.ok) return null;
+    return res.json();
+  })
+  .then(function(data) {
+    if (!data) return null;
+    var config = data.config || {};
+    config.widgetId = widgetId;
+    config.layout = "compact"; /* Force compact for chat embed */
+    _tgConfigCache[widgetId] = config;
+    return config;
+  })
+  .catch(function(err) {
+    console.warn("Luna widget: failed to fetch booking config:", err.message);
+    return null;
+  });
+}
+
+/* Parses [BOOKING_LOOKUP:rec...] marker out of the bot reply.
+   Returns { cleanText, widgetId? }. */
+function extractBookingLookupMarker(text) {
+  if (typeof text !== "string" || !text) return { cleanText: text };
+  var re = /\[BOOKING_LOOKUP:(rec[A-Za-z0-9]{14})\]/;
+  var m = text.match(re);
+  if (!m) return { cleanText: text };
+  var cleanText = text.replace(re, "").trim();
+  return { cleanText: cleanText, widgetId: m[1] };
+}
+
 /* ─── STATE ──────────────────────────────────────────────── */
 var msgs = [];
 var history = [];
@@ -341,6 +423,12 @@ function injectCSS() {
   +'#tgx-cw .tgx-msg.system{align-self:center;background:transparent;color:'+T.text3+';font-size:12px;font-style:italic;padding:4px 0;text-align:center;max-width:100%}'
   +'#tgx-cw .tgx-msg a{color:'+C.accentColor+';text-decoration:underline}'
   +'#tgx-cw .tgx-msg-time{font-size:10px;color:'+T.text3+';padding:0 3px}'
+
+  /* Booking widget embed */
+  +'#tgx-cw .tgx-msg-row-widget{display:block;width:100%;margin:8px 0}'
+  +'#tgx-cw .tgx-bubble-widget{max-width:100%;width:100%;padding:0;background:transparent;border:none;box-shadow:none}'
+  +'#tgx-cw .tgx-booking-mount{width:100%;border-radius:12px;overflow:hidden}'
+  +'#tgx-cw .tgx-booking-loading{padding:20px 16px;text-align:center;color:'+T.text3+';font-size:13px;background:'+T.botBubble+';border-radius:12px;font-style:italic}'
 
   /* Date divider */
   +'#tgx-cw .tgx-date{text-align:center;padding:6px 0 10px;font-size:10px;color:'+T.text3+';font-weight:500}'
@@ -731,7 +819,71 @@ var $fab, $panel, $msgs, $input, $send, $pills, $typing, $badge, $escBar, $email
 
 function scrollBottom() { setTimeout(function(){ $msgs.scrollTop = $msgs.scrollHeight; }, 50); }
 
+/* Renders an embedded My Booking widget as a chat message. The "descriptor"
+   is the same object the message was stored with: { kind, widgetId }. */
+function renderBookingWidgetMessage(descriptor) {
+  if (!descriptor || descriptor.kind !== "booking_lookup" || !isSafeWidgetId(descriptor.widgetId)) {
+    return;
+  }
+
+  var row = document.createElement("div");
+  row.className = "tgx-msg-row tgx-msg-row-widget";
+
+  var bubble = document.createElement("div");
+  bubble.className = "tgx-bubble-widget";
+
+  var mount = document.createElement("div");
+  mount.className = "tgx-booking-mount";
+  bubble.appendChild(mount);
+
+  var placeholder = document.createElement("div");
+  placeholder.className = "tgx-booking-loading";
+  placeholder.textContent = "Loading booking lookup...";
+  mount.appendChild(placeholder);
+
+  row.appendChild(bubble);
+  $msgs.appendChild(row);
+  scrollBottom();
+
+  Promise.all([
+    loadBookingWidgetScript(),
+    fetchBookingConfig(descriptor.widgetId)
+  ])
+  .then(function(results) {
+    var config = results[1];
+    if (!config) {
+      placeholder.textContent = "Sorry, the booking lookup form couldn't load. You can contact us directly instead.";
+      return;
+    }
+    if (placeholder.parentNode) placeholder.parentNode.removeChild(placeholder);
+    try {
+      new window.TGMyBookingWidget(mount, config);
+    } catch (err) {
+      console.error("Luna widget: failed to init booking widget:", err);
+      var errEl = document.createElement("div");
+      errEl.className = "tgx-booking-loading";
+      errEl.textContent = "Sorry, the booking lookup form couldn't load. You can contact us directly instead.";
+      mount.appendChild(errEl);
+    }
+  })
+  .catch(function(err) {
+    console.error("Luna widget: booking widget script failed:", err);
+    placeholder.textContent = "Sorry, the booking lookup form couldn't load. You can contact us directly instead.";
+  });
+}
+
 function addMsg(role, text, noStore, originalText) {
+  /* Booking widget embed — special role */
+  if (role === "widget") {
+    /* "text" is actually a descriptor object: { kind: "booking_lookup", widgetId: "rec..." } */
+    renderBookingWidgetMessage(text);
+    if (!noStore) {
+      msgs.push({ role: "widget", content: text, ts: Date.now() });
+      saveSession();
+    }
+    return;
+  }
+
   var row = document.createElement("div");
   row.className = "tgx-msg-row" + (role === "user" ? " user" : "");
 
@@ -803,7 +955,7 @@ function parseResponse(text) {
 function buildTranscript() {
   var lines = [];
   msgs.forEach(function(m) {
-    if (m.role === "system") return;
+    if (m.role === "system" || m.role === "widget") return;
     var d = new Date(m.ts);
     var time = ("0"+d.getHours()).slice(-2) + ":" + ("0"+d.getMinutes()).slice(-2);
     var sender = m.role === "user" ? "You" : m.role === "agent" ? "Agent" : (C.name || "Luna AI");
@@ -968,11 +1120,11 @@ function ensureConversationStarted() {
     },
     handler: "ai",
     startedAt: now,
-    messages: msgs.map(function(m){ return {from: m.role === "user" ? "visitor" : m.role, text: m.content, timestamp: new Date(m.ts).toISOString()}; })
+    messages: msgs.filter(function(m){return m.role !== "widget";}).map(function(m){ return {from: m.role === "user" ? "visitor" : m.role, text: m.content, timestamp: new Date(m.ts).toISOString()}; })
   });
 
   if (C.airtableKey && C.airtableBase && C.convTable) {
-    var botHistory = msgs.filter(function(m){return m.role!=="system";}).map(function(m){return m.role+": "+m.content;}).join("\n");
+    var botHistory = msgs.filter(function(m){return m.role!=="system" && m.role!=="widget";}).map(function(m){return m.role+": "+m.content;}).join("\n");
     fetch("https://api.airtable.com/v0/"+C.airtableBase+"/"+C.convTable, {
       method:"POST",
       headers:{"Authorization":"Bearer "+C.airtableKey,"Content-Type":"application/json"},
@@ -1098,7 +1250,7 @@ function doLeaveMessage() {
     });
   }
   if (C.airtableKey && C.airtableBase && C.convTable) {
-    var botHistory = msgs.filter(function(m){return m.role!=="system";}).map(function(m){return m.role+": "+m.content;}).join("\n");
+    var botHistory = msgs.filter(function(m){return m.role!=="system" && m.role!=="widget";}).map(function(m){return m.role+": "+m.content;}).join("\n");
     fetch("https://api.airtable.com/v0/"+C.airtableBase+"/"+C.convTable, {
       method:"POST",
       headers:{"Authorization":"Bearer "+C.airtableKey,"Content-Type":"application/json"},
@@ -1196,9 +1348,22 @@ async function sendToAI(text) {
   var data = await callLuna(text);
   $typing.classList.remove("active");
 
-  var parsed = parseResponse(data.reply || "");
-  addMsg("bot", parsed.body);
-  publishMessage("ai", parsed.body);
+  /* Strip [BOOKING_LOOKUP:rec...] marker BEFORE [FQ]/[OPT] parsing,
+     so the form shows below the bot's text. */
+  var rawReply = data.reply || "";
+  var bookingExtracted = extractBookingLookupMarker(rawReply);
+  var workingReply = bookingExtracted.cleanText;
+
+  var parsed = parseResponse(workingReply);
+  if (parsed.body) {
+    addMsg("bot", parsed.body);
+    publishMessage("ai", parsed.body);
+  }
+
+  /* If a booking widget marker was found, render the embedded widget */
+  if (bookingExtracted.widgetId) {
+    addMsg("widget", { kind: "booking_lookup", widgetId: bookingExtracted.widgetId });
+  }
 
   /* Auto-redirect for search deep links (same tab) */
   var deepLinkMatch = (data.reply || "").match(/(https?:\/\/dl\.tvllnk\.com[^\s\)\]"<>]+)/i);
@@ -1356,7 +1521,14 @@ async function boot() {
   if (sessionRestored && msgs.length > 0) {
     var storedMsgs = msgs.slice();
     msgs = []; /* clear so addMsg re-pushes them */
-    storedMsgs.forEach(function(m) { addMsg(m.role, m.content, false, m.original); });
+    storedMsgs.forEach(function(m) {
+      if (m.role === "widget") {
+        /* "content" is the descriptor object — pass through as text param */
+        addMsg("widget", m.content, false);
+      } else {
+        addMsg(m.role, m.content, false, m.original);
+      }
+    });
     if (currentScreen === "chat") {
       document.getElementById("tgxChatScreen").classList.remove("hidden");
       document.getElementById("tgxHomeScreen").classList.add("hidden");
