@@ -119,6 +119,17 @@ var _tgConfigCache = {};
    has moved on. Each entry is a { cancel: fn } record. */
 var _pendingPillReleases = [];
 
+/* Currently visible booking summary, captured from the embedded My Booking
+   widget when state.stage === 'found'. Sent as `bookingContext` on every
+   subsequent /api/luna-chat request so Luna can answer follow-up questions
+   ("what documents do I need?") with reference to the actual trip rather
+   than asking the visitor for facts already on screen.
+
+   Privacy: the summary is fetched via widgetInstance.getSafeContextSummary()
+   which deliberately strips names, emails, prices, references and special
+   requests. See widget-mybooking.js v1.4.0+ for the redaction rules. */
+var _currentBookingContext = null;
+
 function cancelPendingPillReleases() {
   while (_pendingPillReleases.length) {
     var entry = _pendingPillReleases.shift();
@@ -851,6 +862,13 @@ function renderBookingWidgetMessage(descriptor, pendingPills) {
     return;
   }
 
+  /* New booking lookup → any previously captured context is stale (could be
+     a different visitor, or the same visitor checking a different trip).
+     Cleared here so we don't accidentally answer questions about the OLD
+     booking while the NEW lookup form is on screen. The new context will
+     be captured when this booking loads via watchForBookingLoad → release. */
+  _currentBookingContext = null;
+
   var row = document.createElement("div");
   row.className = "tgx-msg-row tgx-msg-row-widget";
 
@@ -876,8 +894,19 @@ function renderBookingWidgetMessage(descriptor, pendingPills) {
      questions about a trip we couldn't find. Defensive: any failure to set up
      the observer falls back silently to no pills, never breaks the booking
      bubble itself. */
+  /* Watch the embedded booking widget for the moment its lookup succeeds
+     (.tgm-found appears in the shadow DOM). On success we do two things:
+       1. Capture a privacy-redacted summary of the booking into
+          _currentBookingContext, so subsequent /api/luna-chat calls can
+          give Luna conversational context about the trip.
+       2. If pills were deferred (FQs/OPTs from the booking-trigger turn),
+          release them now — pills only appear when the booking actually
+          loaded successfully.
+     If the lookup fails (.tgm-nf appears) we don't capture context and we
+     don't show pills — no trip is on screen to follow up about.
+     If the visitor sends another message before the booking loads, the
+     observer is cancelled (see cancelPendingPillReleases). */
   function watchForBookingLoad(widgetInstance) {
-    if (!pendingPills || !pendingPills.length) return;
     if (typeof MutationObserver === "undefined") return;
     if (!widgetInstance || !widgetInstance.shadow) return;
 
@@ -898,10 +927,26 @@ function renderBookingWidgetMessage(descriptor, pendingPills) {
       if (releaseTimeout) clearTimeout(releaseTimeout);
       try { observer.disconnect(); } catch (_) {}
       untrack();
+
+      /* Capture redacted booking summary for future Luna turns */
       try {
-        showPills(pendingPills, function(pill) { sendToAI(pill); });
+        if (typeof widgetInstance.getSafeContextSummary === "function") {
+          var summary = widgetInstance.getSafeContextSummary();
+          if (summary && typeof summary === "object") {
+            _currentBookingContext = summary;
+          }
+        }
       } catch (e) {
-        console.warn("Luna widget: failed to show booking follow-up pills:", e.message);
+        console.warn("Luna widget: failed to capture booking context:", e.message);
+      }
+
+      /* Release deferred pills, if any were queued from the booking-trigger turn */
+      if (pendingPills && pendingPills.length) {
+        try {
+          showPills(pendingPills, function(pill) { sendToAI(pill); });
+        } catch (e) {
+          console.warn("Luna widget: failed to show booking follow-up pills:", e.message);
+        }
       }
     }
 
@@ -911,7 +956,7 @@ function renderBookingWidgetMessage(descriptor, pendingPills) {
       if (releaseTimeout) clearTimeout(releaseTimeout);
       try { observer.disconnect(); } catch (_) {}
       untrack();
-      /* No showPills — this is the visitor moving on before booking loaded */
+      /* No context capture, no pills — this is the visitor moving on before booking loaded */
     }
 
     try {
@@ -1400,13 +1445,21 @@ function showRatingOverlay(ratingChannel) {
 async function callLuna(userText) {
   history.push({role: "user", content: userText});
   try {
+    var requestBody = {
+      message: userText, convId: convId, visitorName: userName || undefined,
+      clientName: C.clientName, history: history.slice(-16), page: window.location.pathname
+    };
+    /* Attach the redacted booking summary if the visitor has retrieved a
+       booking earlier in this session. Lets Luna answer follow-up questions
+       with the actual destination/dates/airline, rather than asking for
+       facts already on screen. Set/captured by watchForBookingLoad. */
+    if (_currentBookingContext && typeof _currentBookingContext === "object") {
+      requestBody.bookingContext = _currentBookingContext;
+    }
     var res = await fetch(C.endpoint, {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({
-        message: userText, convId: convId, visitorName: userName || undefined,
-        clientName: C.clientName, history: history.slice(-16), page: window.location.pathname
-      })
+      body: JSON.stringify(requestBody)
     });
     if (!res.ok) {
       var errText = await res.text();
