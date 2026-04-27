@@ -757,6 +757,109 @@ function sanitizeInput(str) {
     .trim();
 }
 
+// --- BOOKING CONTEXT VALIDATION ---
+// The chat widget sends a redacted summary of the visitor's booking after
+// they retrieve it via the embedded My Booking widget. We accept ONLY a
+// strict allowlist of fields with strict types — anything else is dropped,
+// no exceptions. This is defence in depth: even if widget-mybooking.js is
+// ever changed to leak something it shouldn't, this validator stops it
+// reaching the AI.
+//
+// Allowed fields: destinationCity, destinationCountry, hotelName,
+// startDate, endDate, nights, daysUntilDeparture, boardBasis,
+// outboundFlight, inboundFlight, adults, children, infants.
+//
+// Forbidden (will be silently dropped if present): names, emails, phone
+// numbers, prices, payment data, booking references, special requests.
+function sanitizeBookingContextString(s, maxLen) {
+  if (typeof s !== 'string') return null;
+  const cleaned = s
+    .replace(/<[^>]*>/g, '')
+    .replace(/javascript:/gi, '')
+    .replace(/on\w+\s*=/gi, '')
+    .slice(0, maxLen || 100)
+    .trim();
+  return cleaned.length > 0 ? cleaned : null;
+}
+function sanitizeBookingContextDate(s) {
+  if (typeof s !== 'string') return null;
+  // Strict yyyy-mm-dd format
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  // Verify it parses to a real date and the parts round-trip — rejects '2026-13-99' etc.
+  const d = new Date(s + 'T00:00:00Z');
+  if (Number.isNaN(d.getTime())) return null;
+  if (d.toISOString().slice(0, 10) !== s) return null;
+  return s;
+}
+function sanitizeBookingContextInt(n, min, max) {
+  if (typeof n !== 'number' || !Number.isFinite(n)) return null;
+  const v = Math.floor(n);
+  if (v < min || v > max) return null;
+  return v;
+}
+function sanitizeBookingContextIata(s) {
+  if (typeof s !== 'string') return null;
+  // 3-letter IATA, optionally space + terminal info we don't care about
+  const m = s.toUpperCase().match(/^[A-Z]{3}/);
+  return m ? m[0] : null;
+}
+function sanitizeBookingContextLeg(leg) {
+  if (!leg || typeof leg !== 'object') return null;
+  const out = {};
+  const from = sanitizeBookingContextIata(leg.from);
+  const to = sanitizeBookingContextIata(leg.to);
+  if (!from || !to) return null;
+  out.from = from;
+  out.to = to;
+  const airline = sanitizeBookingContextString(leg.airline, 80);
+  if (airline) out.airline = airline;
+  const stops = sanitizeBookingContextInt(leg.stops, 0, 5);
+  if (stops != null) out.stops = stops;
+  if (Array.isArray(leg.stopAirports)) {
+    const stopAirports = leg.stopAirports
+      .map(sanitizeBookingContextIata)
+      .filter(Boolean)
+      .slice(0, 4);
+    if (stopAirports.length) out.stopAirports = stopAirports;
+  }
+  const cabin = sanitizeBookingContextString(leg.cabin, 40);
+  if (cabin) out.cabin = cabin;
+  return out;
+}
+function sanitizeBookingContext(ctx) {
+  if (!ctx || typeof ctx !== 'object' || Array.isArray(ctx)) return null;
+  const out = {};
+  const city = sanitizeBookingContextString(ctx.destinationCity, 80);
+  if (city) out.destinationCity = city;
+  const country = sanitizeBookingContextString(ctx.destinationCountry, 80);
+  if (country) out.destinationCountry = country;
+  const hotel = sanitizeBookingContextString(ctx.hotelName, 120);
+  if (hotel) out.hotelName = hotel;
+  const start = sanitizeBookingContextDate(ctx.startDate);
+  if (start) out.startDate = start;
+  const end = sanitizeBookingContextDate(ctx.endDate);
+  if (end) out.endDate = end;
+  const nights = sanitizeBookingContextInt(ctx.nights, 1, 365);
+  if (nights != null) out.nights = nights;
+  const days = sanitizeBookingContextInt(ctx.daysUntilDeparture, 0, 1825); // up to 5 years out
+  if (days != null) out.daysUntilDeparture = days;
+  const board = sanitizeBookingContextString(ctx.boardBasis, 60);
+  if (board) out.boardBasis = board;
+  const outbound = sanitizeBookingContextLeg(ctx.outboundFlight);
+  if (outbound) out.outboundFlight = outbound;
+  const inbound = sanitizeBookingContextLeg(ctx.inboundFlight);
+  if (inbound) out.inboundFlight = inbound;
+  const adults = sanitizeBookingContextInt(ctx.adults, 0, 20);
+  if (adults != null && adults > 0) out.adults = adults;
+  const children = sanitizeBookingContextInt(ctx.children, 0, 20);
+  if (children != null && children > 0) out.children = children;
+  const infants = sanitizeBookingContextInt(ctx.infants, 0, 20);
+  if (infants != null && infants > 0) out.infants = infants;
+  // Return null if nothing useful survived sanitisation (we never want to
+  // inject an empty booking-context block — Luna would just get confused).
+  return Object.keys(out).length > 0 ? out : null;
+}
+
 // --- COMPREHENSIVE CONTENT FILTER ---
 const FILTER_PROFANITY = [
   'fuck','fucking','fucked','fucker','fuckers','fucks','motherfucker',
@@ -1040,6 +1143,7 @@ module.exports = async function handler(req, res) {
   const message = sanitizeInput(body.message);
   const page = sanitizeInput(body.page);
   const clientName = sanitizeInput(body.clientName);
+  const bookingContext = sanitizeBookingContext(body.bookingContext);
   const history = Array.isArray(body.history) ? body.history.map(h => ({
     role: h.role === 'user' ? 'user' : 'assistant',
     content: sanitizeInput(h.content)
@@ -1363,6 +1467,65 @@ No problem, drop your email and departure date in below and I'll find it.
       console.warn('[luna-chat] Booking lookup integration check failed:', e.message);
     }
   }
+  // Booking context — sent by the chat widget AFTER the visitor has retrieved
+  // an existing booking via the embedded My Booking widget. Lets Luna answer
+  // follow-up questions ("what documents do I need?", "what's the weather
+  // like?") with reference to the actual trip on screen, instead of asking
+  // the visitor for facts already visible. Privacy-redacted at the source
+  // (see widget-mybooking.js getSafeContextSummary) and re-validated server-
+  // side via sanitizeBookingContext above — the model never sees names,
+  // emails, prices, references or special requests.
+  if (bookingContext) {
+    var ctxLines = ['', '', '## Booking Context'];
+    ctxLines.push("The visitor has just retrieved an existing booking. Its details are visible to them on screen above the chat input. Use the facts below to answer follow-up questions directly — do NOT ask the visitor for any of these details, you can already see them.");
+    ctxLines.push('');
+    if (bookingContext.destinationCity || bookingContext.destinationCountry) {
+      var dest = [bookingContext.destinationCity, bookingContext.destinationCountry].filter(Boolean).join(', ');
+      ctxLines.push('- Destination: ' + dest);
+    }
+    if (bookingContext.hotelName) ctxLines.push('- Hotel: ' + bookingContext.hotelName);
+    if (bookingContext.startDate) {
+      var dateLine = '- Departing: ' + bookingContext.startDate;
+      if (bookingContext.endDate) dateLine += ', returning ' + bookingContext.endDate;
+      if (bookingContext.nights) dateLine += ' (' + bookingContext.nights + ' nights)';
+      ctxLines.push(dateLine);
+    }
+    if (typeof bookingContext.daysUntilDeparture === 'number') {
+      ctxLines.push('- Days until departure: ' + bookingContext.daysUntilDeparture);
+    }
+    if (bookingContext.boardBasis) ctxLines.push('- Board basis: ' + bookingContext.boardBasis);
+    if (bookingContext.outboundFlight) {
+      var ob = bookingContext.outboundFlight;
+      var obLine = '- Outbound flight: ' + ob.from + ' to ' + ob.to;
+      if (ob.airline) obLine += ' on ' + ob.airline;
+      if (typeof ob.stops === 'number') obLine += ', ' + (ob.stops === 0 ? 'direct' : ob.stops + ' stop' + (ob.stops === 1 ? '' : 's'));
+      if (ob.stopAirports && ob.stopAirports.length) obLine += ' via ' + ob.stopAirports.join(', ');
+      if (ob.cabin) obLine += ', ' + ob.cabin + ' class';
+      ctxLines.push(obLine);
+    }
+    if (bookingContext.inboundFlight) {
+      var ib = bookingContext.inboundFlight;
+      var ibLine = '- Return flight: ' + ib.from + ' to ' + ib.to;
+      if (ib.airline) ibLine += ' on ' + ib.airline;
+      if (typeof ib.stops === 'number') ibLine += ', ' + (ib.stops === 0 ? 'direct' : ib.stops + ' stop' + (ib.stops === 1 ? '' : 's'));
+      if (ib.stopAirports && ib.stopAirports.length) ibLine += ' via ' + ib.stopAirports.join(', ');
+      ctxLines.push(ibLine);
+    }
+    var partyParts = [];
+    if (bookingContext.adults) partyParts.push(bookingContext.adults + ' adult' + (bookingContext.adults === 1 ? '' : 's'));
+    if (bookingContext.children) partyParts.push(bookingContext.children + ' child' + (bookingContext.children === 1 ? '' : 'ren'));
+    if (bookingContext.infants) partyParts.push(bookingContext.infants + ' infant' + (bookingContext.infants === 1 ? '' : 's'));
+    if (partyParts.length) ctxLines.push('- Travelling: ' + partyParts.join(', '));
+    ctxLines.push('');
+    ctxLines.push('### How to use this context');
+    ctxLines.push("- When answering follow-up questions about the trip, use these facts directly. e.g. for \"what documents do I need?\" use the destination country to give specific advice (passport validity rules, visa rules, etc.) without re-asking.");
+    ctxLines.push('- Refer to the destination, dates, hotel or airline naturally when it helps the answer feel personal. Do not list the whole booking back at the visitor — they can already see it.');
+    ctxLines.push("- For child/infant-related advice (travel documents for under-18s, baggage allowance for infants), use the party shape above. If the visitor specifically mentions a name, age or relationship not shown here, treat that as new information.");
+    ctxLines.push("- The booking is for an EXISTING trip. Do NOT generate new search links or suggest alternative destinations unless the visitor explicitly asks to look at something else.");
+    ctxLines.push("- If a follow-up question requires details NOT in this context (e.g. specific seat numbers, room type, special requests, payment status), say you can see the booking pack has that detail and they can scroll up to check it, or escalate to a human if it's a question only an agent can answer.");
+    systemPrompt += ctxLines.join('\n');
+  }
+
   if (page) systemPrompt += `\nThe visitor is currently viewing: ${page}`;
   if (visitorName) systemPrompt += `\nThe visitor's name is ${visitorName}.`;
 
