@@ -1270,7 +1270,9 @@ When a visitor expresses they want to find, view, check, or look up an EXISTING 
 
 [BOOKING_LOOKUP:${linkedBooking.widgetId}]
 
-After the marker, do not say anything else. The widget below your message will show the visitor a secure form where they enter their email, departure date and booking reference. Once they look up their booking, they can download a PDF copy of their confirmation.
+After the marker, on the very next lines, emit exactly 3 follow-up question pills using [FQ] markers (see "Follow-up questions" below). Do not write anything else after the pills — the form, the booking details and the pills speak for themselves.
+
+The widget below your message will show the visitor a secure form where they enter their email, departure date and booking reference. Once they look up their booking, they will see the full booking details and can download or email a PDF copy of their confirmation.
 
 ### When to trigger booking lookup
 - "Where's my booking" / "Find my reservation" / "I have a booking"
@@ -1287,24 +1289,75 @@ After the marker, do not say anything else. The widget below your message will s
 - General enquiries about destinations
 - Questions about a booking that aren't about retrieving it (e.g. "can I add a meal to my booking?" — escalate to a human)
 
+### Follow-up questions
+
+After the booking marker, emit exactly 3 [FQ] lines, each on its own line. These appear as tappable pills beneath the chat input AFTER the visitor has looked up their booking. They give the visitor useful next steps once they can see their trip details.
+
+You will not yet know the specific destination or dates of the booking when you emit these (the booking renders below your reply). So the pills should be GENERAL but PRACTICAL — questions that work well for any upcoming trip, that you can answer well from the travel knowledge base.
+
+Pick 3 from this list. Vary your selection so visitors with different bookings see slightly different pills — do not always pick the same 3. Use British English exactly as written.
+
+**Pre-trip practical (use at least one of these):**
+- [FQ] What documents do I need for my trip?
+- [FQ] Do I need any vaccinations or health prep?
+- [FQ] When should I arrive at the airport?
+- [FQ] What's the baggage allowance?
+
+**Destination context (use at least one of these):**
+- [FQ] What will the weather be like?
+- [FQ] What's the local currency?
+- [FQ] Is there a tipping culture I should know about?
+- [FQ] What plug type do they use?
+- [FQ] What time zone is it?
+- [FQ] What's the language and any useful phrases?
+
+**Trip enrichment (use at most one of these):**
+- [FQ] Anything fun to do near my hotel?
+- [FQ] What's the food like?
+- [FQ] What's a typical day's spending money?
+- [FQ] How do I get from the airport to my hotel?
+
+### Important pill rules
+- ALWAYS exactly 3 [FQ] lines — never 2, never 4.
+- ALWAYS one from the "Pre-trip practical" group.
+- ALWAYS one from the "Destination context" group.
+- The third pill is your choice from any group.
+- One [FQ] per line, [FQ] at the start of the line.
+- No follow-up text after the [FQ] lines. Stop after the last pill.
+
 ### Examples
+
 Visitor: "I have a booking with you, can you find it?"
-You: Of course, pop your details in and I'll pull it up for you.
+You:
+Of course, pop your details in and I'll pull it up for you.
 [BOOKING_LOOKUP:${linkedBooking.widgetId}]
+[FQ] What documents do I need for my trip?
+[FQ] What will the weather be like?
+[FQ] When should I arrive at the airport?
 
 Visitor: "where's my reservation"
-You: Sure thing, let me grab the lookup form for you.
+You:
+Sure thing, let me grab the lookup form for you.
 [BOOKING_LOOKUP:${linkedBooking.widgetId}]
+[FQ] What's the baggage allowance?
+[FQ] What's the local currency?
+[FQ] Anything fun to do near my hotel?
 
 Visitor: "I want to look up booking REF12345"
-You: No problem, drop your email and departure date in below and I'll find it.
+You:
+No problem, drop your email and departure date in below and I'll find it.
 [BOOKING_LOOKUP:${linkedBooking.widgetId}]
+[FQ] Do I need any vaccinations or health prep?
+[FQ] What plug type do they use?
+[FQ] How do I get from the airport to my hotel?
 
 ### Important
 - Use the marker exactly as shown, including the widget ID.
-- Only ONE marker per response.
-- Don't add explanations after the marker, the form speaks for itself.
-- If the visitor's lookup fails (the form will tell them), they may need to double-check their details. Offer to escalate to a human if they keep having trouble.`;
+- Only ONE [BOOKING_LOOKUP] marker per response.
+- Always exactly 3 [FQ] pills after the marker.
+- Don't add explanations after the pills — stop there.
+- If the visitor's lookup fails (the form will tell them), they may need to double-check their details. Offer to escalate to a human if they keep having trouble.
+- If the visitor taps a pill, answer it normally using your travel knowledge. The visitor's booking is now visible in the chat above, so refer to it naturally if helpful (e.g. "for your Maldives trip..." once you can see the destination from earlier in the conversation).`;
       }
     } catch (e) {
       console.warn('[luna-chat] Booking lookup integration check failed:', e.message);
