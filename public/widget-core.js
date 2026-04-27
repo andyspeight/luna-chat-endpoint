@@ -113,6 +113,19 @@ var TG_CONFIG_API = TG_WIDGETS_BASE + "/api/widget-config";
 var _tgBookingScriptPromise = null;
 var _tgConfigCache = {};
 
+/* Active pill-release observers waiting on booking-widget loads.
+   When the visitor sends a new message, we cancel any pending pill releases
+   so stale follow-up pills don't suddenly appear long after the conversation
+   has moved on. Each entry is a { cancel: fn } record. */
+var _pendingPillReleases = [];
+
+function cancelPendingPillReleases() {
+  while (_pendingPillReleases.length) {
+    var entry = _pendingPillReleases.shift();
+    try { entry.cancel(); } catch (_) {}
+  }
+}
+
 function loadBookingWidgetScript() {
   if (window.TGMyBookingWidget) return Promise.resolve();
   if (_tgBookingScriptPromise) return _tgBookingScriptPromise;
@@ -833,7 +846,7 @@ function scrollBottom() { setTimeout(function(){ $msgs.scrollTop = $msgs.scrollH
 
 /* Renders an embedded My Booking widget as a chat message. The "descriptor"
    is the same object the message was stored with: { kind, widgetId }. */
-function renderBookingWidgetMessage(descriptor) {
+function renderBookingWidgetMessage(descriptor, pendingPills) {
   if (!descriptor || descriptor.kind !== "booking_lookup" || !isSafeWidgetId(descriptor.widgetId)) {
     return;
   }
@@ -857,6 +870,76 @@ function renderBookingWidgetMessage(descriptor) {
   $msgs.appendChild(row);
   scrollBottom();
 
+  /* Release any pending follow-up pills the moment the booking is successfully
+     retrieved (.tgm-found appears in the widget's shadow DOM). If the lookup
+     fails (.tgm-nf appears) we leave pills hidden — no point pushing follow-up
+     questions about a trip we couldn't find. Defensive: any failure to set up
+     the observer falls back silently to no pills, never breaks the booking
+     bubble itself. */
+  function watchForBookingLoad(widgetInstance) {
+    if (!pendingPills || !pendingPills.length) return;
+    if (typeof MutationObserver === "undefined") return;
+    if (!widgetInstance || !widgetInstance.shadow) return;
+
+    var released = false;
+    var releaseTimeout = null;
+    var trackerEntry = null;
+
+    function untrack() {
+      if (!trackerEntry) return;
+      var idx = _pendingPillReleases.indexOf(trackerEntry);
+      if (idx !== -1) _pendingPillReleases.splice(idx, 1);
+      trackerEntry = null;
+    }
+
+    function release() {
+      if (released) return;
+      released = true;
+      if (releaseTimeout) clearTimeout(releaseTimeout);
+      try { observer.disconnect(); } catch (_) {}
+      untrack();
+      try {
+        showPills(pendingPills, function(pill) { sendToAI(pill); });
+      } catch (e) {
+        console.warn("Luna widget: failed to show booking follow-up pills:", e.message);
+      }
+    }
+
+    function cancel() {
+      if (released) return;
+      released = true;
+      if (releaseTimeout) clearTimeout(releaseTimeout);
+      try { observer.disconnect(); } catch (_) {}
+      untrack();
+      /* No showPills — this is the visitor moving on before booking loaded */
+    }
+
+    try {
+      var observer = new MutationObserver(function() {
+        try {
+          if (widgetInstance.shadow.querySelector(".tgm-found")) {
+            release();
+          }
+        } catch (_) { /* shadow may have been torn down */ }
+      });
+      observer.observe(widgetInstance.shadow, { childList: true, subtree: true });
+
+      /* Safety net: if for any reason the observer never fires (e.g. visitor
+         abandons the form, browser quirk), make sure we don't leak the
+         observer forever. 30 minutes is well past any plausible session. */
+      releaseTimeout = setTimeout(function() {
+        try { observer.disconnect(); } catch (_) {}
+        untrack();
+      }, 30 * 60 * 1000);
+
+      /* Register so a new visitor message can cancel us */
+      trackerEntry = { cancel: cancel };
+      _pendingPillReleases.push(trackerEntry);
+    } catch (e) {
+      console.warn("Luna widget: pill release observer failed:", e.message);
+    }
+  }
+
   Promise.all([
     loadBookingWidgetScript(),
     fetchBookingConfig(descriptor.widgetId)
@@ -869,7 +952,8 @@ function renderBookingWidgetMessage(descriptor) {
     }
     if (placeholder.parentNode) placeholder.parentNode.removeChild(placeholder);
     try {
-      new window.TGMyBookingWidget(mount, config);
+      var widgetInstance = new window.TGMyBookingWidget(mount, config);
+      watchForBookingLoad(widgetInstance);
     } catch (err) {
       console.error("Luna widget: failed to init booking widget:", err);
       var errEl = document.createElement("div");
@@ -884,11 +968,11 @@ function renderBookingWidgetMessage(descriptor) {
   });
 }
 
-function addMsg(role, text, noStore, originalText) {
+function addMsg(role, text, noStore, originalText, pendingPills) {
   /* Booking widget embed — special role */
   if (role === "widget") {
     /* "text" is actually a descriptor object: { kind: "booking_lookup", widgetId: "rec..." } */
-    renderBookingWidgetMessage(text);
+    renderBookingWidgetMessage(text, pendingPills);
     if (!noStore) {
       msgs.push({ role: "widget", content: text, ts: Date.now() });
       saveSession();
@@ -1345,6 +1429,7 @@ async function callLuna(userText) {
 async function sendToAI(text) {
   if (!text.trim()) return;
   cancelAutoTrigger();
+  cancelPendingPillReleases();   /* drop any stale booking-pill observers from earlier turns */
   clearPills();
   /* Ensure we're on chat screen */
   if (currentScreen !== "chat") switchToChat();
@@ -1372,9 +1457,14 @@ async function sendToAI(text) {
     publishMessage("ai", parsed.body);
   }
 
-  /* If a booking widget marker was found, render the embedded widget */
+  /* If a booking widget marker was found, render the embedded widget.
+     Pills (FQs/OPTs) are deferred until AFTER the booking is successfully
+     retrieved — passed to renderBookingWidgetMessage which releases them
+     when .tgm-found appears in the booking widget's shadow DOM. If lookup
+     fails, pills stay hidden — see watchForBookingLoad. */
   if (bookingExtracted.widgetId) {
-    addMsg("widget", { kind: "booking_lookup", widgetId: bookingExtracted.widgetId });
+    var deferredPills = parsed.opts.length > 0 ? parsed.opts : (parsed.fqs.length > 0 ? parsed.fqs : null);
+    addMsg("widget", { kind: "booking_lookup", widgetId: bookingExtracted.widgetId }, false, null, deferredPills);
   }
 
   /* Auto-redirect for search deep links (same tab) */
@@ -1388,10 +1478,13 @@ async function sendToAI(text) {
 
   if (data.escalate === true) setTimeout(function(){ escalateToHuman(); }, 100);
 
-  if (parsed.opts.length > 0) {
-    showPills(parsed.opts, function(opt){ sendToAI(opt); });
-  } else if (parsed.fqs.length > 0) {
-    showPills(parsed.fqs, function(fq){ sendToAI(fq); });
+  /* Pills shown immediately UNLESS we deferred them above for a booking lookup */
+  if (!bookingExtracted.widgetId) {
+    if (parsed.opts.length > 0) {
+      showPills(parsed.opts, function(opt){ sendToAI(opt); });
+    } else if (parsed.fqs.length > 0) {
+      showPills(parsed.fqs, function(fq){ sendToAI(fq); });
+    }
   }
   $input.disabled = false;
   $input.focus();
