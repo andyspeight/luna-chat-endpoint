@@ -825,23 +825,30 @@
   .scan-progress { width:100%; height:4px; border-radius:2px; background:var(--navy-light); margin-top:var(--space-3); overflow:hidden; }
   .scan-progress-bar { height:100%; border-radius:2px; background:var(--teal); transition:width 0.4s ease-out; }
 </style>
+<!-- Central auth gate. Bounces to id.travelify.io/signin.html if not signed in.
+     Product slug "*" because client linkage is checked separately via the
+     /api/auth-session endpoint that maps the user's email to a Luna Chat client. -->
+<script src="https://id.travelify.io/tg-auth-gate.js" data-product="*"></script>
 </head>
 <body>
 
-<!-- LOGIN -->
-<div class="login-screen" id="loginScreen">
+<!-- BOOT SCREEN — shown while we resolve the central session -->
+<div class="login-screen" id="bootScreen">
   <div class="login-box">
-    <div class="login-logo" id="loginLogo">Luna Live Chat</div>
-    <div class="login-title" id="loginTitle">Agent Dashboard</div>
-    <div class="login-sub">Sign in to your dashboard</div>
-    <input type="text" class="login-input" id="loginCompany" placeholder="Company name" autofocus>
-    <input type="text" class="login-input" id="loginName" placeholder="Your name (e.g. Sarah)" style="margin-top:8px">
-    <div style="position:relative;margin-top:8px">
-      <input type="password" class="login-input" id="loginPass" placeholder="Password" style="padding-right:44px">
-      <button type="button" id="loginEye" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-muted);padding:4px;display:flex;align-items:center" onclick="togglePassEye()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
-    </div>
-    <button class="login-btn" id="loginBtn">Sign In</button>
-    <div class="login-error" id="loginError"></div>
+    <div class="login-logo">Luna Live Chat</div>
+    <div class="login-title">Agent Dashboard</div>
+    <div class="login-sub">Loading your dashboard...</div>
+  </div>
+</div>
+
+<!-- PICKER SCREEN — shown only if user has access to multiple clients -->
+<div class="login-screen" id="pickerScreen" style="display:none">
+  <div class="login-box" style="max-width:480px">
+    <div class="login-logo">Luna Live Chat</div>
+    <div class="login-title">Choose a client</div>
+    <div class="login-sub">You have access to multiple Luna Chat clients. Pick one to continue.</div>
+    <div id="pickerList" style="margin-top:16px;display:flex;flex-direction:column;gap:8px;text-align:left"></div>
+    <div class="login-sub" style="margin-top:16px">You can switch later from the dashboard menu.</div>
   </div>
 </div>
 
@@ -1399,150 +1406,137 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     updateHistoryCount();
   }
 
-  // ─── LOGIN ───
-  const loginScreen = document.getElementById('loginScreen');
-  const app = document.getElementById('app');
-  const loginCompany = document.getElementById('loginCompany');
-  const loginName = document.getElementById('loginName');
-  const loginPass = document.getElementById('loginPass');
-  const loginBtn = document.getElementById('loginBtn');
-  const loginError = document.getElementById('loginError');
+  // ─── LOGIN — central session via tg-auth-gate.js ───
+  //
+  // The page is gated by /tg-auth-gate.js loaded in <head>. When that script
+  // resolves the session it fires 'tg-auth-ready'. We then call
+  // /api/auth-session to find the Luna Chat client linked to this user and
+  // load their config. If multiple clients match, the picker is shown.
+  //
+  // We also keep a "remembered choice" in localStorage so multi-client users
+  // (e.g. Travelgenix admins with several customer companies) skip the picker
+  // on subsequent visits unless they explicitly switch.
 
-  async function doLogin() {
-    const company = loginCompany.value.trim();
-    const agentName = loginName.value.trim();
-    const password = loginPass.value;
+  const CLIENT_PREF_KEY = 'luna_chat_client_id';
+  const bootScreen = document.getElementById('bootScreen');
+  const pickerScreen = document.getElementById('pickerScreen');
+  const pickerList = document.getElementById('pickerList');
 
-    if (!company) { loginError.textContent = 'Please enter your company name'; return; }
-    if (!agentName) { loginError.textContent = 'Please enter your name'; return; }
-    if (!password) { loginError.textContent = 'Please enter your password'; return; }
+  async function fetchSessionConfig(clientId) {
+    const body = clientId ? { clientId: clientId } : {};
+    const res = await fetch('/api/auth-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(body)
+    });
+    const data = await res.json().catch(function () { return { error: 'Bad response' }; });
+    if (!res.ok) throw new Error(data.error || ('Auth failed (' + res.status + ')'));
+    return data;
+  }
 
-    loginError.textContent = '';
-    loginBtn.disabled = true;
-    loginBtn.textContent = 'Signing in...';
+  function escHtml(s) {
+    return String(s || '').replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
 
+  function showPicker(candidates) {
+    pickerList.innerHTML = '';
+    candidates.forEach(function (c) {
+      const btn = document.createElement('button');
+      btn.className = 'login-btn';
+      btn.style.cssText = 'background:transparent;color:var(--text);border:1px solid var(--border);text-align:left;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px';
+      btn.innerHTML = '<span style="font-weight:600">' + escHtml(c.name) + '</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>';
+      btn.onclick = function () { chooseClient(c.id); };
+      pickerList.appendChild(btn);
+    });
+    bootScreen.style.display = 'none';
+    pickerScreen.style.display = 'flex';
+  }
+
+  async function chooseClient(clientId) {
     try {
-      const res = await fetch('https://luna-chat-endpoint.vercel.app/api/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientName: company, password: password })
-      });
-      const data = await res.json();
-
-      if (!res.ok || !data.success) {
-        loginError.textContent = data.error || 'Login failed';
-        loginBtn.disabled = false;
-        loginBtn.textContent = 'Sign In';
-        loginPass.value = '';
-        loginPass.focus();
-        return;
-      }
-
-      // Populate CONFIG from auth response
-      CONFIG.CLIENT_NAME = data.config.clientName;
-      CONFIG.ABLY_KEY = data.config.ablyKey;
-      CONFIG.PASSWORD = password;
-      CONFIG.AGENT_NAME = agentName;
-      CONFIG.AGENT_ID = 'agent-' + agentName.toLowerCase().replace(/[^a-z0-9]/g, '-');
-
-      // Set UI
-      document.title = 'Luna Live Chat — ' + CONFIG.CLIENT_NAME;
-      document.getElementById('topbarBrand').textContent = CONFIG.CLIENT_NAME;
-      document.getElementById('agentInitials').textContent = agentName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
-
-      // Set client-specific storage
-      STORAGE_PREFIX = 'luna_' + (CONFIG.CLIENT_NAME || 'default').toLowerCase().replace(/[^a-z0-9]/g, '_') + '_';
-
-      // Re-render canned responses from Airtable
-      loadCannedFromAPI();
-
-      // Restore theme preference for this client
-      try {
-        var savedTheme = localStorage.getItem(STORAGE_PREFIX + 'theme_v2');
-        var isCurrentlyDark = document.documentElement.getAttribute('data-theme') === 'dark';
-        if (savedTheme === 'dark' && !isCurrentlyDark) window._toggleTheme();
-        if (savedTheme !== 'dark' && isCurrentlyDark) window._toggleTheme();
-      } catch(e) {}
-
-      // Show dashboard
-      loginScreen.style.display = 'none';
-      app.classList.add('active');
-
-      // Save session for page refresh persistence (4-hour timeout)
-      try {
-        sessionStorage.setItem('luna_session', JSON.stringify({
-          company: CONFIG.CLIENT_NAME,
-          agentName: CONFIG.AGENT_NAME,
-          password: CONFIG.PASSWORD,
-          loginAt: Date.now()
-        }));
-      } catch(e) {}
-
-      // Connect
-      if (CONFIG.ABLY_KEY) {
-        initAbly();
-      } else {
-        updateConnection('disconnected');
-        document.getElementById('presenceList').innerHTML = '<div style="font-size:var(--text-sm);color:var(--text-muted);">No Ably key configured. Contact your administrator.</div>';
-      }
-
+      const data = await fetchSessionConfig(clientId);
+      if (!data.config) throw new Error('Client config not loaded');
+      try { localStorage.setItem(CLIENT_PREF_KEY, clientId); } catch (e) {}
+      pickerScreen.style.display = 'none';
+      bootScreen.style.display = 'none';
+      bootSignedIn(data);
     } catch (e) {
-      loginError.textContent = 'Connection error. Please try again.';
-      loginBtn.disabled = false;
-      loginBtn.textContent = 'Sign In';
+      alert('Could not load that client: ' + e.message);
     }
   }
 
-  loginBtn.addEventListener('click', doLogin);
-  loginPass.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
-  loginCompany.addEventListener('keydown', e => { if (e.key === 'Enter') loginName.focus(); });
-  loginName.addEventListener('keydown', e => { if (e.key === 'Enter') loginPass.focus(); });
+  function bootSignedIn(data) {
+    // Populate CONFIG from the session response
+    CONFIG.CLIENT_NAME = data.config.clientName;
+    CONFIG.ABLY_KEY = data.config.ablyKey;
+    CONFIG.PASSWORD = ''; // no longer used
+    CONFIG.AGENT_NAME = (data.account && data.account.fullName) || (data.account && data.account.email) || 'Agent';
+    CONFIG.AGENT_ID = 'agent-' + CONFIG.AGENT_NAME.toLowerCase().replace(/[^a-z0-9]/g, '-');
 
-  // ─── SESSION RESTORE ───
-  // Check for saved session on page load (survives refresh, 4-hour timeout)
-  try {
-    var savedSession = sessionStorage.getItem('luna_session');
-    if (savedSession) {
-      var session = JSON.parse(savedSession);
-      var elapsed = Date.now() - (session.loginAt || 0);
-      var maxAge = 4 * 60 * 60 * 1000; // 4 hours
-      if (elapsed < maxAge && session.company && session.agentName && session.password) {
-        // Auto-fill and login
-        loginCompany.value = session.company;
-        loginName.value = session.agentName;
-        loginPass.value = session.password;
-        doLogin();
-      } else {
-        // Session expired
-        sessionStorage.removeItem('luna_session');
-      }
-    }
-  } catch(e) {}
+    // UI
+    document.title = 'Luna Live Chat — ' + CONFIG.CLIENT_NAME;
+    document.getElementById('topbarBrand').textContent = CONFIG.CLIENT_NAME;
+    document.getElementById('agentInitials').textContent = CONFIG.AGENT_NAME.split(' ').map(function (w) { return w[0]; }).join('').toUpperCase().slice(0, 2);
 
-  // Auto-logout after 4 hours
-  setInterval(function() {
+    STORAGE_PREFIX = 'luna_' + (CONFIG.CLIENT_NAME || 'default').toLowerCase().replace(/[^a-z0-9]/g, '_') + '_';
+
+    loadCannedFromAPI();
+
+    // Restore theme preference for this client
     try {
-      var s = sessionStorage.getItem('luna_session');
-      if (s) {
-        var sess = JSON.parse(s);
-        if (Date.now() - (sess.loginAt || 0) > 4 * 60 * 60 * 1000) {
-          window._logout();
-        }
-      }
-    } catch(e) {}
-  }, 60000); // Check every minute
+      const savedTheme = localStorage.getItem(STORAGE_PREFIX + 'theme_v2');
+      const isCurrentlyDark = document.documentElement.getAttribute('data-theme') === 'dark';
+      if (savedTheme === 'dark' && !isCurrentlyDark) window._toggleTheme();
+      if (savedTheme !== 'dark' && isCurrentlyDark) window._toggleTheme();
+    } catch (e) {}
 
-  window.togglePassEye = function() {
-    var field = document.getElementById('loginPass');
-    var eye = document.getElementById('loginEye');
-    if (field.type === 'password') {
-      field.type = 'text';
-      eye.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+    // Show dashboard
+    bootScreen.style.display = 'none';
+    app.classList.add('active');
+
+    // Connect Ably
+    if (CONFIG.ABLY_KEY) {
+      initAbly();
     } else {
-      field.type = 'password';
-      eye.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+      updateConnection('disconnected');
+      document.getElementById('presenceList').innerHTML = '<div style="font-size:var(--text-sm);color:var(--text-muted);">No Ably key configured. Contact your administrator.</div>';
     }
-  };
+  }
+
+  // Bootstrap on tg-auth-ready
+  const app = document.getElementById('app');
+  window.addEventListener('tg-auth-ready', async function () {
+    try {
+      let preferred = null;
+      try { preferred = localStorage.getItem(CLIENT_PREF_KEY) || null; } catch (e) {}
+
+      let data;
+      if (preferred) {
+        try { data = await fetchSessionConfig(preferred); }
+        catch (e) {
+          try { localStorage.removeItem(CLIENT_PREF_KEY); } catch (_) {}
+          data = await fetchSessionConfig(null);
+        }
+      } else {
+        data = await fetchSessionConfig(null);
+      }
+
+      if (data.config) {
+        bootSignedIn(data);
+      } else if (data.candidates && data.candidates.length > 1) {
+        showPicker(data.candidates);
+      } else if (data.candidates && data.candidates.length === 1) {
+        chooseClient(data.candidates[0].id);
+      } else {
+        bootScreen.innerHTML = '<div class="login-box"><div class="login-logo">Luna Live Chat</div><div class="login-title">No Luna Chat client</div><div class="login-sub">Your account isn\'t linked to a Luna Chat client yet.</div><div class="login-sub" style="margin-top:16px">Contact your account manager to get set up.</div><button class="login-btn" style="margin-top:24px" onclick="tgAuth.signOut()">Sign out</button></div>';
+      }
+    } catch (e) {
+      bootScreen.innerHTML = '<div class="login-box"><div class="login-logo">Luna Live Chat</div><div class="login-title">Couldn\'t load your dashboard</div><div class="login-sub" style="color:var(--red)">' + escHtml(e.message) + '</div><button class="login-btn" style="margin-top:24px" onclick="location.reload()">Retry</button><button class="login-btn" style="margin-top:8px;background:transparent;color:var(--text);border:1px solid var(--border)" onclick="tgAuth.signOut()">Sign out</button></div>';
+    }
+  });
 
   // ─── ABLY INIT ───
   function initAbly() {
@@ -3133,13 +3127,22 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
 
   // ─── LOGOUT ───
   window._logout = function() {
+    // Clear remembered client choice so a different user landing on this
+    // device gets a fresh picker.
+    try { localStorage.removeItem('luna_chat_client_id'); } catch(e) {}
+    // Clear legacy session if any survived from pre-central-auth days.
     try { sessionStorage.removeItem('luna_session'); } catch(e) {}
-    // Disconnect Ably
+    // Disconnect Ably so we don't keep streaming after sign-out.
     if (typeof ably !== 'undefined' && ably && ably.close) {
       try { ably.close(); } catch(e) {}
     }
-    // Reload page to reset everything
-    window.location.reload();
+    // Sign out via the central auth gate — clears the .travelify.io cookie
+    // and bounces the user to id.travelify.io/signin.html.
+    if (window.tgAuth && tgAuth.signOut) {
+      tgAuth.signOut();
+    } else {
+      window.location.href = 'https://id.travelify.io/signin.html';
+    }
   };
 
   // ─── LIGHT/DARK TOGGLE ───
