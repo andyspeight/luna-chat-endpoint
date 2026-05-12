@@ -864,6 +864,7 @@
       <span id="connLabel">Connecting…</span>
     </div>
     <button class="topbar-stats-btn" id="statsToggle" onclick="window._toggleStats()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg> Stats</button>
+    <button class="topbar-stats-btn" id="switchCompanyBtn" onclick="window._switchCompany()" title="Switch to another Luna Chat client" style="display:none"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg> Switch</button>
     <button class="topbar-stats-btn" id="settingsToggle" onclick="window._toggleSettings()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> Settings</button>
     <button class="topbar-stats-btn" id="themeToggle" onclick="window._toggleTheme()" title="Toggle light/dark mode" aria-label="Toggle light/dark mode"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>
     <button class="topbar-stats-btn" id="logoutBtn" onclick="window._logout()" title="Sign out" aria-label="Sign out" style="color:var(--red)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>
@@ -1476,6 +1477,11 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     CONFIG.AGENT_NAME = (data.account && data.account.fullName) || (data.account && data.account.email) || 'Agent';
     CONFIG.AGENT_ID = 'agent-' + CONFIG.AGENT_NAME.toLowerCase().replace(/[^a-z0-9]/g, '-');
 
+    // Track the user's auth-platform role so we can show the company
+    // switcher button only for staff who actually have multiple clients
+    // to switch between. End-client users see no switcher.
+    CONFIG.USER_ROLE = String((data.account && data.account.role) || '').toLowerCase();
+
     // UI
     document.title = 'Luna Live Chat — ' + CONFIG.CLIENT_NAME;
     document.getElementById('topbarBrand').textContent = CONFIG.CLIENT_NAME;
@@ -1492,6 +1498,15 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       if (savedTheme === 'dark' && !isCurrentlyDark) window._toggleTheme();
       if (savedTheme !== 'dark' && isCurrentlyDark) window._toggleTheme();
     } catch (e) {}
+
+    // Toggle the company-switcher button. Visible for owners/admins only —
+    // they're the ones with cross-tenant access. Wired up via _switchCompany()
+    // defined later in this file.
+    var switchBtn = document.getElementById('switchCompanyBtn');
+    if (switchBtn) {
+      var canSwitch = CONFIG.USER_ROLE === 'owner' || CONFIG.USER_ROLE === 'admin';
+      switchBtn.style.display = canSwitch ? '' : 'none';
+    }
 
     // Show dashboard
     bootScreen.style.display = 'none';
@@ -3124,6 +3139,29 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
   renderEmailPlatformGrid();
   renderCapCards();
   renderBusinessTypeGrid();
+
+  // ─── SWITCH COMPANY ───
+  //
+  // Clears the remembered client choice and reloads the page, which forces
+  // the bootstrap flow to refetch /api/auth-session — the new request comes
+  // back with no requestedClientId, so the server returns the full candidate
+  // list and the dashboard shows the picker again.
+  //
+  // Only owners/admins should see this action (see bootSignedIn for the
+  // visibility toggle). Calling it as a non-staff user wouldn't crash, just
+  // re-pick the same single client they already had.
+  window._switchCompany = function() {
+    // Disconnect Ably first — otherwise the old client's channels keep
+    // streaming while the picker is shown.
+    if (typeof ably !== 'undefined' && ably && ably.close) {
+      try { ably.close(); } catch(e) {}
+    }
+    // Forget the remembered client so /api/auth-session returns all candidates.
+    try { localStorage.removeItem('luna_chat_client_id'); } catch(e) {}
+    // Reload the page from a clean state. The picker will render because the
+    // bootstrap has no preferred clientId and the user has multiple candidates.
+    window.location.reload();
+  };
 
   // ─── LOGOUT ───
   window._logout = function() {
