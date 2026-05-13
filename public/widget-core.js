@@ -3348,7 +3348,51 @@ function handleSend() {
 }
 
 /* ─── BOOT ───────────────────────────────────────────────── */
+/* ─── VIEWPORT META INJECTION ────────────────────────────
+   Many older client websites (especially hand-coded sites, legacy WordPress
+   themes, or e-commerce sites built before mobile-first became standard) are
+   missing a proper viewport meta tag. Without it, mobile browsers render
+   pages at 980px CSS width and zoom out — which means our `@media(max-width:480px)`
+   query never fires on real phones.
+
+   We check at boot. If no viewport meta exists, we inject the standard one.
+   If one exists (even with bad values), we leave it alone so we never override
+   an intentional host-page choice. */
+function ensureViewportMeta() {
+  try {
+    var existing = document.querySelector('meta[name="viewport"]');
+    if (existing) {
+      /* Host page has a viewport tag — respect it, even if it's not ideal.
+         Log a hint if it lacks width=device-width so the dev can investigate. */
+      var content = existing.getAttribute('content') || '';
+      if (!/width\s*=\s*device-width/i.test(content)) {
+        console.warn('[Luna] Host page viewport meta lacks width=device-width:', content,
+          '— mobile rendering may be off. Recommend updating to: <meta name="viewport" content="width=device-width,initial-scale=1">');
+      }
+      return;
+    }
+    /* No viewport meta — inject the standard one */
+    var meta = document.createElement('meta');
+    meta.setAttribute('name', 'viewport');
+    meta.setAttribute('content', 'width=device-width,initial-scale=1');
+    meta.setAttribute('data-luna-injected', '1');
+    /* Insert before any existing meta tags so it takes effect as early as possible */
+    var firstMeta = document.querySelector('meta');
+    if (firstMeta && firstMeta.parentNode) {
+      firstMeta.parentNode.insertBefore(meta, firstMeta);
+    } else if (document.head) {
+      document.head.appendChild(meta);
+    }
+    console.log('[Luna] Injected viewport meta tag (host page was missing one)');
+  } catch (err) {
+    console.warn('[Luna] ensureViewportMeta failed:', err && err.message);
+  }
+}
+
 async function boot() {
+  /* Make sure mobile browsers don't fall back to legacy desktop emulation */
+  ensureViewportMeta();
+
   /* Fetch remote config */
   var clientSlug = C.clientName || attr("clientName") || "default";
   try {
