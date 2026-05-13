@@ -407,6 +407,66 @@ function summariseDestinationRecord(record, payload) {
   return parts.join('\n');
 }
 
+// ─── LIVE WEATHER (Open-Meteo) ───────────────────────────
+// Open-Meteo is a free, no-API-key forecast service that we already use in
+// the Travelgenix Weather widget. Quality data, no rate limits at our scale.
+// We cache results for 30 minutes per coordinate.
+
+var openMeteoCache = {};
+var OPEN_METEO_TTL = 30 * 60 * 1000; // 30 minutes
+
+async function fetchOpenMeteo(lat, lng) {
+  if (typeof lat !== 'number' || typeof lng !== 'number') return null;
+  // Round to 2dp for cache key (~1km granularity is plenty for travel)
+  var key = lat.toFixed(2) + ',' + lng.toFixed(2);
+  var cached = openMeteoCache[key];
+  if (cached && (Date.now() - cached.ts < OPEN_METEO_TTL)) return cached.data;
+  try {
+    var url = 'https://api.open-meteo.com/v1/forecast'
+      + '?latitude=' + encodeURIComponent(lat)
+      + '&longitude=' + encodeURIComponent(lng)
+      + '&current=temperature_2m,weather_code,wind_speed_10m,relative_humidity_2m,apparent_temperature'
+      + '&daily=temperature_2m_max,temperature_2m_min,weather_code'
+      + '&timezone=auto&forecast_days=7';
+    var r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    if (!r.ok) {
+      console.warn('[luna-chat] Open-Meteo returned', r.status);
+      return null;
+    }
+    var data = await r.json();
+    openMeteoCache[key] = { ts: Date.now(), data: data };
+    return data;
+  } catch (err) {
+    console.warn('[luna-chat] Open-Meteo fetch failed:', err.message);
+    return null;
+  }
+}
+
+// Format Open-Meteo response into a compact prompt-friendly summary.
+function summariseLiveWeather(data) {
+  if (!data || !data.current || !data.daily) return '';
+  var cur = data.current;
+  var daily = data.daily;
+  var parts = [];
+  parts.push('--- Live weather (Open-Meteo, current conditions + 7-day forecast) ---');
+  parts.push('Current temperature: ' + Math.round(cur.temperature_2m) + 'C');
+  parts.push('Current weather code (WMO): ' + cur.weather_code);
+  parts.push('Feels like: ' + Math.round(cur.apparent_temperature) + 'C');
+  parts.push('Wind: ' + Math.round(cur.wind_speed_10m) + ' km/h');
+  parts.push('Humidity: ' + cur.relative_humidity_2m + '%');
+  parts.push('Timezone: ' + (data.timezone || 'auto'));
+  if (daily.time && daily.temperature_2m_max && daily.temperature_2m_min && daily.weather_code) {
+    parts.push('7-day forecast (date | high C | low C | WMO code):');
+    for (var i = 0; i < daily.time.length && i < 7; i++) {
+      parts.push('  ' + daily.time[i]
+        + ' | ' + Math.round(daily.temperature_2m_max[i])
+        + ' | ' + Math.round(daily.temperature_2m_min[i])
+        + ' | ' + daily.weather_code[i]);
+    }
+  }
+  return parts.join('\n');
+}
+
 // Top-level entry: returns a prompt-ready string with matched destination context,
 // or empty string if no matches / no API key.
 async function getDestinationContext(message, atKey) {
@@ -420,6 +480,16 @@ async function getDestinationContext(message, atKey) {
     for (var i = 0; i < matches.length; i++) {
       var rec = await fetchDestinationRecord(matches[i], atKey);
       var summary = summariseDestinationRecord(rec, matches[i]);
+      // Append live weather data if the record carries coordinates
+      if (rec && rec.fields) {
+        var lat = rec.fields['Latitude'];
+        var lng = rec.fields['Longitude'];
+        if (typeof lat === 'number' && typeof lng === 'number') {
+          var live = await fetchOpenMeteo(lat, lng);
+          var liveText = summariseLiveWeather(live);
+          if (liveText) summary = (summary || '') + '\n' + liveText;
+        }
+      }
       if (summary) summaries.push(summary);
     }
     if (summaries.length === 0) return '';
@@ -1017,17 +1087,20 @@ actionType options: connect (live agent chat — default), callback (Calendly), 
 
 **location_card** — used when the visitor asks about an airport or theme park where you have verified coordinates in the Destination context section. Renders a map preview plus "Open in Google Maps" and "Open in Apple Maps" buttons. Emit it AFTER your prose answer. The Destination context section (when present at the bottom of this prompt) includes the exact emission format and rules. Do NOT make up coordinates — if you don't have the lat/lng in the Destination context, just answer in prose without emitting this block.
 
-**weather_card** — used when the visitor asks about weather/climate at a destination AND you have climate data available in the Destination context section. Renders a 12-month temperature chart, seasonality colour-coding, and rainfall/peak-month detail. Emit it AFTER your prose answer.
+**weather_card** — used when the visitor asks about weather/climate/forecast at a destination. The Destination context section provides climate averages plus (when available) LIVE current weather and a 7-day forecast from Open-Meteo. Render the richest weather_card you have data for. Emit it AFTER your prose answer.
 
 Format:
-[BLOCK]{"type":"weather_card","props":{"name":"<destination name>","subtitle":"<region>","tempsC":[<12 numbers Jan-Dec>],"rainfallMm":[<12 numbers>],"seasons":["off","off","off","shoulder","best","best","best","best","best","shoulder","off","off"],"highlightMonth":<0-11 if visitor mentioned a specific month>,"summary":"<1 sentence about the climate>"}}[/BLOCK]
+[BLOCK]{"type":"weather_card","props":{"name":"<destination>","subtitle":"<region>","tempsC":[<12 historical avg highs Jan-Dec>],"rainfallMm":[<12 numbers>],"seasons":[<12 tokens>],"highlightMonth":<0-11 optional>,"summary":"<1 sentence>","currentTempC":<number from Live weather>,"feelsLikeC":<number>,"currentCode":<WMO number from Live weather>,"windKmh":<number>,"humidity":<number>,"forecast":[{"date":"YYYY-MM-DD","highC":<n>,"lowC":<n>,"code":<n>},...up to 7]}}[/BLOCK]
 
 Rules:
-- tempsC and rainfallMm MUST be arrays of exactly 12 numbers (not strings)
-- seasons MUST be an array of exactly 12 tokens, each "best", "shoulder", or "off"
-- highlightMonth is 0-indexed (0=Jan, 11=Dec), only set if the visitor asked about a specific month
-- Use the climate data from the Destination context section verbatim — parse the comma-separated values into arrays
-- Do NOT emit this block if the Destination context does not include climate data for the destination — answer in prose instead
+- Always include name and as many of the other props as you have data for
+- tempsC / rainfallMm / seasons MUST be arrays of exactly 12 numbers/tokens (parse the comma-separated values verbatim)
+- forecast MUST be an array of objects in the order provided (today first)
+- If Live weather is in the context, you MUST populate currentTempC, currentCode, and forecast — these are what makes the card feel alive
+- All numeric values MUST be numbers (not strings)
+- seasons tokens MUST be "best", "shoulder", or "off"
+- If the visitor asks "what's the weather TODAY" and you only have historical climate data (no Live weather section), explain that today's exact conditions aren't available but you can show typical conditions for the season — and still emit the card with the climate data alone
+- Do NOT emit this block if there is no destination match at all — answer in prose
 
 ### When plain prose is correct
 
@@ -1540,17 +1613,20 @@ actionType options: connect (live agent chat — default), callback (Calendly), 
 
 **location_card** — used when the visitor asks about an airport or theme park where you have verified coordinates in the Destination context section. Renders a map preview plus "Open in Google Maps" and "Open in Apple Maps" buttons. Emit it AFTER your prose answer. The Destination context section (when present at the bottom of this prompt) includes the exact emission format and rules. Do NOT make up coordinates — if you don't have the lat/lng in the Destination context, just answer in prose without emitting this block.
 
-**weather_card** — used when the visitor asks about weather/climate at a destination AND you have climate data available in the Destination context section. Renders a 12-month temperature chart, seasonality colour-coding, and rainfall/peak-month detail. Emit it AFTER your prose answer.
+**weather_card** — used when the visitor asks about weather/climate/forecast at a destination. The Destination context section provides climate averages plus (when available) LIVE current weather and a 7-day forecast from Open-Meteo. Render the richest weather_card you have data for. Emit it AFTER your prose answer.
 
 Format:
-[BLOCK]{"type":"weather_card","props":{"name":"<destination name>","subtitle":"<region>","tempsC":[<12 numbers Jan-Dec>],"rainfallMm":[<12 numbers>],"seasons":["off","off","off","shoulder","best","best","best","best","best","shoulder","off","off"],"highlightMonth":<0-11 if visitor mentioned a specific month>,"summary":"<1 sentence about the climate>"}}[/BLOCK]
+[BLOCK]{"type":"weather_card","props":{"name":"<destination>","subtitle":"<region>","tempsC":[<12 historical avg highs Jan-Dec>],"rainfallMm":[<12 numbers>],"seasons":[<12 tokens>],"highlightMonth":<0-11 optional>,"summary":"<1 sentence>","currentTempC":<number from Live weather>,"feelsLikeC":<number>,"currentCode":<WMO number from Live weather>,"windKmh":<number>,"humidity":<number>,"forecast":[{"date":"YYYY-MM-DD","highC":<n>,"lowC":<n>,"code":<n>},...up to 7]}}[/BLOCK]
 
 Rules:
-- tempsC and rainfallMm MUST be arrays of exactly 12 numbers (not strings)
-- seasons MUST be an array of exactly 12 tokens, each "best", "shoulder", or "off"
-- highlightMonth is 0-indexed (0=Jan, 11=Dec), only set if the visitor asked about a specific month
-- Use the climate data from the Destination context section verbatim — parse the comma-separated values into arrays
-- Do NOT emit this block if the Destination context does not include climate data for the destination — answer in prose instead
+- Always include name and as many of the other props as you have data for
+- tempsC / rainfallMm / seasons MUST be arrays of exactly 12 numbers/tokens (parse the comma-separated values verbatim)
+- forecast MUST be an array of objects in the order provided (today first)
+- If Live weather is in the context, you MUST populate currentTempC, currentCode, and forecast — these are what makes the card feel alive
+- All numeric values MUST be numbers (not strings)
+- seasons tokens MUST be "best", "shoulder", or "off"
+- If the visitor asks "what's the weather TODAY" and you only have historical climate data (no Live weather section), explain that today's exact conditions aren't available but you can show typical conditions for the season — and still emit the card with the climate data alone
+- Do NOT emit this block if there is no destination match at all — answer in prose
 
 ### When plain prose is correct
 
