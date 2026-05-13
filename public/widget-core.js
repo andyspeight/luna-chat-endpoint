@@ -3882,8 +3882,11 @@ async function sendToAI(text) {
     try {
       // Strip the streaming class so any per-stream styling is removed
       data._streamedBubble.classList.remove("tgx-msg-streaming");
-      // Re-render with the parsed body (in case [BLOCK] sneaked into visible text)
+      // Re-render with the parsed body (in case [BLOCK] sneaked into visible text).
+      // Must clear first — renderSafeMarkdown only appends, so without this
+      // the bubble would contain the streamed prose PLUS the parsed prose.
       if (parsed.body) {
+        data._streamedBubble.textContent = "";
         renderSafeMarkdown(data._streamedBubble, parsed.body);
       }
     } catch (e) {}
