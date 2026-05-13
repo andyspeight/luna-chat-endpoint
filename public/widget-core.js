@@ -1176,6 +1176,22 @@ function fetchBookingConfig(widgetId) {
     var config = Object.assign({}, data);
     config.widgetId = widgetId;
     config.layout = "compact"; /* Force compact for chat embed */
+    /* v2.1: override the booking widget's stored brand colours with the chat's
+       so the embed blends visually with the surrounding conversation. The
+       booking widget's design.colors map covers primary/accent — we override
+       both here. Original config.design is preserved if present. */
+    if (C.brandColor || C.accentColor) {
+      config.design = Object.assign({}, config.design || {});
+      config.design.colors = Object.assign({}, (config.design && config.design.colors) || {});
+      if (C.brandColor) {
+        config.design.colors.primary = C.brandColor;
+        config.design.colors.brand = C.brandColor;
+      }
+      if (C.accentColor) {
+        config.design.colors.accent = C.accentColor;
+        config.design.colors.secondary = C.accentColor;
+      }
+    }
     _tgConfigCache[widgetId] = config;
     return config;
   })
@@ -1545,8 +1561,11 @@ function injectCSS() {
   // Booking widget bubble
   +'#tgx-cw .tgx-msg-row-widget{display:block;width:100%;margin:6px 0}'
   +'#tgx-cw .tgx-bubble-widget{max-width:100%;width:100%;padding:0;background:transparent;border:none;box-shadow:none}'
-  +'#tgx-cw .tgx-booking-mount{width:100%;border-radius:16px;overflow:hidden;border:1px solid rgba(15,26,61,0.06);background:#fff}'
-  +'#tgx-cw .tgx-booking-loading{padding:24px 18px;text-align:center;color:#5C6470;font-size:13px;background:#fff;border-radius:16px;font-style:italic;border:1px solid rgba(15,26,61,0.06)}'
+  +'#tgx-cw .tgx-booking-mount{width:100%;border-radius:14px;overflow:hidden;border:1px solid '+T.line+';background:#fff;box-shadow:0 4px 12px rgba(15,26,61,0.06);animation:tgxBookingFadeIn .35s ease-out both}'
+  +'#tgx-cw .tgx-booking-loading{padding:24px 18px;text-align:center;color:'+T.textMuted+';font-size:13px;background:#fff;border-radius:14px;font-style:italic;border:1px solid '+T.line+';display:flex;align-items:center;justify-content:center;gap:10px;min-height:80px}'
+  +'#tgx-cw .tgx-booking-loading::before{content:"";width:14px;height:14px;border-radius:50%;border:2px solid '+T.line+';border-top-color:'+C.brandColor+';animation:tgxBookingSpin .8s linear infinite}'
+  +'@keyframes tgxBookingFadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}'
+  +'@keyframes tgxBookingSpin{to{transform:rotate(360deg)}}'
 
   // Date divider
   +'#tgx-cw .tgx-date{text-align:center;padding:8px 0 4px;font-size:10.5px;color:#8A92A0;font-weight:500;letter-spacing:0.06em;text-transform:uppercase}'
@@ -1741,8 +1760,55 @@ function injectCSS() {
 
   // Mobile
   var mobileCSS = '@media(max-width:480px){'
+    /* Full-screen panel — unchanged */
     +'#tgx-cw .tgx-panel{right:0;bottom:0;left:0;top:0;width:100vw;height:100vh;max-height:100vh;border-radius:0}'
-    +'#tgx-cw .tgx-fab.open{display:none}';
+    +'#tgx-cw .tgx-fab.open{display:none}'
+    /* Touch targets: minimum 44px for all interactive elements (Apple HIG) */
+    +'#tgx-cw .tgx-msgs{padding:14px 12px}'
+    +'#tgx-cw .tgx-bar{padding:10px 12px 12px;gap:8px}'
+    +'#tgx-cw .tgx-input{font-size:16px;padding:12px 14px}' /* 16px stops iOS zoom */
+    +'#tgx-cw .tgx-send{min-width:44px;min-height:44px}'
+    /* Header tightens slightly */
+    +'#tgx-cw .tgx-header{padding:12px 14px}'
+    +'#tgx-cw .tgx-header h3{font-size:15px}'
+    /* Empty state - cards in single column under 380px */
+    +'#tgx-cw .tgx-empty{padding:18px 12px}'
+    +'#tgx-cw .tgx-cap-grid{grid-template-columns:1fr 1fr;gap:8px}'
+    +'#tgx-cw .tgx-cap-card{padding:10px 12px;min-height:0}'
+    +'#tgx-cw .tgx-cap-card-title{font-size:13px}'
+    +'#tgx-cw .tgx-cap-card-desc{font-size:11.5px;-webkit-line-clamp:2}'
+    /* Hint pills scroll horizontally instead of wrapping a tall column */
+    +'#tgx-cw .tgx-hints{flex-wrap:nowrap;overflow-x:auto;padding-bottom:6px;-webkit-overflow-scrolling:touch;scrollbar-width:none}'
+    +'#tgx-cw .tgx-hints::-webkit-scrollbar{display:none}'
+    +'#tgx-cw .tgx-hint{flex-shrink:0;white-space:nowrap}'
+    /* Block (rich card) tightening so width:100% blocks stop clipping inside narrow chat */
+    +'#tgx-cw .luna-dest-card,#tgx-cw .luna-offer-card,#tgx-cw .luna-faq-policy-card,#tgx-cw .luna-emergency-card,#tgx-cw .luna-location-card,#tgx-cw .luna-booking-card,#tgx-cw .luna-human-handoff-card{max-width:100%}'
+    +'#tgx-cw .luna-dest-img,#tgx-cw .luna-offer-img{height:140px}'
+    +'#tgx-cw .luna-location-map{height:150px}'
+    +'#tgx-cw .luna-location-head,#tgx-cw .luna-dest-body,#tgx-cw .luna-offer-body{padding:10px 12px}'
+    +'#tgx-cw .luna-location-ctas,#tgx-cw .luna-dest-cta-row,#tgx-cw .luna-offer-cta-row{padding:10px 12px;flex-direction:row;gap:6px}'
+    +'#tgx-cw .luna-location-cta,#tgx-cw .luna-dest-cta,#tgx-cw .luna-offer-cta{padding:11px 8px;font-size:11.5px}'
+    +'#tgx-cw .luna-location-name,#tgx-cw .luna-dest-name,#tgx-cw .luna-offer-title{font-size:13.5px}'
+    /* Email bar — wrap cleanly on narrow */
+    +'#tgx-cw .tgx-email-bar{padding:6px 12px 0}'
+    +'#tgx-cw .tgx-email-inline{flex-wrap:wrap;gap:6px;padding:6px 12px 0}'
+    +'#tgx-cw .tgx-email-inline input{flex:1 1 100%;min-width:0}'
+    +'#tgx-cw .tgx-email-inline button{padding:9px 14px;min-height:36px}'
+    +'#tgx-cw .tgx-email-status{font-size:11.5px;padding:8px 12px}'
+    +'#tgx-cw .tgx-email-mini-btn{min-height:32px;padding:6px 12px}'
+    /* Booking embed tightens */
+    +'#tgx-cw .tgx-booking-mount{border-radius:12px}'
+    /* Welcome panel and showcase modal tightening */
+    +'#tgx-cw .tgx-welcome{padding:14px}'
+    +'#tgx-cw .tgx-welcome-title{font-size:14px}'
+    +'#tgx-cw .tgx-welcome-step{font-size:12.5px}'
+    /* More-below pill stays clear of input */
+    +'#tgx-cw .tgx-more-below{bottom:78px}'
+    /* Quick replies chip row — single column on narrow */
+    +'#tgx-cw .luna-chips{flex-direction:column;gap:6px}'
+    +'#tgx-cw .luna-chip{width:100%;text-align:center}'
+    /* Avatar slightly smaller in header */
+    +'#tgx-cw .tgx-avatar-hdr{width:30px;height:30px;font-size:13px;border-radius:9px}';
   if (C.mobileBubble === "small") {
     mobileCSS += '#tgx-cw .tgx-fab{width:46px;height:46px;box-shadow:0 4px 14px rgba(0,0,0,0.25)}'
       +'#tgx-cw .tgx-fab svg{width:22px;height:22px}';
@@ -1750,6 +1816,16 @@ function injectCSS() {
     mobileCSS += '#tgx-cw .tgx-fab{display:none}';
   }
   mobileCSS += '}';
+  /* Ultra-narrow refinement under 360px (very small phones / split-screen) */
+  mobileCSS += '@media(max-width:360px){'
+    +'#tgx-cw .tgx-cap-grid{grid-template-columns:1fr;gap:6px}'
+    +'#tgx-cw .tgx-cap-card{padding:11px 13px;min-height:0}'
+    +'#tgx-cw .tgx-bar{padding:8px 10px 10px}'
+    +'#tgx-cw .luna-dest-img,#tgx-cw .luna-offer-img{height:120px}'
+    +'#tgx-cw .luna-location-map{height:130px}'
+    +'#tgx-cw .luna-location-ctas{flex-direction:column}'
+    +'#tgx-cw .luna-location-cta{justify-content:center}'
+  +'}';
   s.textContent += mobileCSS;
   document.head.appendChild(s);
 }
@@ -2154,6 +2230,10 @@ function renderBookingWidgetMessage(descriptor, pendingPills) {
 
   var mount = document.createElement("div");
   mount.className = "tgx-booking-mount";
+  /* Expose chat brand colours as CSS vars on the mount so any styles inside
+     the booking widget that read CSS custom properties pick up our theme. */
+  if (C.brandColor) mount.style.setProperty('--tg-booking-brand', C.brandColor);
+  if (C.accentColor) mount.style.setProperty('--tg-booking-accent', C.accentColor);
   bubble.appendChild(mount);
 
   var placeholder = document.createElement("div");
