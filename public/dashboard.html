@@ -5515,81 +5515,61 @@ setTimeout(function () {
     status.className = 'wed-footer-status';
 
     try {
-      // Find the client name. Multiple fallbacks because CONFIG is not on
-      // window — it's a closure variable in the main IIFE.
-      // 1. Topbar brand text (set by bootSignedIn on every load)
-      // 2. window._clientConfig.companyName (set by bootSignedIn)
-      // 3. Document title parse
-      var clientName = '';
-      var topbarBrand = document.getElementById('topbarBrand');
-      if (topbarBrand && topbarBrand.textContent) {
-        var t = topbarBrand.textContent.trim();
-        if (t && t !== 'Dashboard') clientName = t;
-      }
-      if (!clientName && window._clientConfig && window._clientConfig.companyName) {
-        clientName = window._clientConfig.companyName;
-      }
-      console.log('[WidgetEditor] saving for client:', clientName || '(none found)');
-      if (!clientName) throw new Error('Could not determine client name — try refreshing the page');
-
-      // Mirror our draft into the legacy state so future saves elsewhere stay consistent
+      // Step 1: mirror the draft state into the legacy form inputs.
+      // The legacy window._saveSettings reads from these inputs directly.
       function setV(id, value) { var el = document.getElementById(id); if (el) el.value = value; }
       setV('setBrandColorHex', draft.brandColor);
       setV('setAccentColorHex', draft.accentColor);
-      setV('setBrandColorPicker', draft.brandColor);
-      setV('setAccentColorPicker', draft.accentColor);
       setV('setLogoText', draft.logoText);
       setV('setBotName', draft.botName);
       setV('setWelcome', draft.welcome);
       setV('setTagline', draft.tagline);
       setV('setHints', draft.hints.join('\n'));
+
+      // Step 2: also write to the <input type="color"> elements
+      // (legacy save reads selectedBrandColor closure var, which we update next)
+      var bp = document.getElementById('setBrandColorPicker'); if (bp) bp.value = draft.brandColor;
+      var ap = document.getElementById('setAccentColorPicker'); if (ap) ap.value = draft.accentColor;
+
+      // Step 3: fire 'input' events so the legacy listeners update selectedBrandColor/selectedAccentColor
+      var bh = document.getElementById('setBrandColorHex');
+      var ah = document.getElementById('setAccentColorHex');
+      if (bh) bh.dispatchEvent(new Event('input', { bubbles: true }));
+      if (ah) ah.dispatchEvent(new Event('input', { bubbles: true }));
+
+      // Step 4: push capCards into the legacy closure-scoped array
       if (typeof window._setCapCards === 'function') {
         window._setCapCards(JSON.parse(JSON.stringify(draft.capCards)));
       }
-      // Update brand/accent preview swatches in the settings drawer
-      var bpv = document.getElementById('brandColorPreview');
-      if (bpv) bpv.style.background = draft.brandColor;
-      var apv = document.getElementById('accentColorPreview');
-      if (apv) apv.style.background = draft.accentColor;
 
-      // Build the payload — only the fields we own. The API does a partial
-      // update so unrelated fields stay untouched.
-      var payload = {
-        brandColor: draft.brandColor,
-        accentColor: draft.accentColor,
-        logoText: draft.logoText,
-        widgetBotName: draft.botName,
-        widgetTagline: draft.tagline,
-        widgetWelcome: draft.welcome,
-        widgetHints: draft.hints.join('\n'),
-        capabilityCards: draft.capCards.length ? JSON.stringify(draft.capCards) : ''
+      // Step 5: Find the legacy "Save Appearance" button and click it.
+      // This is the button on line 1870 with class settings-save and onclick=_saveSettings.
+      // Going through the real button means we use exactly the same flow
+      // that's been working for saving settings all along.
+      console.log('[WidgetEditor] delegating to legacy _saveSettings...');
+      if (typeof window._saveSettings !== 'function') {
+        throw new Error('Legacy save function not available');
+      }
+
+      // Intercept alert so we can detect the legacy "Failed to save: ..." error
+      var origAlert = window.alert;
+      var capturedError = null;
+      window.alert = function(msg) {
+        console.log('[WidgetEditor] legacy save alerted:', msg);
+        capturedError = msg;
       };
-      console.log('[WidgetEditor] payload:', payload);
-
-      var res;
       try {
-        res = await fetch('https://luna-chat-endpoint.vercel.app/api/profile', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Client-Name': clientName
-          },
-          body: JSON.stringify(payload)
-        });
-      } catch (fetchErr) {
-        console.error('[WidgetEditor] fetch threw:', fetchErr);
-        throw new Error('Network error: ' + fetchErr.message + ' (check console for details)');
+        await window._saveSettings();
+      } catch (sErr) {
+        capturedError = sErr.message || String(sErr);
+      } finally {
+        window.alert = origAlert;
+      }
+      if (capturedError) {
+        throw new Error(capturedError);
       }
 
-      console.log('[WidgetEditor] response status:', res.status);
-      if (!res.ok) {
-        var bodyText = '';
-        try { bodyText = await res.text(); } catch(e){}
-        console.error('[WidgetEditor] server error body:', bodyText);
-        throw new Error('Save failed (' + res.status + '): ' + (bodyText || res.statusText));
-      }
-
-      // Update window._clientConfig so the welcome panel sees fresh values
+      // Update window._clientConfig so the welcome panel refreshes
       if (window._clientConfig) {
         window._clientConfig.brandColor = draft.brandColor;
         window._clientConfig.accentColor = draft.accentColor;
