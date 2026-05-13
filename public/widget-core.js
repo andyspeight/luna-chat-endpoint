@@ -350,12 +350,14 @@ function iconNode(name) {
 function renderDestinationCard(props, ctx) {
   const card = el('div', 'luna-dest-card');
 
-  // Image — explicit URL preferred. If none, fall back to Unsplash Source
-  // API which serves a relevant photo based on the destination name.
-  // If THAT fails too, drop the imgWrap entirely (gradient header takes over via CSS).
+  // Image fallback chain:
+  //   1. props.image — curated URL (server-side enriched from Airtable for ~364 destinations)
+  //   2. Unsplash Source API — keyword-targeted fallback for the long tail
+  //   3. Gradient placeholder via CSS (handled in img.onerror)
   const imgWrap = el('div', 'luna-dest-img');
   const img = document.createElement('img');
   let imgSrc;
+  let imgSource = 'curated';
   if (props.image) {
     imgSrc = safeUrl(props.image);
   } else if (props.name) {
@@ -365,15 +367,21 @@ function renderDestinationCard(props, ctx) {
       : '';
     const safeName = encodeURIComponent(props.name.toLowerCase().trim());
     imgSrc = 'https://source.unsplash.com/800x400/?' + safeName + tagPart + ',travel';
+    imgSource = 'unsplash-fallback';
+    console.warn('[Luna] image fallback for destination:', props.name);
   }
   if (imgSrc) {
+    let onerrorFired = false;
     img.src = imgSrc;
     img.alt = '';
     img.loading = 'lazy';
     img.referrerPolicy = 'no-referrer';
     img.onerror = function() {
+      if (onerrorFired) return;
+      onerrorFired = true;
       // Final fallback: remove img, leave gradient placeholder visible via CSS
       if (imgWrap.parentNode) imgWrap.parentNode.removeChild(imgWrap);
+      console.warn('[Luna] image load failed (' + imgSource + '):', props.name || '(no name)');
     };
     imgWrap.appendChild(img);
     // Apply a coloured gradient as a backdrop so if image is slow/blank,
