@@ -215,7 +215,42 @@ async function buildDestinationIndex(atKey) {
     if (shortened && shortened !== name) addEntry(shortened, payload);
   });
 
-  console.log('[luna-chat] destination index built:', Object.keys(index).length, 'keys for', airports.length, 'airports +', parks.length, 'parks');
+  // Cities and Regions — index by name for weather/destination queries
+  try {
+    var cities = await fetchAllRecords('tblTkKujdVZgWPAQe', atKey,
+      ['City/Region', 'Climate Temps', 'Climate Rainfall', 'Climate Season']);
+    cities.forEach(function(rec) {
+      var name = rec.fields && rec.fields['City/Region'];
+      if (!name) return;
+      addKey(name, { table: 'tblTkKujdVZgWPAQe', recordId: rec.id, type: 'city', label: name });
+      // Also key by last word (e.g. "Costa del Sol" → "Sol" — minor but helps)
+      var parts = name.split(/\s+/);
+      if (parts.length >= 2) {
+        var last = parts[parts.length - 1];
+        if (last.length >= 4) addKey(last, { table: 'tblTkKujdVZgWPAQe', recordId: rec.id, type: 'city', label: name });
+      }
+    });
+  } catch (e) {
+    console.warn('[luna-chat] cities index failed:', e.message);
+  }
+  // Resorts and Areas — index by name
+  try {
+    var resorts = await fetchAllRecords('tblwV9gnbVEyZ99gI', atKey,
+      ['Resort/Area', 'Climate Temps', 'Climate Rainfall', 'Climate Season']);
+    resorts.forEach(function(rec) {
+      var name = rec.fields && rec.fields['Resort/Area'];
+      if (!name) return;
+      addKey(name, { table: 'tblwV9gnbVEyZ99gI', recordId: rec.id, type: 'resort', label: name });
+      // Split form for "X & Y" → also index X
+      if (name.indexOf('&') !== -1) {
+        var first = name.split('&')[0].trim();
+        if (first.length >= 4) addKey(first, { table: 'tblwV9gnbVEyZ99gI', recordId: rec.id, type: 'resort', label: name });
+      }
+    });
+  } catch (e) {
+    console.warn('[luna-chat] resorts index failed:', e.message);
+  }
+    console.log('[luna-chat] destination index built:', Object.keys(index).length, 'keys for', airports.length, 'airports +', parks.length, 'parks');
   return index;
 }
 
@@ -326,6 +361,16 @@ function summariseDestinationRecord(record, payload) {
     if (f['Fast Track Options']) parts.push('Fast track: ' + f['Fast Track Options']);
     if (f['Quirks and Insider Tips']) parts.push('Insider tips: ' + f['Quirks and Insider Tips']);
     if (f['Official Website']) parts.push('Official site: ' + f['Official Website']);
+  }
+  // Climate data (Cities, Resorts, Countries records carry these fields)
+  var climateTemps = f['Climate Temps'];
+  var climateRain = f['Climate Rainfall'];
+  var climateSeason = f['Climate Season'];
+  if (climateTemps || climateRain || climateSeason) {
+    parts.push('--- Climate data (for weather_card emission) ---');
+    if (climateTemps) parts.push('Avg daytime highs Jan-Dec (C): ' + climateTemps);
+    if (climateRain) parts.push('Avg monthly rainfall Jan-Dec (mm): ' + climateRain);
+    if (climateSeason) parts.push('Seasonality Jan-Dec (best/shoulder/off): ' + climateSeason);
   }
   return parts.join('\n');
 }
@@ -940,6 +985,18 @@ actionType options: connect (live agent chat — default), callback (Calendly), 
 
 **location_card** — used when the visitor asks about an airport or theme park where you have verified coordinates in the Destination context section. Renders a map preview plus "Open in Google Maps" and "Open in Apple Maps" buttons. Emit it AFTER your prose answer. The Destination context section (when present at the bottom of this prompt) includes the exact emission format and rules. Do NOT make up coordinates — if you don't have the lat/lng in the Destination context, just answer in prose without emitting this block.
 
+**weather_card** — used when the visitor asks about weather/climate at a destination AND you have climate data available in the Destination context section. Renders a 12-month temperature chart, seasonality colour-coding, and rainfall/peak-month detail. Emit it AFTER your prose answer.
+
+Format:
+[BLOCK]{"type":"weather_card","props":{"name":"<destination name>","subtitle":"<region>","tempsC":[<12 numbers Jan-Dec>],"rainfallMm":[<12 numbers>],"seasons":["off","off","off","shoulder","best","best","best","best","best","shoulder","off","off"],"highlightMonth":<0-11 if visitor mentioned a specific month>,"summary":"<1 sentence about the climate>"}}[/BLOCK]
+
+Rules:
+- tempsC and rainfallMm MUST be arrays of exactly 12 numbers (not strings)
+- seasons MUST be an array of exactly 12 tokens, each "best", "shoulder", or "off"
+- highlightMonth is 0-indexed (0=Jan, 11=Dec), only set if the visitor asked about a specific month
+- Use the climate data from the Destination context section verbatim — parse the comma-separated values into arrays
+- Do NOT emit this block if the Destination context does not include climate data for the destination — answer in prose instead
+
 ### When plain prose is correct
 
 - Simple greetings, acknowledgements, follow-up clarifications
@@ -1450,6 +1507,18 @@ actionType options: connect (live agent chat — default), callback (Calendly), 
 **emergency_card** — see "Emergency situations" section if applicable to your context.
 
 **location_card** — used when the visitor asks about an airport or theme park where you have verified coordinates in the Destination context section. Renders a map preview plus "Open in Google Maps" and "Open in Apple Maps" buttons. Emit it AFTER your prose answer. The Destination context section (when present at the bottom of this prompt) includes the exact emission format and rules. Do NOT make up coordinates — if you don't have the lat/lng in the Destination context, just answer in prose without emitting this block.
+
+**weather_card** — used when the visitor asks about weather/climate at a destination AND you have climate data available in the Destination context section. Renders a 12-month temperature chart, seasonality colour-coding, and rainfall/peak-month detail. Emit it AFTER your prose answer.
+
+Format:
+[BLOCK]{"type":"weather_card","props":{"name":"<destination name>","subtitle":"<region>","tempsC":[<12 numbers Jan-Dec>],"rainfallMm":[<12 numbers>],"seasons":["off","off","off","shoulder","best","best","best","best","best","shoulder","off","off"],"highlightMonth":<0-11 if visitor mentioned a specific month>,"summary":"<1 sentence about the climate>"}}[/BLOCK]
+
+Rules:
+- tempsC and rainfallMm MUST be arrays of exactly 12 numbers (not strings)
+- seasons MUST be an array of exactly 12 tokens, each "best", "shoulder", or "off"
+- highlightMonth is 0-indexed (0=Jan, 11=Dec), only set if the visitor asked about a specific month
+- Use the climate data from the Destination context section verbatim — parse the comma-separated values into arrays
+- Do NOT emit this block if the Destination context does not include climate data for the destination — answer in prose instead
 
 ### When plain prose is correct
 
