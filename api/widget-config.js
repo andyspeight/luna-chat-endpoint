@@ -171,6 +171,12 @@ module.exports = async function handler(req, res) {
       } catch(e) { /* ignore bad JSON */ }
     }
 
+    /* ── v2: Emergency phone (added 12 May 2026) ── */
+    if (f.EmergencyPhone) config.emergencyPhone = f.EmergencyPhone;
+
+    /* ── v2: Landing screen copy (optional separate fields) ── */
+    if (f.LandingSubGreeting) config.landingSubGreeting = f.LandingSubGreeting;
+
     return res.status(200).json(config);
   } catch (e) {
     console.warn('Widget config fetch error:', e.message);
