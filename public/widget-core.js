@@ -1351,6 +1351,9 @@ function injectCSS() {
 
   // Messages area
   +'#tgx-cw .tgx-msgs{flex:1;overflow-y:auto;padding:18px 16px;display:flex;flex-direction:column;gap:14px;background:#FAFAF6;scrollbar-width:thin;scrollbar-color:'+T.line+' transparent}'
+  +'#tgx-cw .tgx-more-below{position:absolute;left:50%;bottom:120px;transform:translateX(-50%) translateY(8px);background:'+C.brandColor+';color:#fff;border:none;border-radius:999px;padding:8px 14px;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;box-shadow:0 6px 18px rgba(15,26,61,0.25);display:none;align-items:center;gap:6px;opacity:0;transition:opacity .25s ease,transform .25s ease;z-index:10}'
+  +'#tgx-cw .tgx-more-below.active{display:inline-flex;opacity:1;transform:translateX(-50%) translateY(0)}'
+  +'#tgx-cw .tgx-more-below:hover{filter:brightness(1.08)}'
   +'#tgx-cw .tgx-msgs::-webkit-scrollbar{width:4px}'
   +'#tgx-cw .tgx-msgs::-webkit-scrollbar-thumb{background:'+T.line+';border-radius:2px}'
 
@@ -1897,6 +1900,60 @@ var $fab, $panel, $msgs, $input, $send, $pills, $typing, $badge, $escBar, $email
 
 function scrollBottom() { setTimeout(function(){ $msgs.scrollTop = $msgs.scrollHeight; }, 50); }
 
+/* Scrolls so the first NEW message (passed in) is at the top of the visible area.
+   If the new content overflows below the viewport, toggles a "more below" indicator
+   that fades in. The indicator is auto-hidden when the user scrolls near the bottom
+   or when a new message arrives. */
+var _moreBelowEl = null;
+var _moreBelowScrollHandler = null;
+function ensureMoreBelowIndicator() {
+  if (_moreBelowEl) return _moreBelowEl;
+  var el = document.createElement("button");
+  el.className = "tgx-more-below";
+  el.type = "button";
+  el.setAttribute("aria-label", "Scroll to latest");
+  el.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg><span>More</span>';
+  el.addEventListener("click", function () {
+    $msgs.scrollTo({ top: $msgs.scrollHeight, behavior: "smooth" });
+    el.classList.remove("active");
+  });
+  /* Position next to the msgs container — append into chat screen */
+  var chatScreen = $msgs.parentElement;
+  if (chatScreen) chatScreen.appendChild(el);
+  _moreBelowEl = el;
+  return el;
+}
+function scrollToNewMessage(firstNewRow) {
+  if (!firstNewRow) { scrollBottom(); return; }
+  setTimeout(function () {
+    /* Anchor the new row's top within the visible area, leaving a small gap above */
+    var targetTop = firstNewRow.offsetTop - 12;
+    var maxTop = $msgs.scrollHeight - $msgs.clientHeight;
+    if (targetTop > maxTop) targetTop = maxTop;
+    if (targetTop < 0) targetTop = 0;
+    $msgs.scrollTo({ top: targetTop, behavior: "smooth" });
+    /* Toggle more-below indicator after the scroll settles */
+    setTimeout(function () {
+      var indicator = ensureMoreBelowIndicator();
+      var distanceFromBottom = $msgs.scrollHeight - ($msgs.scrollTop + $msgs.clientHeight);
+      if (distanceFromBottom > 40) {
+        indicator.classList.add("active");
+        /* On any further user scroll, hide once they reach the bottom */
+        if (!_moreBelowScrollHandler) {
+          _moreBelowScrollHandler = function () {
+            var d = $msgs.scrollHeight - ($msgs.scrollTop + $msgs.clientHeight);
+            if (d < 40) indicator.classList.remove("active");
+          };
+          $msgs.addEventListener("scroll", _moreBelowScrollHandler, { passive: true });
+        }
+      } else {
+        indicator.classList.remove("active");
+      }
+    }, 350);
+  }, 50);
+}
+function hideMoreBelow() { if (_moreBelowEl) _moreBelowEl.classList.remove("active"); }
+
 /* Renders an embedded My Booking widget as a chat message. The "descriptor"
    is the same object the message was stored with: { kind, widgetId }. */
 function renderBookingWidgetMessage(descriptor, pendingPills) {
@@ -2095,6 +2152,9 @@ function addMsg(role, text, noStore, originalText, pendingPills, blocks) {
 
   /* Bot / agent — new block-aware path. If blocks were passed, render each
      in order. Otherwise fall back to plain prose (legacy behaviour). */
+  hideMoreBelow();
+  var firstNewRow = null;
+  var rowsBefore = $msgs.children.length;
   if ((role === "bot" || role === "agent") && Array.isArray(blocks) && blocks.length > 0) {
     var ctx = buildBlockContext();
     blocks.forEach(function (item) {
@@ -2108,6 +2168,10 @@ function addMsg(role, text, noStore, originalText, pendingPills, blocks) {
   } else {
     appendBubbleRow(role, text);
   }
+  /* Capture first newly-appended row so we can scroll its TOP into view */
+  if ($msgs.children.length > rowsBefore) {
+    firstNewRow = $msgs.children[rowsBefore];
+  }
 
   if (!noStore) {
     msgs.push({
@@ -2120,7 +2184,7 @@ function addMsg(role, text, noStore, originalText, pendingPills, blocks) {
     saveSession();
   }
 
-  scrollBottom();
+  scrollToNewMessage(firstNewRow);
   if ($emailBar && msgs.length >= 3) $emailBar.style.display = "block";
 }
 
