@@ -826,11 +826,16 @@
   .scan-progress-bar { height:100%; border-radius:2px; background:var(--teal); transition:width 0.4s ease-out; }
 
   /* ═══ WELCOME PANEL (in chatEmpty for new clients) ═══ */
-  .welcome-panel { display:none; width:100%; max-width:720px; margin:0 auto; padding:32px 28px; flex-direction:column; gap:20px; }
+  /* Override chat-empty's vertical centering when welcome is active.
+     Welcome panel sits at the top with breathing room. */
+  .chat-empty:has(.welcome-panel.active) { justify-content: flex-start; padding-top: 32px; }
+  /* Fallback for browsers without :has() — chatEmpty gets class toggled by JS */
+  .chat-empty.welcome-active { justify-content: flex-start; padding-top: 32px; }
+  .welcome-panel { display:none; width:100%; max-width:720px; margin:0 auto; padding:0 28px; flex-direction:column; gap:20px; }
   .welcome-panel.active { display:flex; }
   .welcome-panel-hero {
     background: linear-gradient(135deg, #0B1D3A 0%, #132C54 100%);
-    border-radius: 20px; padding: 32px 32px 28px; color:#fff;
+    border-radius: 20px; padding: 28px 32px 24px; color:#fff;
     box-shadow: 0 12px 32px rgba(11,29,58,0.22);
     position:relative; overflow:hidden;
   }
@@ -841,6 +846,16 @@
     pointer-events:none;
   }
   .welcome-panel-hero-inner { position:relative; z-index:1; }
+  /* Dismiss button (X) — top-right of hero */
+  .welcome-dismiss {
+    position:absolute; top:14px; right:14px; z-index:2;
+    width:28px; height:28px; border-radius:50%;
+    background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.12);
+    color:rgba(255,255,255,0.7); cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    transition:background 0.18s, color 0.18s;
+  }
+  .welcome-dismiss:hover { background:rgba(255,255,255,0.18); color:#fff; }
   .welcome-headline {
     font-family:'Fraunces', Georgia, serif;
     font-size:28px; font-weight:600; line-height:1.1;
@@ -901,24 +916,31 @@
 
   /* ═══ SHOWCASE MODAL ═══ */
   .showcase-overlay {
-    position:fixed; inset:0; background:rgba(15,23,42,0.94);
-    backdrop-filter:blur(8px); z-index:9999;
+    position:fixed; inset:0;
+    background:rgba(11,29,58,0.55);
+    backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+    z-index:9999;
     opacity:0; transition:opacity 0.35s ease; pointer-events:none;
+    display:flex; align-items:center; justify-content:center;
+    padding:48px;
   }
   .showcase-overlay.active { opacity:1; pointer-events:auto; }
   .showcase-overlay[hidden] { display:none !important; }
   .showcase-modal {
-    position:absolute; inset:0; background:#0B1D3A;
-    overflow:hidden; display:flex; flex-direction:column; outline:none;
+    position:relative; background:#0B1D3A;
+    width:100%; max-width:1080px; height:auto; max-height:calc(100vh - 96px); min-height:560px;
+    border-radius:20px; overflow:hidden;
+    box-shadow:0 30px 80px rgba(0,0,0,0.45);
+    display:flex; flex-direction:column; outline:none;
   }
   .showcase-skip {
-    position:absolute; top:26px; left:32px; background:none; border:none;
+    position:absolute; top:22px; left:28px; background:none; border:none;
     color:rgba(255,255,255,0.5); cursor:pointer; font-size:13px; font-weight:500;
     font-family:inherit; z-index:10; padding:8px 4px; transition:color 0.18s;
   }
   .showcase-skip:hover { color:rgba(255,255,255,0.9); }
   .showcase-close {
-    position:absolute; top:20px; right:32px; width:36px; height:36px;
+    position:absolute; top:18px; right:24px; width:34px; height:34px;
     border-radius:50%; background:rgba(255,255,255,0.08);
     border:1px solid rgba(255,255,255,0.12); color:#fff; cursor:pointer;
     display:flex; align-items:center; justify-content:center; z-index:10;
@@ -927,10 +949,10 @@
   .showcase-close:hover { background:rgba(255,255,255,0.18); }
   .showcase-stage {
     flex:1; display:flex; align-items:center; justify-content:center;
-    overflow:hidden; padding:80px 40px 40px; position:relative;
+    overflow:hidden; padding:64px 56px 32px; position:relative;
   }
   .showcase-chapter {
-    width:100%; max-width:1100px; display:none;
+    width:100%; max-width:960px; display:none;
     animation: showcaseChapterIn 0.45s cubic-bezier(0.22, 1, 0.36, 1);
   }
   .showcase-chapter.active { display:block; }
@@ -939,52 +961,52 @@
     to { opacity:1; transform:translateY(0); }
   }
   .showcase-chapter-grid {
-    display:grid; grid-template-columns:1fr 1fr; gap:64px; align-items:center;
+    display:grid; grid-template-columns:1fr 1fr; gap:48px; align-items:center;
   }
   .showcase-eyebrow {
     font-size:11px; font-weight:700; letter-spacing:0.16em;
     text-transform:uppercase; color:#00B4B6;
-    margin-bottom:22px; position:relative; padding-left:32px;
+    margin-bottom:20px; position:relative; padding-left:32px;
   }
   .showcase-eyebrow::before {
     content:''; position:absolute; left:0; top:50%; width:22px; height:2px; background:#00B4B6;
   }
   .showcase-headline {
-    font-family:'Fraunces', Georgia, serif; font-size:46px; font-weight:600;
-    line-height:1.08; letter-spacing:-0.02em; color:#fff; margin:0 0 24px 0;
+    font-family:'Fraunces', Georgia, serif; font-size:40px; font-weight:600;
+    line-height:1.08; letter-spacing:-0.02em; color:#fff; margin:0 0 22px 0;
   }
   .showcase-headline em { font-style:italic; color:#00B4B6; }
-  .showcase-body { font-size:17px; line-height:1.6; color:rgba(255,255,255,0.78); margin:0; max-width:480px; }
-  .showcase-visual { position:relative; height:380px; display:flex; align-items:center; justify-content:center; }
-  .showcase-visual svg { width:100%; height:100%; max-width:480px; }
-  .showcase-chapter.closing { text-align:center; max-width:720px; margin:0 auto; }
+  .showcase-body { font-size:15.5px; line-height:1.6; color:rgba(255,255,255,0.78); margin:0; max-width:440px; }
+  .showcase-visual { position:relative; height:320px; display:flex; align-items:center; justify-content:center; }
+  .showcase-visual svg { width:100%; height:100%; max-width:440px; }
+  .showcase-chapter.closing { text-align:center; max-width:680px; margin:0 auto; }
   .showcase-chapter.closing .showcase-eyebrow { display:inline-block; }
   .showcase-chapter.closing .showcase-eyebrow::before { display:none; }
-  .showcase-chapter.closing .showcase-headline { font-size:56px; margin-top:12px; }
-  .showcase-chapter.closing .showcase-body { max-width:540px; margin:0 auto 36px; font-size:18px; }
+  .showcase-chapter.closing .showcase-headline { font-size:48px; margin-top:12px; }
+  .showcase-chapter.closing .showcase-body { max-width:500px; margin:0 auto 32px; font-size:16px; }
   .showcase-closing-cta {
-    background:#00B4B6; color:#fff; border:none; padding:16px 32px;
-    border-radius:12px; font-size:15px; font-weight:600; cursor:pointer;
+    background:#00B4B6; color:#fff; border:none; padding:14px 28px;
+    border-radius:10px; font-size:14.5px; font-weight:600; cursor:pointer;
     font-family:inherit; display:inline-flex; align-items:center; gap:8px;
     transition:background 0.18s, transform 0.18s;
   }
   .showcase-closing-cta:hover { background:#009A9C; transform:translateY(-1px); }
   .showcase-footer {
-    padding:24px 40px 32px; display:flex; align-items:center; justify-content:space-between;
-    gap:32px; border-top:1px solid rgba(255,255,255,0.08);
+    padding:18px 32px 22px; display:flex; align-items:center; justify-content:space-between;
+    gap:24px; border-top:1px solid rgba(255,255,255,0.08);
   }
-  .showcase-dots { display:flex; gap:8px; }
+  .showcase-dots { display:flex; gap:7px; }
   .showcase-dot {
-    width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,0.20);
-    border:none; cursor:pointer; padding:0; transition:background 0.18s, transform 0.18s;
+    width:7px; height:7px; border-radius:50%; background:rgba(255,255,255,0.20);
+    border:none; cursor:pointer; padding:0; transition:background 0.18s, transform 0.18s, width 0.18s;
   }
   .showcase-dot:hover { background:rgba(255,255,255,0.40); }
   .showcase-dot.visited { background:rgba(255,255,255,0.45); }
-  .showcase-dot.active { background:#00B4B6; transform:scale(1.4); }
-  .showcase-nav { display:flex; gap:10px; }
+  .showcase-dot.active { background:#00B4B6; width:24px; border-radius:4px; }
+  .showcase-nav { display:flex; gap:8px; }
   .showcase-btn {
     background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.15);
-    color:#fff; padding:10px 18px; border-radius:10px; font-size:13.5px; font-weight:600;
+    color:#fff; padding:9px 16px; border-radius:8px; font-size:13px; font-weight:600;
     cursor:pointer; font-family:inherit; display:inline-flex; align-items:center; gap:6px;
     transition:background 0.18s, border-color 0.18s;
   }
@@ -996,13 +1018,18 @@
   @media (max-width: 860px) {
     .welcome-panel-hero { padding:24px 20px; }
     .welcome-headline { font-size:22px; }
-    .showcase-chapter-grid { grid-template-columns:1fr; gap:32px; }
-    .showcase-headline { font-size:32px; }
-    .showcase-body { font-size:15px; }
-    .showcase-visual { height:240px; }
-    .showcase-stage { padding:70px 24px 24px; }
-    .showcase-footer { padding:16px 20px 20px; flex-direction:column; gap:16px; }
-    .showcase-chapter.closing .showcase-headline { font-size:40px; }
+  }
+
+  @media (max-width: 980px) {
+    .showcase-overlay { padding:20px; }
+    .showcase-modal { min-height:auto; max-height:calc(100vh - 40px); }
+    .showcase-chapter-grid { grid-template-columns:1fr; gap:28px; }
+    .showcase-headline { font-size:28px; }
+    .showcase-body { font-size:14.5px; }
+    .showcase-visual { height:220px; }
+    .showcase-stage { padding:60px 24px 24px; }
+    .showcase-footer { padding:14px 20px 18px; flex-direction:column; gap:14px; }
+    .showcase-chapter.closing .showcase-headline { font-size:32px; }
   }
 
 </style>
@@ -4351,20 +4378,26 @@ function renderWelcomePanel() {
   var $panel = document.getElementById('welcomePanel');
   var $defaultEmpty = document.getElementById('chatEmptyDefault');
   var $inner = document.getElementById('welcomeHeroInner');
+  var $chatEmpty = document.getElementById('chatEmpty');
   if (!$panel || !$inner) return;
+
+  // Respect manual dismiss flag — once dismissed, welcome panel stays hidden
+  var dismissed = false;
+  try { dismissed = !!localStorage.getItem('luna-chat-welcome-dismissed'); } catch (e) {}
 
   var state = computeWelcomeState();
 
-  // If graduated AND there are conversations, the empty state shows the default
-  // "Select a conversation" message. If not graduated, show the welcome panel.
-  if (state.graduated) {
+  // Hide if graduated OR dismissed
+  if (state.graduated || dismissed) {
     $panel.classList.remove('active');
+    if ($chatEmpty) $chatEmpty.classList.remove('welcome-active');
     if ($defaultEmpty) $defaultEmpty.style.display = '';
     return;
   }
 
   if ($defaultEmpty) $defaultEmpty.style.display = 'none';
   $panel.classList.add('active');
+  if ($chatEmpty) $chatEmpty.classList.add('welcome-active');
 
   var pct = Math.round((state.done / state.total) * 100);
   var brandSpan = state.name && state.name !== 'there'
@@ -4395,6 +4428,9 @@ function renderWelcomePanel() {
   }).join('');
 
   $inner.innerHTML =
+    '<button class="welcome-dismiss" onclick="window._dismissWelcome()" title="Hide welcome panel" aria-label="Dismiss welcome">' +
+      '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' +
+    '</button>' +
     '<h1 class="welcome-headline">Welcome to Luna, ' + brandSpan + '</h1>' +
     '<p class="welcome-subhead">' + escHtml(subhead) + '</p>' +
     '<div class="welcome-progress-strip">' +
@@ -4683,6 +4719,15 @@ document.addEventListener('keydown', function (e) {
 
 window._openShowcase = openShowcase;
 window._closeShowcase = closeShowcase;
+window._dismissWelcome = function () {
+  try { localStorage.setItem('luna-chat-welcome-dismissed', '1'); } catch (e) {}
+  renderWelcomePanel();
+};
+// For testing/debugging: re-show the welcome panel even if dismissed/graduated
+window._showWelcome = function () {
+  try { localStorage.removeItem('luna-chat-welcome-dismissed'); } catch (e) {}
+  renderWelcomePanel();
+};
 
 // Render welcome panel after a brief delay to give dashboard time to load
 // client config and conversations. Re-render on conversation changes via
