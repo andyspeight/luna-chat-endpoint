@@ -105,7 +105,14 @@ function parseLunaResponse(raw) {
 
   // Capture any trailing prose AFTER the last block
   if (lastIndex < raw.length) {
-    const prose = raw.slice(lastIndex).trim();
+    let prose = raw.slice(lastIndex).trim();
+    // Defensive: if Luna's response was cut off mid-block (max_tokens hit),
+    // we may have a stray "[BLOCK]" with no closing "[/BLOCK]". Drop everything
+    // from the unmatched opener to the end — never leak raw JSON to the user.
+    const strayOpener = prose.indexOf('[BLOCK]');
+    if (strayOpener !== -1) {
+      prose = prose.slice(0, strayOpener).trim();
+    }
     if (prose.length > 0) {
       items.push({ type: 'prose', text: prose });
     }
