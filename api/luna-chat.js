@@ -1682,7 +1682,7 @@ No problem, drop your email and departure date in below and I'll find it.
 
     const response = await client.messages.create({
       model: modelId,
-      max_tokens: 512,
+      max_tokens: 2048,
       system: systemPrompt,
       messages: claudeMessages,
       metadata: { user_id: convId || 'unknown' }
