@@ -1321,6 +1321,47 @@
   .wed-icon-pop-opt:hover { background:rgba(15,26,61,0.08); border-color:rgba(15,26,61,0.15); }
   .wed-icon-pop-opt.active { background:var(--wed-brand, #0F1A3D); color:#fff; border-color:var(--wed-brand, #0F1A3D); }
 
+  /* Card library grid */
+  .wed-library-grid {
+    display:grid; grid-template-columns:1fr 1fr; gap:6px;
+    max-height:340px; overflow-y:auto;
+    padding:2px;
+  }
+  .wed-library-card {
+    background:#FFFFFF; border:1px solid #E8E5DD; border-radius:8px;
+    padding:8px 9px 9px; cursor:pointer; position:relative;
+    transition:transform 0.12s, border-color 0.15s, box-shadow 0.15s;
+    text-align:left; font-family:inherit;
+  }
+  .wed-library-card:hover:not(:disabled) {
+    border-color:var(--wed-brand, #0F1A3D);
+    box-shadow:0 4px 10px rgba(15,26,61,0.06);
+    transform:translateY(-1px);
+  }
+  .wed-library-card:disabled {
+    opacity:0.4; cursor:not-allowed; background:#F5F3EC;
+  }
+  .wed-library-card-icon {
+    width:22px; height:22px; border-radius:6px;
+    background:var(--wed-brand, #0F1A3D); color:#fff;
+    display:flex; align-items:center; justify-content:center;
+    margin-bottom:5px;
+  }
+  .wed-library-card-title {
+    font-size:11.5px; font-weight:600; color:#0F1A3D; line-height:1.3;
+    margin-bottom:2px;
+  }
+  .wed-library-card-desc {
+    font-size:10.5px; line-height:1.3; color:#5A6B86;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+    overflow:hidden;
+  }
+  .wed-library-empty {
+    grid-column:1/-1; padding:14px; text-align:center;
+    font-size:12px; color:#5A6B86;
+    background:#F5F3EC; border-radius:8px; border:1px dashed #C4C0B4;
+  }
+
   /* Footer */
   .wed-footer {
     padding:14px 24px; background:#FFFFFF; border-top:1px solid #E8E5DD;
@@ -5116,6 +5157,73 @@ setTimeout(function () {
   var BRAND_PALETTE = ['#0F1A3D', '#1B2B5B', '#0B1D3A', '#1E40AF', '#0F766E', '#7C2D12', '#581C87', '#831843', '#111827'];
   var ACCENT_PALETTE = ['#F26A4F', '#F59E0B', '#00B4B6', '#00D4D6', '#EC4899', '#10B981', '#8B5CF6', '#3B82F6', '#EF4444'];
 
+  // ── Card library ─────────────────────────────────────────
+  // 30 pre-made cards tagged with business types they suit.
+  // 'all' means show for every business type. Multiple types means show
+  // for any of them. The active business type is read from window._clientConfig
+  // or the legacy selectedBusinessType.
+  var CARD_LIBRARY = [
+    { icon:'search',     title:'Find a holiday',       desc:'Tell me dates and a vibe.',                             for:['Travel Agent','Tour Operator'] },
+    { icon:'suitcase',   title:'My booking',           desc:'Check on a trip you\u2019ve already booked.',           for:['Travel Agent','Tour Operator','Cruise Specialist'] },
+    { icon:'chat',       title:'Speak to our team',    desc:'Get a real person on the line.',                        for:['all'] },
+    { icon:'helpCircle', title:'I have a question',    desc:'About anything \u2014 passports, policies, advice.',    for:['all'] },
+    { icon:'sun',        title:'Beach holidays',       desc:'Lay flat, drink in hand.',                              for:['Travel Agent','Tour Operator'] },
+    { icon:'mountain',   title:'Ski holidays',         desc:'Slopes, snow, apr\u00e8s.',                             for:['Ski Specialist','Travel Agent'] },
+    { icon:'sparkles',   title:'Honeymoon ideas',      desc:'Somewhere special, just the two of you.',               for:['Travel Agent','Tour Operator'] },
+    { icon:'heart',      title:'Family holidays',      desc:'Kids welcomed, parents relaxed.',                       for:['Travel Agent','Tour Operator'] },
+    { icon:'ticket',     title:'Theme park trips',     desc:'Disney, Universal and beyond.',                         for:['Travel Agent','Tickets & Attractions'] },
+    { icon:'compass',    title:'Adventure trips',      desc:'Hiking, climbing, off the beaten path.',                for:['Travel Agent','Tour Operator'] },
+    { icon:'calendar',   title:'Last-minute deals',    desc:'Going soon? Let\u2019s find something.',                for:['Travel Agent','Tour Operator'] },
+    { icon:'star',       title:'Luxury escapes',       desc:'Premium properties, white-glove service.',              for:['Travel Agent','Tour Operator'] },
+    { icon:'map',        title:'Cruise holidays',      desc:'Ocean, river, expedition.',                             for:['Cruise Specialist','Travel Agent'] },
+    { icon:'plane',      title:'Flight only',          desc:'Just the flight, no hotel.',                            for:['Travel Agent'] },
+    { icon:'briefcase',  title:'Business travel',      desc:'Corporate bookings and policies.',                      for:['Corporate Travel'] },
+    { icon:'phone',      title:'Visa & passports',     desc:'What you need before you fly.',                         for:['Travel Agent','Tour Operator'] },
+    { icon:'headphones', title:'Concierge service',    desc:'Anything you need, sorted.',                            for:['Travel Agent','Tour Operator'] },
+    { icon:'monitor',    title:'Live availability',    desc:'Real-time prices and rooms.',                           for:['B2B / Tech'] },
+    { icon:'search',     title:'Search our inventory', desc:'Browse what we have on the shelf.',                     for:['Tour Operator','B2B / Tech'] },
+    { icon:'helpCircle', title:'Policies & FAQs',      desc:'Cancellation, insurance, baggage.',                     for:['all'] },
+    { icon:'star',       title:'Speak to an expert',   desc:'Talk to a real human, fast.',                           for:['all'] },
+    { icon:'suitcase',   title:'Group bookings',       desc:'10+ people travelling together.',                       for:['Travel Agent','Tour Operator','Corporate Travel'] },
+    { icon:'ticket',     title:'Tickets & attractions',desc:'Skip-the-line, day passes, experiences.',               for:['Tickets & Attractions','Travel Agent'] },
+    { icon:'sun',        title:'Beach club passes',    desc:'Reserve sun loungers in advance.',                      for:['Tickets & Attractions'] },
+    { icon:'map',        title:'Day trips & tours',    desc:'Half-day, full-day, multi-day.',                        for:['Tour Operator','Travel Agent'] },
+    { icon:'calendar',   title:'Check availability',   desc:'See what\u2019s free for your dates.',                  for:['all'] },
+    { icon:'mountain',   title:'Ski hire & lessons',   desc:'Equipment, instructors, lift passes.',                  for:['Ski Specialist'] },
+    { icon:'plane',      title:'Airport transfers',    desc:'Door to door, both ways.',                              for:['Travel Agent','Tour Operator'] },
+    { icon:'briefcase',  title:'Account login',        desc:'Sign in to manage your booking.',                       for:['Corporate Travel','B2B / Tech'] },
+    { icon:'sparkles',   title:'Newest in inventory',  desc:'What we just added to the platform.',                   for:['B2B / Tech','Tour Operator'] }
+  ];
+
+  // Resolve the current business type from various sources
+  function getCurrentBusinessType() {
+    // 1. window._clientConfig.businessType (from loadProfile)
+    if (window._clientConfig && window._clientConfig.businessType) return window._clientConfig.businessType;
+    // 2. Settings drawer selection
+    var sel = document.querySelector('#businessTypeGrid .active') ||
+              document.querySelector('[data-business-type].active');
+    if (sel) {
+      var bt = sel.getAttribute('data-business-type') || sel.textContent.trim();
+      if (bt) return bt;
+    }
+    // 3. Default: Travel Agent
+    return 'Travel Agent';
+  }
+
+  // Filter library: return cards matching the current business type, or all if showAll is true.
+  function getLibraryCardsForType(businessType, showAll) {
+    if (showAll) return CARD_LIBRARY;
+    return CARD_LIBRARY.filter(function(card) {
+      return card.for.indexOf('all') !== -1 || card.for.indexOf(businessType) !== -1;
+    });
+  }
+
+  // Is a library card already in the active set? Matched by title (case-insensitive).
+  function isCardActive(libraryCard, activeCards) {
+    var t = (libraryCard.title || '').trim().toLowerCase();
+    return activeCards.some(function(a) { return (a.title || '').trim().toLowerCase() === t; });
+  }
+
   // ── State ────────────────────────────────────────────────
   // Snapshot of the values when the editor opens. Used to detect changes
   // and to discard back to original on cancel.
@@ -5321,6 +5429,10 @@ setTimeout(function () {
       });
       el.appendChild(add);
     }
+    // Keep library in sync with active cards
+    if (typeof renderLibrary === 'function') {
+      try { renderLibrary(); } catch (e) {}
+    }
   }
 
   function escText(s) {
@@ -5458,6 +5570,59 @@ setTimeout(function () {
     }
   }
 
+  function renderLibrary() {
+    var grid = document.getElementById('wed-library-grid');
+    var hint = document.getElementById('wed-library-hint');
+    if (!grid) return;
+    var showAll = !!(document.getElementById('wed-library-showall') && document.getElementById('wed-library-showall').checked);
+    var businessType = getCurrentBusinessType();
+    var cards = getLibraryCardsForType(businessType, showAll);
+    if (hint) {
+      hint.textContent = showAll
+        ? 'Click a card to add it. Greyed cards are already in use.'
+        : 'Showing cards for ' + businessType + '. Tick \u201CShow all\u201D for more.';
+    }
+    if (cards.length === 0) {
+      grid.innerHTML = '<div class="wed-library-empty">No library cards for this business type. Tick \u201CShow all\u201D above.</div>';
+      return;
+    }
+    grid.innerHTML = '';
+    cards.forEach(function(card, idx) {
+      var disabled = isCardActive(card, draft.capCards);
+      var atLimit = draft.capCards.length >= 4 && !disabled;
+      var node = document.createElement('button');
+      node.type = 'button';
+      node.className = 'wed-library-card';
+      if (disabled) node.disabled = true;
+      node.innerHTML =
+        '<div class="wed-library-card-icon">' + wedIconSvg(card.icon, 12) + '</div>' +
+        '<div class="wed-library-card-title">' + escText(card.title) + '</div>' +
+        '<div class="wed-library-card-desc">' + escText(card.desc) + '</div>';
+      if (atLimit) {
+        node.title = 'Remove a card first (max 4)';
+        node.style.opacity = '0.55';
+      }
+      node.addEventListener('click', function() {
+        if (disabled) return;
+        if (draft.capCards.length >= 4) {
+          // Friendly nudge — flash the active cards area
+          var activeGrid = document.getElementById('wed-preview-cards');
+          if (activeGrid) {
+            activeGrid.style.transition = 'box-shadow 0.2s';
+            activeGrid.style.boxShadow = '0 0 0 3px ' + draft.accentColor;
+            setTimeout(function() { activeGrid.style.boxShadow = ''; }, 600);
+          }
+          return;
+        }
+        draft.capCards.push({ icon:card.icon, title:card.title, desc:card.desc });
+        renderPreviewCards();
+        renderLibrary();
+        checkDirty();
+      });
+      grid.appendChild(node);
+    });
+  }
+
   function renderAll() {
     applyBrandColor();
     renderSwatches();
@@ -5466,6 +5631,7 @@ setTimeout(function () {
     renderPreviewGreeting();
     renderPreviewCards();
     renderPreviewHints();
+    renderLibrary();
     var bh = document.getElementById('wed-brand-hex'); if (bh) bh.value = draft.brandColor;
     var ah = document.getElementById('wed-accent-hex'); if (ah) ah.value = draft.accentColor;
     var bp = document.getElementById('wed-brand-picker'); if (bp) bp.value = draft.brandColor;
@@ -5691,6 +5857,9 @@ setTimeout(function () {
       renderPreviewHints();
       checkDirty();
     });
+    // Library "Show all" toggle
+    var showAll = document.getElementById('wed-library-showall');
+    if (showAll) showAll.addEventListener('change', function() { renderLibrary(); });
   }
 
   function wireGlobalHandlers() {
@@ -5846,6 +6015,17 @@ setTimeout(function () {
               <input type="color" id="wed-accent-picker">
             </span>
           </div>
+        </div>
+        <div class="wed-tools-section">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <span class="wed-tools-label">Card library</span>
+            <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#5A6B86;cursor:pointer">
+              <input type="checkbox" id="wed-library-showall" style="width:13px;height:13px;accent-color:#0F1A3D;cursor:pointer">
+              Show all
+            </label>
+          </div>
+          <div class="wed-tools-hint" id="wed-library-hint">Click a card to add it. Greyed cards are already in use.</div>
+          <div class="wed-library-grid" id="wed-library-grid"></div>
         </div>
         <div class="wed-tools-section">
           <span class="wed-tools-label">Tips</span>
