@@ -349,18 +349,35 @@ function iconNode(name) {
 function renderDestinationCard(props, ctx) {
   const card = el('div', 'luna-dest-card');
 
-  // Image (optional, validated) — gracefully hide if URL fails to load
+  // Image — explicit URL preferred. If none, fall back to Unsplash Source
+  // API which serves a relevant photo based on the destination name.
+  // If THAT fails too, drop the imgWrap entirely (gradient header takes over via CSS).
+  const imgWrap = el('div', 'luna-dest-img');
+  const img = document.createElement('img');
+  let imgSrc;
   if (props.image) {
-    const imgWrap = el('div', 'luna-dest-img');
-    const img = document.createElement('img');
-    img.src = safeUrl(props.image);
-    img.alt = ''; // decorative; name is below
+    imgSrc = safeUrl(props.image);
+  } else if (props.name) {
+    // Build a query: destination name + tags + "travel" for relevance
+    const tagPart = Array.isArray(props.tags) && props.tags.length
+      ? ',' + props.tags.slice(0, 2).map(t => encodeURIComponent(t.toLowerCase())).join(',')
+      : '';
+    const safeName = encodeURIComponent(props.name.toLowerCase().trim());
+    imgSrc = 'https://source.unsplash.com/800x400/?' + safeName + tagPart + ',travel';
+  }
+  if (imgSrc) {
+    img.src = imgSrc;
+    img.alt = '';
     img.loading = 'lazy';
     img.referrerPolicy = 'no-referrer';
     img.onerror = function() {
+      // Final fallback: remove img, leave gradient placeholder visible via CSS
       if (imgWrap.parentNode) imgWrap.parentNode.removeChild(imgWrap);
     };
     imgWrap.appendChild(img);
+    // Apply a coloured gradient as a backdrop so if image is slow/blank,
+    // the visitor sees a styled placeholder, not a blank box
+    imgWrap.style.background = 'linear-gradient(135deg, var(--tgx-brand, #0F1A3D), var(--tgx-accent, #F26A4F))';
     card.appendChild(imgWrap);
   }
 
@@ -1446,7 +1463,7 @@ function injectCSS() {
   +'#tgx-cw .luna-dest-temp{font-size:12px;color:#5C6470;white-space:nowrap}'
   +'#tgx-cw .luna-dest-vibe{font-size:13.5px;color:#5C6470;line-height:1.45;margin-top:4px}'
   +'#tgx-cw .luna-dest-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}'
-  +'#tgx-cw .luna-tag{font-size:11px;padding:4px 10px;border-radius:999px;background:#FAFAF6;border:1px solid rgba(15,26,61,0.06);color:#5C6470}'
+  +'#tgx-cw .luna-tag{font-size:11px;padding:4px 11px;border-radius:999px;background:#fff;border:1px solid rgba(15,26,61,0.18);color:'+C.brandColor+';font-weight:500}'
   +'#tgx-cw .luna-dest-actions{display:flex;gap:8px;margin-top:14px}'
   +'#tgx-cw .luna-btn{flex:1;height:36px;border-radius:10px;font-size:12.5px;font-weight:500;border:1px solid rgba(15,26,61,0.10);background:#fff;color:'+C.brandColor+';cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:transform .15s,background .18s;text-decoration:none;padding:0 12px}'
   +'#tgx-cw .luna-btn:hover{background:#FAFAF6;transform:translateY(-1px)}'
