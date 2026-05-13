@@ -3622,6 +3622,8 @@ async function streamFromLuna(userText) {
         visibleText = fullText.slice(0, blockIdx);
         inBlockBuffer = true;
         ensureBubble();
+        // Clear bubble before re-render — renderSafeMarkdown only appends.
+        streamedBubble.textContent = '';
         renderSafeMarkdown(streamedBubble, visibleText);
         return;
       }
@@ -3636,6 +3638,8 @@ async function streamFromLuna(userText) {
       }
       visibleText = fullText.slice(0, fullText.length - holdback);
       ensureBubble();
+      // Clear bubble before re-render — renderSafeMarkdown only appends.
+      streamedBubble.textContent = '';
       renderSafeMarkdown(streamedBubble, visibleText);
     }
     // If we're already buffering a block, nothing visible to update
