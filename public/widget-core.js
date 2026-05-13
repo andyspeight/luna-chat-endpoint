@@ -905,11 +905,66 @@ function renderLocationCard(props, ctx) {
 }
 
 // ─────────── BLOCK: weather_card ───────────
-// Shows the 12-month climate at a glance: temperature bars, rainfall pills,
-// and an editorial summary. Data comes from Airtable destination records.
+// Live weather + 12-month climate. Live data from Open-Meteo when the
+// destination has coordinates; falls back to climate-only when not.
 
 var MONTH_LABELS = ['J','F','M','A','M','J','J','A','S','O','N','D'];
 var MONTH_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+var DAY_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+// Map Open-Meteo WMO weather codes to icon name + short label.
+// Reference: https://open-meteo.com/en/docs (Weather Variables section)
+function wmoCodeToIcon(code) {
+  if (typeof code !== 'number') return { icon: 'sun', label: 'Mild' };
+  if (code === 0) return { icon: 'sun', label: 'Clear sky' };
+  if (code === 1 || code === 2) return { icon: 'sunCloud', label: code === 1 ? 'Mainly clear' : 'Partly cloudy' };
+  if (code === 3) return { icon: 'cloud', label: 'Overcast' };
+  if (code >= 45 && code <= 48) return { icon: 'cloud', label: 'Foggy' };
+  if (code >= 51 && code <= 57) return { icon: 'rain', label: 'Drizzle' };
+  if (code >= 61 && code <= 67) return { icon: 'rain', label: 'Rain' };
+  if (code >= 71 && code <= 77) return { icon: 'snow', label: 'Snow' };
+  if (code >= 80 && code <= 82) return { icon: 'rain', label: 'Showers' };
+  if (code >= 85 && code <= 86) return { icon: 'snow', label: 'Snow showers' };
+  if (code >= 95) return { icon: 'storm', label: 'Thunderstorm' };
+  return { icon: 'sun', label: 'Mild' };
+}
+
+function weatherIconSvg(iconName, size) {
+  var s = size || 28;
+  var stroke = 'currentColor';
+  if (iconName === 'sun') {
+    return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 24 24" fill="none" stroke="'+stroke+'" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.5" fill="'+stroke+'" stroke="none" opacity="0.85"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="4.9" y1="4.9" x2="6.3" y2="6.3"/><line x1="17.7" y1="17.7" x2="19.1" y2="19.1"/><line x1="4.9" y1="19.1" x2="6.3" y2="17.7"/><line x1="17.7" y1="6.3" x2="19.1" y2="4.9"/></svg>';
+  }
+  if (iconName === 'sunCloud') {
+    return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 24 24" fill="none" stroke="'+stroke+'" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="9" r="3" fill="'+stroke+'" stroke="none" opacity="0.85"/><path d="M14 18a4 4 0 0 0 0-8 5 5 0 0 0-9.7 1A3 3 0 0 0 5 18z" fill="'+stroke+'" fill-opacity="0.18"/></svg>';
+  }
+  if (iconName === 'cloud') {
+    return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 24 24" fill="none" stroke="'+stroke+'" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 18a4 4 0 0 0 0-8 6 6 0 0 0-11.5 1.5A4 4 0 0 0 6 18z" fill="'+stroke+'" fill-opacity="0.25"/></svg>';
+  }
+  if (iconName === 'rain') {
+    return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 24 24" fill="none" stroke="'+stroke+'" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 14a4 4 0 0 0 0-8 6 6 0 0 0-11.5 1.5A4 4 0 0 0 6 14z" fill="'+stroke+'" fill-opacity="0.25"/><line x1="8" y1="17" x2="7" y2="20"/><line x1="12" y1="17" x2="11" y2="20"/><line x1="16" y1="17" x2="15" y2="20"/></svg>';
+  }
+  if (iconName === 'snow') {
+    return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 24 24" fill="none" stroke="'+stroke+'" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 14a4 4 0 0 0 0-8 6 6 0 0 0-11.5 1.5A4 4 0 0 0 6 14z" fill="'+stroke+'" fill-opacity="0.2"/><line x1="8" y1="18" x2="8" y2="20"/><line x1="12" y1="18" x2="12" y2="20"/><line x1="16" y1="18" x2="16" y2="20"/><circle cx="8" cy="19" r="0.6" fill="'+stroke+'" stroke="none"/><circle cx="12" cy="19" r="0.6" fill="'+stroke+'" stroke="none"/><circle cx="16" cy="19" r="0.6" fill="'+stroke+'" stroke="none"/></svg>';
+  }
+  if (iconName === 'storm') {
+    return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 24 24" fill="none" stroke="'+stroke+'" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 14a4 4 0 0 0 0-8 6 6 0 0 0-11.5 1.5A4 4 0 0 0 6 14z" fill="'+stroke+'" fill-opacity="0.25"/><polyline points="11,15 9,19 12,19 10,22"/></svg>';
+  }
+  return '';
+}
+
+// Pick a hero gradient based on the current condition icon.
+function heroGradientFor(iconName) {
+  switch (iconName) {
+    case 'sun':       return 'linear-gradient(135deg, #FFB347 0%, #FF8C42 100%)';
+    case 'sunCloud':  return 'linear-gradient(135deg, #94B8E0 0%, #4A8BD4 100%)';
+    case 'cloud':     return 'linear-gradient(135deg, #94A3B8 0%, #64748B 100%)';
+    case 'rain':      return 'linear-gradient(135deg, #6B8FB5 0%, #3B5C7E 100%)';
+    case 'snow':      return 'linear-gradient(135deg, #BFDBFE 0%, #7DA5C7 100%)';
+    case 'storm':     return 'linear-gradient(135deg, #4B5563 0%, #1F2937 100%)';
+    default:          return 'linear-gradient(135deg, #94B8E0 0%, #4A8BD4 100%)';
+  }
+}
 
 function renderWeatherCard(props, ctx) {
   var card = el('div', 'luna-weather-card');
@@ -921,35 +976,108 @@ function renderWeatherCard(props, ctx) {
   var rainfall = Array.isArray(props.rainfallMm) ? props.rainfallMm : [];
   var seasons = Array.isArray(props.seasons) ? props.seasons : [];
   var highlight = (typeof props.highlightMonth === 'number' && props.highlightMonth >= 0 && props.highlightMonth <= 11) ? props.highlightMonth : -1;
+  var hasLive = (typeof props.currentTempC === 'number' && typeof props.currentCode === 'number');
 
-  // Header
-  var head = el('div', 'luna-weather-head');
-  var icon = document.createElement('span');
-  icon.className = 'luna-weather-icon';
-  icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>';
-  head.appendChild(icon);
-  var headText = el('div', 'luna-weather-head-text');
-  if (name) headText.appendChild(el('div', 'luna-weather-name', 'Climate · ' + name));
-  if (subtitle) headText.appendChild(el('div', 'luna-weather-subtitle', subtitle));
-  head.appendChild(headText);
-  card.appendChild(head);
+  // ─── HERO: today's weather ───
+  if (hasLive) {
+    var ico = wmoCodeToIcon(props.currentCode);
+    var hero = el('div', 'luna-weather-hero');
+    hero.style.background = heroGradientFor(ico.icon);
+    var heroLeft = el('div', 'luna-weather-hero-left');
+    var heroLoc = el('div', 'luna-weather-hero-loc', name || 'Today');
+    heroLeft.appendChild(heroLoc);
+    var heroLabel = el('div', 'luna-weather-hero-label', 'Right now · ' + ico.label);
+    heroLeft.appendChild(heroLabel);
+    var heroTemp = el('div', 'luna-weather-hero-temp');
+    heroTemp.innerHTML = Math.round(props.currentTempC) + '<span class="luna-weather-deg">°C</span>';
+    heroLeft.appendChild(heroTemp);
+    // Mini stats: feels like, wind, humidity
+    var stats = el('div', 'luna-weather-stats');
+    if (typeof props.feelsLikeC === 'number') {
+      var s1 = el('div', 'luna-weather-stat');
+      s1.innerHTML = '<span class="luna-weather-stat-label">Feels like</span><span class="luna-weather-stat-value">' + Math.round(props.feelsLikeC) + '°</span>';
+      stats.appendChild(s1);
+    }
+    if (typeof props.windKmh === 'number') {
+      var s2 = el('div', 'luna-weather-stat');
+      s2.innerHTML = '<span class="luna-weather-stat-label">Wind</span><span class="luna-weather-stat-value">' + Math.round(props.windKmh) + ' km/h</span>';
+      stats.appendChild(s2);
+    }
+    if (typeof props.humidity === 'number') {
+      var s3 = el('div', 'luna-weather-stat');
+      s3.innerHTML = '<span class="luna-weather-stat-label">Humidity</span><span class="luna-weather-stat-value">' + props.humidity + '%</span>';
+      stats.appendChild(s3);
+    }
+    heroLeft.appendChild(stats);
+    hero.appendChild(heroLeft);
+    // Right side: big icon
+    var heroRight = el('div', 'luna-weather-hero-right');
+    heroRight.innerHTML = weatherIconSvg(ico.icon, 72);
+    hero.appendChild(heroRight);
+    card.appendChild(hero);
 
-  // Body
+    // ─── 7-day forecast strip ───
+    if (Array.isArray(props.forecast) && props.forecast.length > 0) {
+      var forecast = el('div', 'luna-weather-forecast');
+      props.forecast.slice(0, 7).forEach(function(d, idx) {
+        var day = el('div', 'luna-weather-day');
+        var dayName;
+        if (idx === 0) {
+          dayName = 'Today';
+        } else {
+          try {
+            var dt = new Date(d.date);
+            dayName = DAY_SHORT[dt.getDay()];
+          } catch (e) { dayName = ''; }
+        }
+        var nameEl = el('div', 'luna-weather-day-name', dayName);
+        day.appendChild(nameEl);
+        var dayIco = wmoCodeToIcon(d.code);
+        var iconEl = el('div', 'luna-weather-day-icon');
+        iconEl.innerHTML = weatherIconSvg(dayIco.icon, 24);
+        day.appendChild(iconEl);
+        var hi = el('div', 'luna-weather-day-hi', Math.round(d.highC) + '°');
+        day.appendChild(hi);
+        var lo = el('div', 'luna-weather-day-lo', Math.round(d.lowC) + '°');
+        day.appendChild(lo);
+        forecast.appendChild(day);
+      });
+      card.appendChild(forecast);
+    }
+  } else {
+    // No live data — show a tighter header band like the original card
+    var head = el('div', 'luna-weather-head');
+    var icon = document.createElement('span');
+    icon.className = 'luna-weather-icon';
+    icon.innerHTML = weatherIconSvg('sun', 14);
+    head.appendChild(icon);
+    var headText = el('div', 'luna-weather-head-text');
+    if (name) headText.appendChild(el('div', 'luna-weather-name', 'Climate · ' + name));
+    if (subtitle) headText.appendChild(el('div', 'luna-weather-subtitle', subtitle));
+    head.appendChild(headText);
+    card.appendChild(head);
+  }
+
+  // ─── Climate body (chart + summary + callout) ───
   var body = el('div', 'luna-weather-body');
 
-  // Temperature chart — 12 vertical bars scaled to the max temp
+  // Section label (only if hero present, to distinguish historical from live)
+  if (hasLive && temps.length === 12) {
+    var sectionLbl = el('div', 'luna-weather-section-label', 'CLIMATE THROUGH THE YEAR');
+    body.appendChild(sectionLbl);
+  }
+
+  // 12-month temperature chart
   if (temps.length === 12) {
     var maxTemp = Math.max.apply(null, temps.map(function(t) { return (typeof t === 'number' && isFinite(t)) ? t : 0; }));
-    if (maxTemp < 30) maxTemp = 30; // floor so winters don't look hot
+    if (maxTemp < 30) maxTemp = 30;
     var chart = el('div', 'luna-weather-chart');
     for (var i = 0; i < 12; i++) {
       var col = el('div', 'luna-weather-col');
       if (i === highlight) col.classList.add('luna-weather-col-highlight');
-      // Season tint on the col
-      var s = seasons[i] || '';
-      if (s === 'best') col.classList.add('luna-weather-col-best');
-      else if (s === 'shoulder') col.classList.add('luna-weather-col-shoulder');
-      // Bar fills bottom-up by percentage
+      var ss = seasons[i] || '';
+      if (ss === 'best') col.classList.add('luna-weather-col-best');
+      else if (ss === 'shoulder') col.classList.add('luna-weather-col-shoulder');
       var t = (typeof temps[i] === 'number') ? temps[i] : 0;
       var pct = Math.max(8, Math.min(100, (t / maxTemp) * 100));
       var bar = el('div', 'luna-weather-bar');
@@ -975,12 +1103,8 @@ function renderWeatherCard(props, ctx) {
     body.appendChild(legend);
   }
 
-  // Summary text
-  if (summary) {
-    body.appendChild(el('div', 'luna-weather-summary', summary));
-  }
+  if (summary) body.appendChild(el('div', 'luna-weather-summary', summary));
 
-  // Highlight-month callout
   if (highlight >= 0 && temps[highlight] != null) {
     var callout = el('div', 'luna-weather-callout');
     var monthName = MONTH_FULL[highlight];
@@ -1726,6 +1850,29 @@ function injectCSS() {
   +'#tgx-cw .luna-weather-swatch-off{background:'+C.brandColor+'30}'
   +'#tgx-cw .luna-weather-summary{font-size:12.5px;line-height:1.55;color:'+T.text+';margin-bottom:10px}'
   +'#tgx-cw .luna-weather-callout{font-size:12px;line-height:1.5;padding:10px 12px;background:'+C.brandColor+'08;border-radius:8px;color:'+T.text+';border-left:3px solid '+C.brandColor+'}'
+  /* Live weather extensions */
+  +'#tgx-cw .luna-weather-hero{display:flex;align-items:stretch;padding:18px 18px 16px;color:#fff;position:relative;overflow:hidden}'
+  +'#tgx-cw .luna-weather-hero::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 100% 0%,rgba(255,255,255,0.15) 0%,transparent 60%);pointer-events:none}'
+  +'#tgx-cw .luna-weather-hero-left{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;z-index:1}'
+  +'#tgx-cw .luna-weather-hero-loc{font-size:13px;font-weight:600;letter-spacing:0.01em;opacity:0.92}'
+  +'#tgx-cw .luna-weather-hero-label{font-size:11.5px;opacity:0.85;margin-bottom:4px;letter-spacing:0.01em}'
+  +'#tgx-cw .luna-weather-hero-temp{font-size:42px;font-weight:300;line-height:1;letter-spacing:-0.02em;font-family:"Fraunces",Georgia,serif;margin-top:2px;margin-bottom:10px}'
+  +'#tgx-cw .luna-weather-deg{font-size:18px;font-weight:400;margin-left:1px;opacity:0.78;font-family:inherit}'
+  +'#tgx-cw .luna-weather-stats{display:flex;gap:14px;flex-wrap:wrap}'
+  +'#tgx-cw .luna-weather-stat{display:flex;flex-direction:column;gap:1px}'
+  +'#tgx-cw .luna-weather-stat-label{font-size:9.5px;opacity:0.78;text-transform:uppercase;letter-spacing:0.06em;font-weight:600}'
+  +'#tgx-cw .luna-weather-stat-value{font-size:12.5px;font-weight:600}'
+  +'#tgx-cw .luna-weather-hero-right{display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.95);flex-shrink:0;margin-left:8px;z-index:1}'
+  /* Forecast strip */
+  +'#tgx-cw .luna-weather-forecast{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;padding:12px 8px;background:#fff;border-bottom:1px solid '+T.line+'}'
+  +'#tgx-cw .luna-weather-day{display:flex;flex-direction:column;align-items:center;padding:6px 2px;border-radius:8px;transition:background .15s}'
+  +'#tgx-cw .luna-weather-day:hover{background:'+T.line+'30}'
+  +'#tgx-cw .luna-weather-day-name{font-size:10.5px;font-weight:600;color:'+T.textMuted+';margin-bottom:4px;letter-spacing:0.02em}'
+  +'#tgx-cw .luna-weather-day-icon{color:'+C.brandColor+'CC;display:flex;align-items:center;justify-content:center;height:28px;margin-bottom:2px}'
+  +'#tgx-cw .luna-weather-day-hi{font-size:12px;font-weight:600;color:'+T.text+';line-height:1.2}'
+  +'#tgx-cw .luna-weather-day-lo{font-size:10.5px;color:'+T.textMuted+';line-height:1.2;margin-top:1px}'
+  /* Section label inside body when hero is present */
+  +'#tgx-cw .luna-weather-section-label{font-size:9.5px;font-weight:600;letter-spacing:0.08em;color:'+T.textMuted+';margin-bottom:10px}'
   +'#tgx-cw .tgx-msgs::-webkit-scrollbar{width:4px}'
   +'#tgx-cw .tgx-msgs::-webkit-scrollbar-thumb{background:'+T.line+';border-radius:2px}'
 
