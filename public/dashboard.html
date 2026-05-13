@@ -1306,19 +1306,20 @@
 
   /* Icon picker popover */
   .wed-icon-pop {
-    position:absolute; top:38px; left:0; z-index:50;
+    position:absolute; top:38px; left:0; z-index:9999;
     background:#fff; border:1px solid #E8E5DD; border-radius:10px;
-    padding:8px; display:none; gap:4px; flex-wrap:wrap; width:184px;
-    box-shadow:0 12px 28px rgba(15,26,61,0.15);
+    padding:8px; display:none; gap:4px; flex-wrap:wrap; width:204px;
+    box-shadow:0 12px 28px rgba(15,26,61,0.25);
   }
   .wed-icon-pop.open { display:flex; }
   .wed-icon-pop-opt {
-    width:30px; height:30px; border-radius:6px; cursor:pointer;
+    width:32px; height:32px; border-radius:6px; cursor:pointer;
     display:flex; align-items:center; justify-content:center;
-    color:#0F1A3D; transition:background 0.15s;
+    color:#0F1A3D; transition:background 0.15s, color 0.15s;
+    border:1px solid transparent;
   }
-  .wed-icon-pop-opt:hover { background:rgba(15,26,61,0.08); }
-  .wed-icon-pop-opt.active { background:var(--wed-brand, #0F1A3D); color:#fff; }
+  .wed-icon-pop-opt:hover { background:rgba(15,26,61,0.08); border-color:rgba(15,26,61,0.15); }
+  .wed-icon-pop-opt.active { background:var(--wed-brand, #0F1A3D); color:#fff; border-color:var(--wed-brand, #0F1A3D); }
 
   /* Footer */
   .wed-footer {
@@ -3392,6 +3393,24 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
 
   var capCards = [];
 
+  // Expose a getter/setter so the WYSIWYG editor (in a separate IIFE) can
+  // read and write to the same capCards array used by the legacy settings.
+  window._getCapCards = function() { return capCards; };
+  window._setCapCards = function(arr) {
+    if (Array.isArray(arr)) {
+      capCards = arr;
+      try { renderCapCards(); } catch (e) {}
+    }
+  };
+  // Save proxy — wraps window._saveSettings so the editor can reuse it.
+  // window._saveSettings is async and handles auth headers + the right endpoint.
+  window._saveSettingsFromEditor = function() {
+    if (typeof window._saveSettings === 'function') {
+      return window._saveSettings();
+    }
+    return Promise.reject(new Error('Legacy save function unavailable'));
+  };
+
   function renderCapCards() {
     var el = document.getElementById('capCardsEditor');
     if (!capCards.length) {
@@ -5109,9 +5128,15 @@ setTimeout(function () {
     function val(id, def) { var el = document.getElementById(id); return (el && el.value) || def || ''; }
     var capCardsCurrent = [];
     try {
-      // Read from the legacy capCards array if present in window scope
-      // Otherwise parse from current client config
-      if (window._clientConfig && window._clientConfig.capabilityCards) {
+      // 1. Best source: the legacy capCards array populated by loadProfile().
+      if (typeof window._getCapCards === 'function') {
+        var live = window._getCapCards();
+        if (Array.isArray(live) && live.length > 0) {
+          capCardsCurrent = JSON.parse(JSON.stringify(live));
+        }
+      }
+      // 2. Fallback: parse from window._clientConfig.capabilityCards if available
+      if (capCardsCurrent.length === 0 && window._clientConfig && window._clientConfig.capabilityCards) {
         var raw = window._clientConfig.capabilityCards;
         capCardsCurrent = typeof raw === 'string' ? JSON.parse(raw || '[]') : (raw || []);
       }
@@ -5458,6 +5483,7 @@ setTimeout(function () {
       return;
     }
     initial = readCurrentSettingsToDraft();
+    console.log('[WidgetEditor] opened with', initial.capCards.length, 'cards, brand', initial.brandColor, 'accent', initial.accentColor);
     draft = JSON.parse(JSON.stringify(initial));
     setDirty(false);
     renderAll();
@@ -5489,9 +5515,8 @@ setTimeout(function () {
     status.className = 'wed-footer-status';
 
     try {
-      // Mirror values back into the legacy settings inputs so the rest of
-      // the dashboard stays consistent and the existing save flow can be
-      // reused if needed.
+      // Mirror values into the legacy settings inputs so window._saveSettings
+      // picks them up. The legacy function reads from these DOM inputs.
       function setV(id, value) { var el = document.getElementById(id); if (el) el.value = value; }
       setV('setBrandColorHex', draft.brandColor);
       setV('setAccentColorHex', draft.accentColor);
@@ -5502,33 +5527,48 @@ setTimeout(function () {
       setV('setWelcome', draft.welcome);
       setV('setTagline', draft.tagline);
       setV('setHints', draft.hints.join('\n'));
-      // Update brand/accent preview swatches in the settings drawer
-      var bp = document.getElementById('brandColorPreview');
-      if (bp) bp.style.background = draft.brandColor;
-      var ap = document.getElementById('accentColorPreview');
-      if (ap) ap.style.background = draft.accentColor;
 
-      // Push directly via the same endpoint the legacy settings save uses
-      var clientId = (window._clientConfig && window._clientConfig.clientId) || '';
-      if (!clientId) throw new Error('No client linked');
-      var sess = (window._tgAuth && window._tgAuth.session) || null;
-      var token = sess && sess.token;
-      var res = await fetch('/api/luna-update-profile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (token || '') },
-        body: JSON.stringify({
-          clientId: clientId,
-          brandColor: draft.brandColor,
-          accentColor: draft.accentColor,
-          logoText: draft.logoText,
-          widgetBotName: draft.botName,
-          widgetTagline: draft.tagline,
-          widgetWelcome: draft.welcome,
-          widgetHints: draft.hints.join('\n'),
-          capabilityCards: draft.capCards.length ? JSON.stringify(draft.capCards) : ''
-        })
-      });
-      if (!res.ok) throw new Error('Save failed: ' + res.status);
+      // Mirror brand/accent into the closure variables via the existing
+      // hex-input listener (which fires `input` and updates selectedBrandColor).
+      var bhInput = document.getElementById('setBrandColorHex');
+      var ahInput = document.getElementById('setAccentColorHex');
+      if (bhInput) bhInput.dispatchEvent(new Event('input'));
+      if (ahInput) ahInput.dispatchEvent(new Event('input'));
+
+      // Push our capCards into the legacy closure-scoped array.
+      if (typeof window._setCapCards === 'function') {
+        window._setCapCards(JSON.parse(JSON.stringify(draft.capCards)));
+      }
+
+      // Update brand/accent preview swatches in the settings drawer
+      var bpv = document.getElementById('brandColorPreview');
+      if (bpv) bpv.style.background = draft.brandColor;
+      var apv = document.getElementById('accentColorPreview');
+      if (apv) apv.style.background = draft.accentColor;
+
+      // Delegate the actual save to the legacy function — it has the right
+      // endpoint URL (luna-chat-endpoint.vercel.app/api/profile), the right
+      // auth headers (X-Client-Name / X-Client-Pass via CONFIG), and reads
+      // from the DOM inputs we just populated above.
+      if (typeof window._saveSettingsFromEditor !== 'function') {
+        throw new Error('Save bridge missing');
+      }
+      // The legacy save uses alert() on error rather than throwing. To detect
+      // success, we listen for the .settings-saved.show class flip that
+      // happens on success.
+      var saveFlag = { ok: false };
+      // Temporarily intercept window.alert to capture error messages
+      var origAlert = window.alert;
+      var capturedAlert = null;
+      window.alert = function(msg) { capturedAlert = msg; };
+      try {
+        await window._saveSettingsFromEditor();
+      } finally {
+        window.alert = origAlert;
+      }
+      if (capturedAlert) {
+        throw new Error(capturedAlert.replace(/^Failed to save:\s*/, ''));
+      }
       // Update window._clientConfig so the welcome panel sees fresh values
       if (window._clientConfig) {
         window._clientConfig.brandColor = draft.brandColor;
