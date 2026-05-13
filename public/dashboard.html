@@ -5441,19 +5441,26 @@ setTimeout(function () {
     renderPreviewGreeting();
     renderPreviewCards();
     renderPreviewHints();
-    document.getElementById('wed-brand-hex').value = draft.brandColor;
-    document.getElementById('wed-accent-hex').value = draft.accentColor;
-    document.getElementById('wed-brand-picker').value = draft.brandColor;
-    document.getElementById('wed-accent-picker').value = draft.accentColor;
+    var bh = document.getElementById('wed-brand-hex'); if (bh) bh.value = draft.brandColor;
+    var ah = document.getElementById('wed-accent-hex'); if (ah) ah.value = draft.accentColor;
+    var bp = document.getElementById('wed-brand-picker'); if (bp) bp.value = draft.brandColor;
+    var ap = document.getElementById('wed-accent-picker'); if (ap) ap.value = draft.accentColor;
   }
 
   // ── Open / close ─────────────────────────────────────────
   function openEditor() {
+    // If the user clicks Customise before our DOMContentLoaded wiring has
+    // fired, defer the open until the elements exist.
+    var ov = document.getElementById('wed-overlay');
+    if (!ov) {
+      console.log('[WidgetEditor] DOM not ready yet, deferring open');
+      setTimeout(openEditor, 100);
+      return;
+    }
     initial = readCurrentSettingsToDraft();
     draft = JSON.parse(JSON.stringify(initial));
     setDirty(false);
     renderAll();
-    var ov = document.getElementById('wed-overlay');
     ov.hidden = false;
     requestAnimationFrame(function() { ov.classList.add('active'); });
     setTimeout(function() {
@@ -5597,24 +5604,26 @@ setTimeout(function () {
     }
     // Hex inputs
     var bh = document.getElementById('wed-brand-hex');
-    bh.addEventListener('input', function() {
+    if (bh) bh.addEventListener('input', function() {
       var v = bh.value.trim();
       if (!/^#?[0-9A-Fa-f]{6}$/.test(v)) return;
       var hex = ('#' + v.replace('#','')).toUpperCase();
       draft.brandColor = hex;
-      document.getElementById('wed-brand-picker').value = hex;
+      var picker = document.getElementById('wed-brand-picker');
+      if (picker) picker.value = hex;
       applyBrandColor();
       renderSwatches();
       renderPreviewCards();
       checkDirty();
     });
     var ah = document.getElementById('wed-accent-hex');
-    ah.addEventListener('input', function() {
+    if (ah) ah.addEventListener('input', function() {
       var v = ah.value.trim();
       if (!/^#?[0-9A-Fa-f]{6}$/.test(v)) return;
       var hex = ('#' + v.replace('#','')).toUpperCase();
       draft.accentColor = hex;
-      document.getElementById('wed-accent-picker').value = hex;
+      var picker = document.getElementById('wed-accent-picker');
+      if (picker) picker.value = hex;
       applyBrandColor();
       renderSwatches();
       renderPreviewGreeting();
@@ -5622,18 +5631,20 @@ setTimeout(function () {
       checkDirty();
     });
     var bp = document.getElementById('wed-brand-picker');
-    bp.addEventListener('input', function() {
+    if (bp) bp.addEventListener('input', function() {
       draft.brandColor = bp.value.toUpperCase();
-      document.getElementById('wed-brand-hex').value = draft.brandColor;
+      var hex = document.getElementById('wed-brand-hex');
+      if (hex) hex.value = draft.brandColor;
       applyBrandColor();
       renderSwatches();
       renderPreviewCards();
       checkDirty();
     });
     var ap = document.getElementById('wed-accent-picker');
-    ap.addEventListener('input', function() {
+    if (ap) ap.addEventListener('input', function() {
       draft.accentColor = ap.value.toUpperCase();
-      document.getElementById('wed-accent-hex').value = draft.accentColor;
+      var hex = document.getElementById('wed-accent-hex');
+      if (hex) hex.value = draft.accentColor;
       applyBrandColor();
       renderSwatches();
       renderPreviewGreeting();
@@ -5643,11 +5654,15 @@ setTimeout(function () {
   }
 
   function wireGlobalHandlers() {
-    document.getElementById('wed-close-x').addEventListener('click', function() { closeEditor(false); });
-    document.getElementById('wed-discard').addEventListener('click', function() { closeEditor(false); });
-    document.getElementById('wed-save').addEventListener('click', saveEditor);
+    var closeBtn = document.getElementById('wed-close-x');
+    if (closeBtn) closeBtn.addEventListener('click', function() { closeEditor(false); });
+    var discardBtn = document.getElementById('wed-discard');
+    if (discardBtn) discardBtn.addEventListener('click', function() { closeEditor(false); });
+    var saveBtn = document.getElementById('wed-save');
+    if (saveBtn) saveBtn.addEventListener('click', saveEditor);
     // Click outside the modal closes (with dirty check)
-    document.getElementById('wed-overlay').addEventListener('click', function(e) {
+    var ovEl = document.getElementById('wed-overlay');
+    if (ovEl) ovEl.addEventListener('click', function(e) {
       if (e.target.id === 'wed-overlay') closeEditor(false);
     });
     // ESC closes
@@ -5666,14 +5681,30 @@ setTimeout(function () {
     });
   }
 
-  // Wire once on load. The actual fields are wired after open() too
-  // since contenteditable elements aren't recreated.
-  wireTopLevelEdits();
-  wireGlobalHandlers();
-
-  // Expose
+  // Expose globally FIRST so the topbar button works even if anything below fails
   window._openWidgetEditor = openEditor;
   window._closeWidgetEditor = function() { closeEditor(true); };
+
+  // Wire once on load. The actual fields are wired after open() too
+  // since contenteditable elements aren't recreated.
+  // CRITICAL: wait for DOM ready since the wed-overlay element lives AFTER
+  // this script tag in document order.
+  function bootEditor() {
+    try {
+      wireTopLevelEdits();
+      wireGlobalHandlers();
+    } catch (e) {
+      console.error('[WidgetEditor] wire failed:', e);
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bootEditor);
+  } else {
+    // DOM already parsed — but the wed-overlay element might still come
+    // later in source order if this script tag is in the middle of body.
+    // Defer a tick to be safe.
+    setTimeout(bootEditor, 0);
+  }
 })();
 </script>
 
