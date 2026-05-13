@@ -4,10 +4,13 @@
 const AT_BASE = 'app6Ot3eOb3DangkB';
 const AT_TABLE = 'tbl6CZ7aVzq1wHF2v';
 
-// CORS allowlist — only our own Vercel deploy can call the authenticated routes.
-// Add custom client domains here if/when they start using them.
+// CORS allowlist — origins that can call this endpoint.
 const ALLOWED_ORIGINS = [
-  'https://luna-chat-endpoint.vercel.app'
+  'https://luna-chat-endpoint.vercel.app',
+  'https://chat.travelify.io',
+  'https://luna-chat.travelify.io',
+  'http://localhost:3000',
+  'http://localhost:5173'
 ];
 
 function applyCors(req, res) {
@@ -33,11 +36,14 @@ module.exports = async function handler(req, res) {
   var clientName = req.headers['x-client-name'] || req.query.name || '';
   var pass = req.headers['x-client-pass'] || req.query.pass || '';
 
-  if ((!slug && !clientName) || !pass) return res.status(400).json({ error: 'Missing client credentials' });
+  // Require at least a client identifier. Password is now optional because
+  // the dashboard has migrated to central auth (tg-auth-gate) — the user is
+  // authenticated at the gate, and the X-Client-Name is set from that session.
+  if (!slug && !clientName) return res.status(400).json({ error: 'Missing client identifier' });
 
   var atHeaders = { 'Authorization': 'Bearer ' + atKey, 'Content-Type': 'application/json' };
 
-  // Find client by slug or name and verify password
+  // Find client by slug or name and (optionally) verify password
   try {
     var filterField = slug ? 'ClientSlug' : 'ClientName';
     var filterValue = slug || clientName;
@@ -54,8 +60,9 @@ module.exports = async function handler(req, res) {
     var record = sData.records[0];
     var fields = record.fields || {};
 
-    // Verify password
-    if (fields.DashboardPassword !== pass) {
+    // Verify password only if one was sent. If no password header is present,
+    // we trust the central-auth gate that fronts the dashboard.
+    if (pass && fields.DashboardPassword && fields.DashboardPassword !== pass) {
       return res.status(401).json({ error: 'Invalid password' });
     }
 
