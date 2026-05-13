@@ -346,7 +346,7 @@ async function getDestinationContext(message, atKey) {
       if (summary) summaries.push(summary);
     }
     if (summaries.length === 0) return '';
-    return '\n\n## Destination context (verified data)\nThe visitor mentioned the following. Use these verified facts directly when answering. Do NOT make up details; if a detail isn\'t listed here, say you can find out.\n\n' + summaries.join('\n\n');
+    return '\n\n## Destination context (verified data)\nThe visitor mentioned the following. Use these verified facts directly when answering. Do NOT make up details; if a detail isn\'t listed here, say you can find out.\n\n' + summaries.join('\n\n') + '\n\n### How to present this\nWhen answering about an airport or theme park where you have the coordinates above, you MUST emit a `location_card` block at the END of your response (after your prose answer). This shows the visitor a map with "Open in Google Maps" and "Open in Apple Maps" buttons — far more useful than typing the address.\n\nFormat:\n[BLOCK]{"type":"location_card","props":{"name":"<full name>","subtitle":"<IATA · short context, e.g. UK airport · 30 mi south of London>","lat":<lat number>,"lng":<lng number>,"zoom":12,"description":"<one short sentence with the key practical detail>"}}[/BLOCK]\n\nRules:\n- lat and lng MUST be numbers (not strings)\n- zoom 12 for cities/airports, 14 for theme parks (more detail), 10 for large regions\n- Keep description to one sentence; the prose above the block carries the full answer\n- Only emit ONE location_card per response, even if multiple destinations are mentioned\n- Place the [BLOCK]...[/BLOCK] AFTER your prose, separated by a blank line';
   } catch (err) {
     console.warn('[luna-chat] getDestinationContext error:', err.message);
     return '';
@@ -698,6 +698,8 @@ Example:
 actionType options: connect (live agent chat — default), callback (Calendly), whatsapp (deep link).
 
 **emergency_card** — see "Emergency situations" section if applicable to your context.
+
+**location_card** — used when the visitor asks about an airport or theme park where you have verified coordinates in the Destination context section. Renders a map preview plus "Open in Google Maps" and "Open in Apple Maps" buttons. Emit it AFTER your prose answer. The Destination context section (when present at the bottom of this prompt) includes the exact emission format and rules. Do NOT make up coordinates — if you don't have the lat/lng in the Destination context, just answer in prose without emitting this block.
 
 ### When plain prose is correct
 
@@ -1207,6 +1209,8 @@ Example:
 actionType options: connect (live agent chat — default), callback (Calendly), whatsapp (deep link).
 
 **emergency_card** — see "Emergency situations" section if applicable to your context.
+
+**location_card** — used when the visitor asks about an airport or theme park where you have verified coordinates in the Destination context section. Renders a map preview plus "Open in Google Maps" and "Open in Apple Maps" buttons. Emit it AFTER your prose answer. The Destination context section (when present at the bottom of this prompt) includes the exact emission format and rules. Do NOT make up coordinates — if you don't have the lat/lng in the Destination context, just answer in prose without emitting this block.
 
 ### When plain prose is correct
 
