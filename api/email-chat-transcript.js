@@ -12,33 +12,18 @@
 //   accentColor?: string       // optional — for HTML email accent
 // }
 
-const sgMail = require('@sendgrid/mail');
-
 const AT_BASE = 'app6Ot3eOb3DangkB';
 const AT_TABLE = 'tbl6CZ7aVzq1wHF2v';
 
-// CORS allowlist — origins that can call this endpoint.
-const ALLOWED_ORIGINS = [
-  'https://luna-chat-endpoint.vercel.app',
-  'https://chat.travelify.io',
-  'https://luna-chat.travelify.io',
-  'http://localhost:3000',
-  'http://localhost:5173'
-];
-
+// CORS: the widget runs on ANY client's website, so we cannot maintain an
+// allowlist. Abuse risk is mitigated by: (1) Airtable client lookup — only
+// real Travelgenix clients can send, (2) SendGrid domain auth — bad actors
+// can't send as someone else, (3) SendGrid daily/per-key rate limits.
 function applyCors(req, res) {
-  var origin = req.headers.origin;
-  if (origin && ALLOWED_ORIGINS.indexOf(origin) !== -1) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Vary', 'Origin');
-  } else if (origin && /^https?:\/\/[a-z0-9.-]+$/i.test(origin)) {
-    // Widget can be embedded on any client site. Echo origin if it looks safe.
-    // SendGrid abuse is mitigated by Airtable lookup + sender domain auth.
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Vary', 'Origin');
-  }
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Vary', 'Origin');
 }
 
 // Lightweight input sanitisation. Strips control chars + caps length.
@@ -246,6 +231,14 @@ module.exports = async function handler(req, res) {
 
   // Build and send
   try {
+    // Lazy-load SendGrid so a missing dependency doesn't break CORS preflight.
+    var sgMail;
+    try {
+      sgMail = require('@sendgrid/mail');
+    } catch (loadErr) {
+      console.error('[email-transcript] @sendgrid/mail not installed:', loadErr.message);
+      return res.status(500).json({ error: 'Email service unavailable (sendgrid package not installed)' });
+    }
     sgMail.setApiKey(sgKey);
 
     var htmlBody = buildHtmlEmail({
