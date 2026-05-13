@@ -1386,6 +1386,8 @@ function injectCSS() {
   +'#tgx-cw .tgx-typing span{display:inline-block;width:6px;height:6px;border-radius:50%;background:#8A92A0;animation:tgxDot 1.4s infinite}'
   +'#tgx-cw .tgx-typing span:nth-child(2){animation-delay:.18s}'
   +'#tgx-cw .tgx-typing span:nth-child(3){animation-delay:.36s}'
+  +'#tgx-cw .tgx-typing-status{font-size:12px;color:#8A92A0;font-style:italic;align-self:center;line-height:1.3;transition:opacity .25s ease;opacity:0;max-width:160px}'
+  +'#tgx-cw .tgx-typing-status.visible{opacity:0.85}'
 
   // Pills (quick replies)
   +'#tgx-cw .tgx-pills{display:flex;flex-wrap:wrap;gap:8px;padding:4px 16px 8px}'
@@ -1755,7 +1757,7 @@ function buildDOM() {
       +'</div>'
       +'<div class="tgx-date" id="tgxDateDiv">Today</div>'
       +'<div class="tgx-msgs" id="tgxMsgs"></div>'
-      +'<div class="tgx-typing-row" id="tgxTypingRow"><div id="tgxTypingAvatar"></div><div class="tgx-typing" id="tgxTyping"><span></span><span></span><span></span></div></div>'
+      +'<div class="tgx-typing-row" id="tgxTypingRow"><div id="tgxTypingAvatar"></div><div class="tgx-typing" id="tgxTyping"><span></span><span></span><span></span></div><div class="tgx-typing-status" id="tgxTypingStatus"></div></div>'
       +'<div id="tgxPills" class="tgx-pills"></div>'
       +'<div class="tgx-email-bar" id="tgxEmailBar"><span class="tgx-email-link" id="tgxEmailLink">&#128231; Email this chat</span></div>'
       +'<div class="tgx-input-wrap"><div class="tgx-input-inner"><input class="tgx-input" id="tgxInput" placeholder="Ask me anything..." autocomplete="off"></div><button class="tgx-send" id="tgxSend"></button></div>'
@@ -2671,6 +2673,63 @@ async function callLuna(userText) {
 }
 
 /* ─── SEND MESSAGE (AI mode) ─────────────────────────────── */
+/* ─── PROGRESSIVE TYPING STATUS ─────────────────────────────
+   While waiting for Luna's response, show a contextual status
+   that updates every ~800ms. Gives the perception of work
+   happening without changing actual response time. */
+var _typingStatusTimers = [];
+function pickStage2Status(text) {
+  var t = (text || "").toLowerCase();
+  /* Match on visitor intent — most specific first */
+  if (/booking|reference|reservation|confirm/.test(t)) return "Looking up your booking…";
+  if (/cancel|refund|insurance|baggage|visa|passport|policy|terms/.test(t)) return "Checking the policy…";
+  if (/stuck|lost|emergency|urgent|stranded|help/.test(t)) return "Pulling up emergency info…";
+  if (/holiday|sunshine|hot|warm|sun|beach|family|honeymoon|romantic|february|march|april|may|june|july|august|september|october|november|december|january|winter|summer|spring|autumn|where|ideas|inspire|suggestion/.test(t)) return "Finding destinations…";
+  if (/price|cost|deal|offer|cheap|budget|all.?inclusive|package/.test(t)) return "Checking what's available…";
+  if (/speak|human|agent|team|expert|someone/.test(t)) return "Finding the right person…";
+  return "Thinking it through…";
+}
+function startTypingStatus(visitorText) {
+  stopTypingStatus(); /* clear any prior timers */
+  var $status = document.getElementById("tgxTypingStatus");
+  if (!$status) return;
+  $status.textContent = "";
+  $status.classList.remove("visible");
+  var stage1 = "Thinking…";
+  var stage2 = pickStage2Status(visitorText);
+  var stage3 = "Almost there…";
+  /* Stage 1 — show after 400ms (avoid flashing on fast responses) */
+  _typingStatusTimers.push(setTimeout(function() {
+    $status.textContent = stage1;
+    $status.classList.add("visible");
+  }, 400));
+  /* Stage 2 — show after 1400ms */
+  _typingStatusTimers.push(setTimeout(function() {
+    $status.classList.remove("visible");
+    setTimeout(function() {
+      $status.textContent = stage2;
+      $status.classList.add("visible");
+    }, 250); /* let the fade-out finish before changing text */
+  }, 1400));
+  /* Stage 3 — show after 3000ms */
+  _typingStatusTimers.push(setTimeout(function() {
+    $status.classList.remove("visible");
+    setTimeout(function() {
+      $status.textContent = stage3;
+      $status.classList.add("visible");
+    }, 250);
+  }, 3000));
+}
+function stopTypingStatus() {
+  _typingStatusTimers.forEach(function(t) { clearTimeout(t); });
+  _typingStatusTimers = [];
+  var $status = document.getElementById("tgxTypingStatus");
+  if ($status) {
+    $status.classList.remove("visible");
+    $status.textContent = "";
+  }
+}
+
 async function sendToAI(text) {
   if (!text.trim()) return;
   cancelAutoTrigger();
@@ -2682,6 +2741,7 @@ async function sendToAI(text) {
   $input.value = "";
   $input.disabled = true;
   $typing.classList.add("active");
+  startTypingStatus(text);
   scrollBottom();
 
   ensureConversationStarted();
@@ -2689,6 +2749,7 @@ async function sendToAI(text) {
 
   var data = await callLuna(text);
   $typing.classList.remove("active");
+  stopTypingStatus();
 
   /* Strip [BOOKING_LOOKUP:rec...] marker BEFORE [FQ]/[OPT] parsing,
      so the form shows below the bot's text. */
