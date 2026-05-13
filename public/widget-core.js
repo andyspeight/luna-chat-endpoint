@@ -1596,11 +1596,11 @@ function injectCSS() {
   +'#tgx-cw .tgx-send:active{transform:scale(0.94)}'
   +'#tgx-cw .tgx-send svg{width:16px;height:16px;stroke:#fff;fill:none}'
   /* Voice input — mic button */
-  +'#tgx-cw .tgx-mic{width:32px;height:32px;border-radius:50%;background:transparent;border:none;cursor:pointer;display:none;align-items:center;justify-content:center;flex-shrink:0;color:'+C.brandColor+'88;transition:color .15s,background .15s,transform .15s;padding:0;font-family:inherit;position:relative}'
+  +'#tgx-cw .tgx-mic{width:34px;height:34px;border-radius:50%;background:'+C.brandColor+'0A;border:none;cursor:pointer;display:none;align-items:center;justify-content:center;flex-shrink:0;color:'+C.brandColor+'B0;transition:color .15s,background .15s,transform .15s;padding:0;font-family:inherit;position:relative}'
   +'#tgx-cw .tgx-mic.tgx-mic-available{display:inline-flex}'
-  +'#tgx-cw .tgx-mic:hover{color:'+C.brandColor+';background:'+C.brandColor+'0F}'
+  +'#tgx-cw .tgx-mic:hover{color:'+C.brandColor+';background:'+C.brandColor+'1A}'
   +'#tgx-cw .tgx-mic:active{transform:scale(0.94)}'
-  +'#tgx-cw .tgx-mic svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}'
+  +'#tgx-cw .tgx-mic svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}'
   +'#tgx-cw .tgx-mic.tgx-mic-listening{color:#fff;background:'+C.accentColor+'}'
   +'#tgx-cw .tgx-mic.tgx-mic-listening::before{content:"";position:absolute;inset:-3px;border-radius:50%;background:'+C.accentColor+';opacity:0.45;animation:tgxMicPulse 1.4s ease-out infinite;z-index:-1}'
   +'#tgx-cw .tgx-mic.tgx-mic-listening:hover{color:#fff;background:'+C.accentColor+';filter:brightness(1.08)}'
@@ -1813,6 +1813,9 @@ function injectCSS() {
     +'#tgx-cw .tgx-input{font-size:16px;padding:10px 0}' /* 16px stops iOS zoom on focus */
     +'#tgx-cw .tgx-send{min-width:42px;min-height:42px;width:42px;height:42px}'
     +'#tgx-cw .tgx-send svg{width:18px;height:18px}'
+    /* Voice mic — bigger on mobile so it\\'s easy to find and tap */
+    +'#tgx-cw .tgx-mic{width:40px;height:40px;background:'+C.brandColor+'14}'
+    +'#tgx-cw .tgx-mic svg{width:19px;height:19px}'
     /* Chat view tightening */
     +'#tgx-cw .tgx-msgs{padding:14px 12px;gap:10px}'
     +'#tgx-cw .tgx-bar{padding:10px 12px 12px;gap:8px}'
