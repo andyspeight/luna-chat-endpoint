@@ -2475,7 +2475,6 @@ No problem, drop your email and departure date in below and I'll find it.
       var accumulated = '';
       var firstTextChunkSeen = false;
       var detectedLang = null;
-      var langStripped = false;
 
       try {
         var stream = await client.messages.stream({
@@ -2486,42 +2485,66 @@ No problem, drop your email and departure date in below and I'll find it.
           metadata: { user_id: convId || 'unknown' }
         });
 
-        // The SDK exposes a text-event stream we can iterate
+        // The SDK exposes a text-event stream we can iterate.
+        // We buffer the start of the response until we can confirm or deny
+        // a [LANG:...] marker, then forward cleanly. The client never sees
+        // the LANG marker — it gets a clean text stream + detectedLanguage
+        // in the final 'done' event.
+        var langBuffer = '';
+        var langPhase = 'buffering'; // 'buffering' | 'streaming'
         for await (var event of stream) {
           if (event.type === 'content_block_delta' && event.delta && event.delta.type === 'text_delta') {
             var deltaText = event.delta.text || '';
             if (!deltaText) continue;
             accumulated += deltaText;
 
-            // Strip [LANG:xx] marker as soon as we see one. It only appears at
-            // the very start of the response.
-            if (!langStripped && !firstTextChunkSeen) {
-              var head = accumulated.slice(0, 32);
-              var lm = head.match(/^\[LANG:([^\]]+)\]\s*/);
-              if (lm) {
-                detectedLang = lm[1].trim();
-                accumulated = accumulated.replace(/^\[LANG:[^\]]+\]\s*/, '');
-                langStripped = true;
-                // What's left of accumulated is the text we want to forward.
-                if (accumulated.length > 0) {
-                  sendEvent('text', { delta: accumulated });
-                  firstTextChunkSeen = true;
-                }
+            if (langPhase === 'buffering') {
+              langBuffer += deltaText;
+              // Need at least 32 chars (or stream end) to confidently classify
+              if (langBuffer.length < 32) {
+                // Still buffering, await more chunks
                 continue;
               }
-              // Heuristic: if first ~32 chars don't start with '[LANG:' we can stop watching for it.
-              if (head.length >= 8 && head.indexOf('[LANG:') === -1) {
-                langStripped = true;
+              // We have enough — classify
+              // Strip ALL leading [LANG:...] markers (model occasionally emits more than one)
+              var lm = langBuffer.match(/^\[LANG:([^\]]+)\]\s*/);
+              if (lm) {
+                detectedLang = lm[1].trim();
+                while (/^\[LANG:[^\]]+\]\s*/.test(langBuffer)) {
+                  langBuffer = langBuffer.replace(/^\[LANG:[^\]]+\]\s*/, '');
+                }
               }
+              // Flush buffered (cleaned) text and switch to streaming mode
+              if (langBuffer.length > 0) {
+                sendEvent('text', { delta: langBuffer });
+                firstTextChunkSeen = true;
+              }
+              langBuffer = '';
+              langPhase = 'streaming';
+              continue;
             }
 
-            // Send delta. If we just stripped LANG, the delta we forward is
-            // the unstripped portion; for subsequent chunks, just forward as-is.
+            // streaming phase — forward delta as-is
             sendEvent('text', { delta: deltaText });
             firstTextChunkSeen = true;
           }
           // We don't need to handle message_delta, message_stop etc — the
           // for-await loop completes when the stream ends.
+        }
+        // If the stream ended while still buffering (very short response),
+        // flush whatever we have left.
+        if (langPhase === 'buffering' && langBuffer.length > 0) {
+          var lm2 = langBuffer.match(/^\[LANG:([^\]]+)\]\s*/);
+          if (lm2) {
+            detectedLang = lm2[1].trim();
+            while (/^\[LANG:[^\]]+\]\s*/.test(langBuffer)) {
+              langBuffer = langBuffer.replace(/^\[LANG:[^\]]+\]\s*/, '');
+            }
+          }
+          if (langBuffer.length > 0) {
+            sendEvent('text', { delta: langBuffer });
+            firstTextChunkSeen = true;
+          }
         }
 
         // Final message from the SDK — includes usage
@@ -2529,6 +2552,13 @@ No problem, drop your email and departure date in below and I'll find it.
 
         // Post-process the accumulated text (enrichment + output filter)
         var cleanReply = accumulated;
+        // Strip leading [LANG:...] markers from the final reply too — they shouldn't
+        // make it into the final text or downstream block parsing.
+        while (/^\[LANG:[^\]]+\]\s*/.test(cleanReply)) {
+          var lmFinal = cleanReply.match(/^\[LANG:([^\]]+)\]\s*/);
+          if (lmFinal && !detectedLang) detectedLang = lmFinal[1].trim();
+          cleanReply = cleanReply.replace(/^\[LANG:[^\]]+\]\s*/, '');
+        }
 
         try {
           var enrichKey = isTravelgenix ? process.env.AIRTABLE_KEY : atKey;
