@@ -222,12 +222,13 @@ async function buildDestinationIndex(atKey) {
     cities.forEach(function(rec) {
       var name = rec.fields && rec.fields['City/Region'];
       if (!name) return;
-      addKey(name, { table: 'tblTkKujdVZgWPAQe', recordId: rec.id, type: 'city', label: name });
+      var payload = { id: rec.id, displayName: name, type: 'city', table: 'tblTkKujdVZgWPAQe' };
+      addEntry(name, payload);
       // Also key by last word (e.g. "Costa del Sol" → "Sol" — minor but helps)
       var parts = name.split(/\s+/);
       if (parts.length >= 2) {
         var last = parts[parts.length - 1];
-        if (last.length >= 4) addKey(last, { table: 'tblTkKujdVZgWPAQe', recordId: rec.id, type: 'city', label: name });
+        if (last.length >= 4) addEntry(last, payload);
       }
     });
   } catch (e) {
@@ -240,11 +241,12 @@ async function buildDestinationIndex(atKey) {
     resorts.forEach(function(rec) {
       var name = rec.fields && rec.fields['Resort/Area'];
       if (!name) return;
-      addKey(name, { table: 'tblwV9gnbVEyZ99gI', recordId: rec.id, type: 'resort', label: name });
+      var payload = { id: rec.id, displayName: name, type: 'resort', table: 'tblwV9gnbVEyZ99gI' };
+      addEntry(name, payload);
       // Split form for "X & Y" → also index X
       if (name.indexOf('&') !== -1) {
         var first = name.split('&')[0].trim();
-        if (first.length >= 4) addKey(first, { table: 'tblwV9gnbVEyZ99gI', recordId: rec.id, type: 'resort', label: name });
+        if (first.length >= 4) addEntry(first, payload);
       }
     });
   } catch (e) {
@@ -278,7 +280,16 @@ async function fetchDestinationRecord(payload, atKey) {
   if (cached && (Date.now() - cached.ts < DC_RECORD_CACHE_TTL)) {
     return cached.data;
   }
-  var tableId = payload.type === 'airport' ? DC_AIRPORTS_TABLE : DC_THEMEPARKS_TABLE;
+  // Route to the table specified in the payload (cities, resorts, countries),
+  // falling back to airport/themepark logic for legacy payloads without .table.
+  var tableId;
+  if (payload.table) {
+    tableId = payload.table;
+  } else if (payload.type === 'airport') {
+    tableId = DC_AIRPORTS_TABLE;
+  } else {
+    tableId = DC_THEMEPARKS_TABLE;
+  }
   var url = 'https://api.airtable.com/v0/' + DC_BASE + '/' + tableId + '/' + payload.id;
   try {
     var r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + atKey } });
@@ -361,6 +372,27 @@ function summariseDestinationRecord(record, payload) {
     if (f['Fast Track Options']) parts.push('Fast track: ' + f['Fast Track Options']);
     if (f['Quirks and Insider Tips']) parts.push('Insider tips: ' + f['Quirks and Insider Tips']);
     if (f['Official Website']) parts.push('Official site: ' + f['Official Website']);
+  } else if (payload.type === 'city') {
+    parts.push('### City/Region: ' + (f['City/Region'] || payload.displayName));
+    if (f['Region']) parts.push('Region: ' + f['Region']);
+    if (f['Overview']) parts.push('Overview: ' + f['Overview']);
+    if (f['What Makes It Special']) parts.push('What makes it special: ' + f['What Makes It Special']);
+    if (f['Best Time to Visit']) parts.push('Best time: ' + f['Best Time to Visit']);
+    if (f['Who Is It Best For']) parts.push('Best for: ' + f['Who Is It Best For']);
+    if (f['Flight Time From UK']) parts.push('Flight time from UK: ' + f['Flight Time From UK']);
+    if (typeof f['Latitude'] === 'number' && typeof f['Longitude'] === 'number') {
+      parts.push('Coordinates: ' + f['Latitude'] + ', ' + f['Longitude']);
+    }
+  } else if (payload.type === 'resort') {
+    parts.push('### Resort/Area: ' + (f['Resort/Area'] || payload.displayName));
+    if (f['Region']) parts.push('Region: ' + f['Region']);
+    if (f['Overview']) parts.push('Overview: ' + f['Overview']);
+    if (f['Character and Vibe']) parts.push('Character: ' + f['Character and Vibe']);
+    if (f['Best Time to Visit']) parts.push('Best time: ' + f['Best Time to Visit']);
+    if (f['Beaches']) parts.push('Beaches: ' + f['Beaches']);
+    if (typeof f['Latitude'] === 'number' && typeof f['Longitude'] === 'number') {
+      parts.push('Coordinates: ' + f['Latitude'] + ', ' + f['Longitude']);
+    }
   }
   // Climate data (Cities, Resorts, Countries records carry these fields)
   var climateTemps = f['Climate Temps'];
