@@ -1942,6 +1942,9 @@ function injectCSS() {
   +'#tgx-cw .tgx-msg-col{display:flex;flex-direction:column;gap:4px;max-width:88%;min-width:0}'
 
   // Bubbles
+  /* streaming cursor */
+  +'#tgx-cw .tgx-msg.tgx-msg-streaming::after{content:"";display:inline-block;width:7px;height:14px;margin-left:2px;vertical-align:-2px;background:'+C.accentColor+';opacity:0.7;animation:tgxStreamCursor 1s steps(2) infinite;border-radius:1px}'
+  +'@keyframes tgxStreamCursor{0%,50%{opacity:0.7}51%,100%{opacity:0}}'
   +'#tgx-cw .tgx-msg{padding:12px 15px;font-size:14px;line-height:1.55;word-wrap:break-word;border-radius:18px}'
   +'#tgx-cw .tgx-msg.bot{background:#fff;color:'+C.brandColor+';border:1px solid rgba(15,26,61,0.06);border-top-left-radius:6px}'
   +'#tgx-cw .tgx-msg.user{background:linear-gradient(135deg,'+C.brandColor+','+C.brandColor+'E0);color:#fff;border-top-right-radius:6px;box-shadow:0 4px 12px '+C.brandColor+'25}'
@@ -3545,6 +3548,201 @@ function showRatingOverlay(ratingChannel) {
 }
 
 /* ─── CALL LUNA AI ENDPOINT ──────────────────────────────── */
+/* ─── STREAMING SEND ────────────────────────────────────
+   Streams Luna's response via SSE for a feel-alive experience. Falls back
+   to non-streaming callLuna() if streaming fails or isn't available.
+
+   Returns the same shape as callLuna() so sendToAI can use either path.
+
+   Side-effects during streaming:
+     - Creates a placeholder bot bubble after first text chunk and updates
+       it as deltas arrive (with [BLOCK]... stripped from the visible text).
+     - Hides the typing indicator on first chunk.
+
+   The function returns the full data once the 'done' event arrives, so
+   the caller can run normal post-processing (block rendering, pills,
+   escalation detection, etc).
+
+   If a bubble was created during streaming, returns { reply, escalate,
+   detectedLanguage, _streamedBubble: <element> } so the caller knows it
+   doesn't need to render the prose part again. */
+async function streamFromLuna(userText) {
+  history.push({role: "user", content: userText});
+  var requestBody = {
+    message: userText, convId: convId, visitorName: userName || undefined,
+    clientName: C.clientName, history: history.slice(-16), page: window.location.pathname,
+    stream: true
+  };
+  if (_currentBookingContext && typeof _currentBookingContext === "object") {
+    requestBody.bookingContext = _currentBookingContext;
+  }
+
+  var streamedBubbleRow = null;
+  var streamedBubble = null;
+  var visibleText = "";       // What we've shown in the bubble (with [BLOCK] stripped)
+  var fullText = "";          // What we've received total (raw)
+  var inBlockBuffer = false;  // Whether we've seen [BLOCK] but not [/BLOCK]
+
+  function ensureBubble() {
+    if (streamedBubbleRow) return;
+    // Hide typing indicator now that text is coming
+    $typing.classList.remove("active");
+    stopTypingStatus();
+    // Create the row + bubble structure manually (mirrors appendBubbleRow)
+    streamedBubbleRow = document.createElement("div");
+    streamedBubbleRow.className = "tgx-msg-row";
+    streamedBubbleRow.appendChild(makeAvatar(26, false));
+    var col = document.createElement("div");
+    col.className = "tgx-msg-col";
+    streamedBubble = document.createElement("div");
+    streamedBubble.className = "tgx-msg bot tgx-msg-streaming";
+    col.appendChild(streamedBubble);
+    var timeEl = document.createElement("span");
+    timeEl.className = "tgx-msg-time";
+    var now = new Date();
+    timeEl.textContent = ("0" + now.getHours()).slice(-2) + ":" + ("0" + now.getMinutes()).slice(-2);
+    col.appendChild(timeEl);
+    streamedBubbleRow.appendChild(col);
+    $msgs.appendChild(streamedBubbleRow);
+    // Scroll the new bubble into view at the top of the visible area
+    scrollToNewMessage(streamedBubbleRow);
+  }
+
+  function appendVisible(deltaText) {
+    if (!deltaText) return;
+    fullText += deltaText;
+    // Mini state machine: if [BLOCK] appears anywhere in fullText, switch
+    // to buffering mode. We re-derive visibleText each time so a [BLOCK]
+    // marker split across delta chunks (e.g. " [BLO" + "CK]...") doesn't
+    // leak partial markers into the visible bubble.
+    if (!inBlockBuffer) {
+      var blockIdx = fullText.indexOf('[BLOCK]');
+      if (blockIdx !== -1) {
+        // [BLOCK] arrived — visible text is everything before it.
+        visibleText = fullText.slice(0, blockIdx);
+        inBlockBuffer = true;
+        ensureBubble();
+        renderSafeMarkdown(streamedBubble, visibleText);
+        return;
+      }
+      // Defensive: if the tail of fullText is a partial "[", "[B", "[BL", "[BLO",
+      // "[BLOC", or "[BLOCK", hold those bytes back from the visible bubble so
+      // a chunk split across the marker boundary doesn't briefly show "[BLO".
+      var tail = fullText.slice(-7);
+      var holdback = 0;
+      var partials = ['[BLOCK', '[BLOC', '[BLO', '[BL', '[B', '['];
+      for (var pi = 0; pi < partials.length; pi++) {
+        if (tail.endsWith(partials[pi])) { holdback = partials[pi].length; break; }
+      }
+      visibleText = fullText.slice(0, fullText.length - holdback);
+      ensureBubble();
+      renderSafeMarkdown(streamedBubble, visibleText);
+    }
+    // If we're already buffering a block, nothing visible to update
+  }
+
+  try {
+    var res = await fetch(C.endpoint, {
+      method: "POST",
+      headers: {"Content-Type": "application/json", "Accept": "text/event-stream"},
+      body: JSON.stringify(requestBody)
+    });
+    if (!res.ok) {
+      throw new Error("HTTP " + res.status);
+    }
+    if (!res.body || typeof res.body.getReader !== 'function') {
+      throw new Error("Streaming not supported by browser");
+    }
+
+    var reader = res.body.getReader();
+    var decoder = new TextDecoder();
+    var buffer = "";
+    var convIdFromMeta = null;
+    var detectedLanguage = null;
+    var donePayload = null;
+
+    function processEvent(eventName, dataJson) {
+      var data;
+      try { data = JSON.parse(dataJson); } catch (e) { return; }
+      if (eventName === 'meta') {
+        if (data.convId) convIdFromMeta = data.convId;
+      } else if (eventName === 'text') {
+        if (typeof data.delta === 'string') appendVisible(data.delta);
+      } else if (eventName === 'done') {
+        donePayload = data;
+        if (data.detectedLanguage) detectedLanguage = data.detectedLanguage;
+      } else if (eventName === 'error') {
+        // Server-side stream error — show fallback text
+        donePayload = {
+          reply: data.fallbackReply || "I'm having trouble right now. Please try again.",
+          escalate: true,
+          error: true
+        };
+      }
+    }
+
+    while (true) {
+      var chunk = await reader.read();
+      if (chunk.done) break;
+      buffer += decoder.decode(chunk.value, { stream: true });
+      // SSE events are separated by double newlines
+      var parts = buffer.split('\n\n');
+      buffer = parts.pop(); // Keep the (potentially incomplete) last part
+      for (var p = 0; p < parts.length; p++) {
+        var raw = parts[p];
+        if (!raw.trim()) continue;
+        // Parse "event: NAME\ndata: JSON"
+        var lines = raw.split('\n');
+        var eventName = 'message';
+        var dataLines = [];
+        for (var li = 0; li < lines.length; li++) {
+          var line = lines[li];
+          if (line.indexOf('event:') === 0) eventName = line.slice(6).trim();
+          else if (line.indexOf('data:') === 0) dataLines.push(line.slice(5).trim());
+        }
+        if (dataLines.length > 0) {
+          processEvent(eventName, dataLines.join('\n'));
+        }
+      }
+      if (donePayload) break;
+    }
+
+    if (!donePayload) {
+      // Stream ended without 'done' — use whatever we have
+      donePayload = {
+        reply: fullText || "I'm having trouble right now. Please try again.",
+        escalate: false
+      };
+    }
+
+    var finalReply = donePayload.reply || fullText || "";
+    history.push({role: "assistant", content: finalReply});
+    if (detectedLanguage) conversationLang = detectedLanguage;
+    saveSession();
+
+    return {
+      reply: finalReply,
+      escalate: !!donePayload.escalate,
+      detectedLanguage: detectedLanguage,
+      _streamedBubble: streamedBubble, // Caller can replace this when rendering parsed result
+      _streamedBubbleRow: streamedBubbleRow,
+      _streamedVisibleText: visibleText
+    };
+  } catch (err) {
+    console.warn("[Luna] streaming failed:", err.message, "— falling back to non-streaming");
+    // Clean up any partial bubble
+    if (streamedBubbleRow && streamedBubbleRow.parentNode) {
+      streamedBubbleRow.parentNode.removeChild(streamedBubbleRow);
+    }
+    // Remove the user message from history we just pushed, callLuna will re-push
+    if (history.length > 0 && history[history.length - 1].role === 'user') {
+      history.pop();
+    }
+    // Fall back to non-streaming
+    return await callLuna(userText);
+  }
+}
+
 async function callLuna(userText) {
   history.push({role: "user", content: userText});
   try {
@@ -3656,7 +3854,11 @@ async function sendToAI(text) {
   ensureConversationStarted();
   publishMessage("visitor", text);
 
-  var data = await callLuna(text);
+  // Streaming is on by default. Gracefully degrades to non-streaming if the
+  // server doesn't honour stream=true (older deployments) or the browser
+  // lacks ReadableStream support.
+  var useStreaming = (C.streaming !== false) && (typeof ReadableStream !== "undefined");
+  var data = useStreaming ? await streamFromLuna(text) : await callLuna(text);
   $typing.classList.remove("active");
   stopTypingStatus();
 
@@ -3667,7 +3869,41 @@ async function sendToAI(text) {
   var workingReply = bookingExtracted.cleanText;
 
   var parsed = parseResponse(workingReply);
-  if (parsed.blocks && parsed.blocks.length > 0) {
+  if (data._streamedBubble) {
+    // The prose has already been streamed into a live bubble. We need to:
+    //   1. Replace its content with the FINAL parsed prose (cleans up any
+    //      stray [BLOCK] fragments left in visibleText), and
+    //   2. Render blocks as separate rows BELOW the streamed bubble.
+    // We also need to store the message in msgs[] so it persists.
+    try {
+      // Strip the streaming class so any per-stream styling is removed
+      data._streamedBubble.classList.remove("tgx-msg-streaming");
+      // Re-render with the parsed body (in case [BLOCK] sneaked into visible text)
+      if (parsed.body) {
+        renderSafeMarkdown(data._streamedBubble, parsed.body);
+      }
+    } catch (e) {}
+    // Render any blocks as new rows beneath the streamed prose
+    if (parsed.blocks && parsed.blocks.length > 0) {
+      var ctx = buildBlockContext();
+      parsed.blocks.forEach(function(item) {
+        if (item.type === "block") {
+          appendBlockRow("bot", item.blockType, item.props || {}, ctx);
+        }
+        // We skip "prose" items because the prose was already streamed
+      });
+    }
+    // Persist the message
+    msgs.push({
+      role: "bot",
+      content: parsed.body,
+      original: workingReply,
+      blocks: (parsed.blocks && parsed.blocks.length > 0) ? parsed.blocks : null,
+      ts: Date.now()
+    });
+    saveSession();
+    publishMessage("ai", parsed.body);
+  } else if (parsed.blocks && parsed.blocks.length > 0) {
     /* v2 block-aware rendering — pass blocks through */
     addMsg("bot", parsed.body, false, null, null, parsed.blocks);
     publishMessage("ai", parsed.body);
