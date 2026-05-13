@@ -1595,6 +1595,17 @@ function injectCSS() {
   +'#tgx-cw .tgx-send:hover{transform:scale(1.06)}'
   +'#tgx-cw .tgx-send:active{transform:scale(0.94)}'
   +'#tgx-cw .tgx-send svg{width:16px;height:16px;stroke:#fff;fill:none}'
+  /* Voice input — mic button */
+  +'#tgx-cw .tgx-mic{width:32px;height:32px;border-radius:50%;background:transparent;border:none;cursor:pointer;display:none;align-items:center;justify-content:center;flex-shrink:0;color:'+C.brandColor+'88;transition:color .15s,background .15s,transform .15s;padding:0;font-family:inherit;position:relative}'
+  +'#tgx-cw .tgx-mic.tgx-mic-available{display:inline-flex}'
+  +'#tgx-cw .tgx-mic:hover{color:'+C.brandColor+';background:'+C.brandColor+'0F}'
+  +'#tgx-cw .tgx-mic:active{transform:scale(0.94)}'
+  +'#tgx-cw .tgx-mic svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}'
+  +'#tgx-cw .tgx-mic.tgx-mic-listening{color:#fff;background:'+C.accentColor+'}'
+  +'#tgx-cw .tgx-mic.tgx-mic-listening::before{content:"";position:absolute;inset:-3px;border-radius:50%;background:'+C.accentColor+';opacity:0.45;animation:tgxMicPulse 1.4s ease-out infinite;z-index:-1}'
+  +'#tgx-cw .tgx-mic.tgx-mic-listening:hover{color:#fff;background:'+C.accentColor+';filter:brightness(1.08)}'
+  +'@keyframes tgxMicPulse{0%{transform:scale(1);opacity:0.45}70%{transform:scale(1.7);opacity:0}100%{transform:scale(1.7);opacity:0}}'
+  +'#tgx-cw .tgx-input.tgx-input-interim{color:'+C.brandColor+'80;font-style:italic}'
 
   // Escalation buttons
   +'#tgx-cw .tgx-esc-bar{display:none;gap:8px;padding:10px 16px 12px;border-top:1px solid rgba(15,26,61,0.06);flex-shrink:0;background:#fff}'
@@ -2032,6 +2043,7 @@ function buildDOM() {
       +'<div class="tgx-input-wrap" id="tgxHomeInputWrap">'
         +'<div class="tgx-input-inner">'
           +'<input class="tgx-input" id="tgxHomeInput" placeholder="Ask me anything..." autocomplete="off">'
+          +'<button class="tgx-mic" id="tgxHomeMic" type="button" aria-label="Voice input" title="Voice input"></button>'
         +'</div>'
         +'<button class="tgx-send" id="tgxHomeSend"></button>'
       +'</div>'
@@ -2050,7 +2062,7 @@ function buildDOM() {
       +'<div class="tgx-typing-row" id="tgxTypingRow"><div id="tgxTypingAvatar"></div><div class="tgx-typing" id="tgxTyping"><span></span><span></span><span></span></div><div class="tgx-typing-status" id="tgxTypingStatus"></div></div>'
       +'<div id="tgxPills" class="tgx-pills"></div>'
       +'<div class="tgx-email-bar" id="tgxEmailBar"><span class="tgx-email-link" id="tgxEmailLink">&#128231; Email this chat</span></div>'
-      +'<div class="tgx-input-wrap"><div class="tgx-input-inner"><input class="tgx-input" id="tgxInput" placeholder="Ask me anything..." autocomplete="off"></div><button class="tgx-send" id="tgxSend"></button></div>'
+      +'<div class="tgx-input-wrap"><div class="tgx-input-inner"><input class="tgx-input" id="tgxInput" placeholder="Ask me anything..." autocomplete="off"><button class="tgx-mic" id="tgxChatMic" type="button" aria-label="Voice input" title="Voice input"></button></div><button class="tgx-send" id="tgxSend"></button></div>'
       +'<div class="tgx-esc-bar" id="tgxEscBar"><button class="tgx-esc-btn human" id="tgxHuman"></button><button class="tgx-esc-btn leave" id="tgxLeave"></button></div>'
       +'<div class="tgx-footer" id="tgxFooterChat"></div>'
     +'</div>'
@@ -3358,6 +3370,211 @@ function handleSend() {
    We check at boot. If no viewport meta exists, we inject the standard one.
    If one exists (even with bad values), we leave it alone so we never override
    an intentional host-page choice. */
+/* ─── VOICE INPUT ────────────────────────────────────────
+   Web Speech API integration. Free, no infrastructure required.
+   Supported: Chrome, Edge, Safari (iOS 14.5+, macOS Big Sur+).
+   Hidden in Firefox and unsupported browsers.
+
+   The mic button is wired to both input pills (home and chat). When tapped:
+     - Permission prompt fires (first time)
+     - Visual switches to "listening" pulse
+     - Interim transcript shows in italic grey inside the input
+     - Final transcript replaces interim
+     - Second tap (or speech-end timeout) stops recognition
+     - User reviews and hits send (we never auto-send)
+*/
+
+var _voiceRecognition = null;
+var _voiceState = "idle"; // idle | listening | error
+var _voiceActiveInput = null; // 'home' or 'chat' — which input is currently dictating
+var _voiceFinalText = ""; // text accumulated from final results
+var _voiceMicHomeEl = null;
+var _voiceMicChatEl = null;
+var _voiceInputHomeEl = null;
+var _voiceInputChatEl = null;
+
+function micIconSvg() {
+  // Two paths: mic body + stand
+  return '<svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg>';
+}
+
+function isVoiceSupported() {
+  try {
+    return typeof window !== "undefined" &&
+      (typeof window.SpeechRecognition !== "undefined" ||
+       typeof window.webkitSpeechRecognition !== "undefined");
+  } catch (e) { return false; }
+}
+
+function getVoiceLang() {
+  // Use the browser locale if available, fallback to en-GB.
+  try {
+    return (navigator.language || navigator.userLanguage || "en-GB");
+  } catch (e) { return "en-GB"; }
+}
+
+function ensureVoiceRecognition() {
+  if (_voiceRecognition) return _voiceRecognition;
+  if (!isVoiceSupported()) return null;
+  var Cls = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var r = new Cls();
+  r.continuous = true;
+  r.interimResults = true;
+  r.lang = getVoiceLang();
+  r.maxAlternatives = 1;
+
+  r.onstart = function() {
+    _voiceState = "listening";
+    updateMicVisuals();
+  };
+
+  r.onresult = function(ev) {
+    if (!_voiceActiveInput) return;
+    var input = _voiceActiveInput === "home" ? _voiceInputHomeEl : _voiceInputChatEl;
+    if (!input) return;
+    var interim = "";
+    for (var i = ev.resultIndex; i < ev.results.length; i++) {
+      var r2 = ev.results[i];
+      if (r2.isFinal) {
+        // Append final text, with a space if needed
+        var seg = (r2[0] && r2[0].transcript) || "";
+        if (seg) {
+          _voiceFinalText = (_voiceFinalText ? _voiceFinalText + " " : "") + seg.trim();
+        }
+      } else {
+        interim += (r2[0] && r2[0].transcript) || "";
+      }
+    }
+    // Compose: finalised text + grey interim
+    var combined = _voiceFinalText;
+    if (interim) {
+      combined = combined ? combined + " " + interim : interim;
+    }
+    input.value = combined;
+    // Visual hint that text is coming in
+    if (interim) input.classList.add("tgx-input-interim");
+    else input.classList.remove("tgx-input-interim");
+  };
+
+  r.onerror = function(ev) {
+    var err = (ev && ev.error) || "unknown";
+    console.warn("[Luna] voice recognition error:", err);
+    _voiceState = "error";
+    updateMicVisuals();
+    // Specific UX for the most common error
+    if (err === "not-allowed" || err === "service-not-allowed") {
+      // Permission denied — show inline hint via placeholder
+      var input = _voiceActiveInput === "home" ? _voiceInputHomeEl : _voiceInputChatEl;
+      if (input) {
+        var orig = input.placeholder;
+        input.placeholder = "Microphone permission needed";
+        setTimeout(function() { if (input.placeholder === "Microphone permission needed") input.placeholder = orig; }, 3500);
+      }
+    }
+    // No matter the error, return to idle
+    setTimeout(function() { _voiceState = "idle"; updateMicVisuals(); }, 1500);
+  };
+
+  r.onend = function() {
+    _voiceState = "idle";
+    updateMicVisuals();
+    // Strip any leftover interim styling
+    if (_voiceInputHomeEl) _voiceInputHomeEl.classList.remove("tgx-input-interim");
+    if (_voiceInputChatEl) _voiceInputChatEl.classList.remove("tgx-input-interim");
+    _voiceActiveInput = null;
+  };
+
+  _voiceRecognition = r;
+  return r;
+}
+
+function updateMicVisuals() {
+  var listening = _voiceState === "listening";
+  if (_voiceMicHomeEl) _voiceMicHomeEl.classList.toggle("tgx-mic-listening", listening && _voiceActiveInput === "home");
+  if (_voiceMicChatEl) _voiceMicChatEl.classList.toggle("tgx-mic-listening", listening && _voiceActiveInput === "chat");
+}
+
+function startVoiceFor(which) {
+  var r = ensureVoiceRecognition();
+  if (!r) return;
+  // Pre-seed final text with what's already in the input so dictation appends
+  var input = which === "home" ? _voiceInputHomeEl : _voiceInputChatEl;
+  _voiceFinalText = (input && input.value) ? input.value.trim() : "";
+  _voiceActiveInput = which;
+  try {
+    r.start();
+  } catch (e) {
+    // Already started — stop, brief pause, restart with new owner
+    try { r.stop(); } catch (ee) {}
+    setTimeout(function() {
+      try { r.start(); } catch (ee) {}
+    }, 200);
+  }
+}
+
+function stopVoice() {
+  if (!_voiceRecognition) return;
+  try { _voiceRecognition.stop(); } catch (e) {}
+}
+
+function toggleVoiceFor(which) {
+  if (_voiceState === "listening") {
+    if (_voiceActiveInput === which) {
+      stopVoice();
+    } else {
+      // User tapped the other screen's mic while still listening — switch context
+      stopVoice();
+      setTimeout(function() { startVoiceFor(which); }, 200);
+    }
+  } else {
+    startVoiceFor(which);
+  }
+}
+
+// Called once at boot to wire up the two mic buttons. If unsupported, the
+// buttons stay hidden (CSS default `display:none` — only `.tgx-mic-available`
+// makes them appear).
+function initVoiceInput() {
+  _voiceMicHomeEl = document.getElementById("tgxHomeMic");
+  _voiceMicChatEl = document.getElementById("tgxChatMic");
+  _voiceInputHomeEl = document.getElementById("tgxHomeInput");
+  _voiceInputChatEl = document.getElementById("tgxInput");
+
+  // Inject SVG into both mic buttons
+  if (_voiceMicHomeEl) _voiceMicHomeEl.innerHTML = micIconSvg();
+  if (_voiceMicChatEl) _voiceMicChatEl.innerHTML = micIconSvg();
+
+  // If not supported (e.g. Firefox), leave the mic buttons hidden via CSS
+  // default (display:none). Otherwise reveal them.
+  if (!isVoiceSupported()) {
+    console.log("[Luna] voice input not supported in this browser");
+    return;
+  }
+
+  // Web Speech requires a secure origin (HTTPS or localhost)
+  var isSecure = (typeof location !== "undefined") &&
+    (location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1");
+  if (!isSecure) {
+    console.log("[Luna] voice input requires HTTPS — hidden");
+    return;
+  }
+
+  if (_voiceMicHomeEl) {
+    _voiceMicHomeEl.classList.add("tgx-mic-available");
+    _voiceMicHomeEl.addEventListener("click", function(e) {
+      e.preventDefault();
+      toggleVoiceFor("home");
+    });
+  }
+  if (_voiceMicChatEl) {
+    _voiceMicChatEl.classList.add("tgx-mic-available");
+    _voiceMicChatEl.addEventListener("click", function(e) {
+      e.preventDefault();
+      toggleVoiceFor("chat");
+    });
+  }
+}
+
 function ensureViewportMeta() {
   try {
     var existing = document.querySelector('meta[name="viewport"]');
@@ -3499,6 +3716,9 @@ async function boot() {
   if (homeInput) homeInput.addEventListener("keydown", function(e) {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitHome(); }
   });
+
+  /* Voice input — Web Speech API, free, no infrastructure */
+  initVoiceInput();
 
   /* Open/close */
   function openChat() {
