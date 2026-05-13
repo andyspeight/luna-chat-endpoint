@@ -966,6 +966,46 @@ function heroGradientFor(iconName) {
   }
 }
 
+// Find the longest contiguous "best" run in the seasons array and format
+// as a month-name range (e.g. "May to September"). Handles wrap-around for
+// destinations whose best season spans the new year. Returns null if none.
+function computeBestMonthsRange(seasons) {
+  if (!Array.isArray(seasons) || seasons.length !== 12) return null;
+  var runs = [];
+  var currentStart = -1;
+  for (var i = 0; i < 12; i++) {
+    if (seasons[i] === 'best') {
+      if (currentStart === -1) currentStart = i;
+    } else {
+      if (currentStart !== -1) {
+        runs.push({ start: currentStart, end: i - 1 });
+        currentStart = -1;
+      }
+    }
+  }
+  if (currentStart !== -1) runs.push({ start: currentStart, end: 11 });
+  // Wrap-around: if best starts at Jan AND ends at Dec, merge first+last
+  if (runs.length >= 2 && seasons[0] === 'best' && seasons[11] === 'best') {
+    var first = runs[0];
+    var last = runs[runs.length - 1];
+    if (first.start === 0 && last.end === 11) {
+      runs[0] = { start: last.start, end: first.end, wraps: true };
+      runs.pop();
+    }
+  }
+  if (runs.length === 0) return null;
+  // Pick the longest run
+  var longest = runs.reduce(function(a, b) {
+    var lenA = a.wraps ? (12 - a.start) + (a.end + 1) : (a.end - a.start + 1);
+    var lenB = b.wraps ? (12 - b.start) + (b.end + 1) : (b.end - b.start + 1);
+    return lenB > lenA ? b : a;
+  });
+  var startName = MONTH_FULL[longest.start];
+  var endName = MONTH_FULL[longest.end];
+  if (longest.start === longest.end) return startName;
+  return startName + ' to ' + endName;
+}
+
 function renderWeatherCard(props, ctx) {
   var card = el('div', 'luna-weather-card');
 
@@ -1067,7 +1107,10 @@ function renderWeatherCard(props, ctx) {
     body.appendChild(sectionLbl);
   }
 
-  // 12-month temperature chart
+  // 12-month temperature chart — restructured: temp value sits in a reserved
+  // slot at the TOP of each column (no absolute positioning), then bar
+  // wrapper takes remaining flex space, then month label at the bottom.
+  // This eliminates the overlap between temp labels and adjacent columns.
   if (temps.length === 12) {
     var maxTemp = Math.max.apply(null, temps.map(function(t) { return (typeof t === 'number' && isFinite(t)) ? t : 0; }));
     if (maxTemp < 30) maxTemp = 30;
@@ -1080,16 +1123,29 @@ function renderWeatherCard(props, ctx) {
       else if (ss === 'shoulder') col.classList.add('luna-weather-col-shoulder');
       var t = (typeof temps[i] === 'number') ? temps[i] : 0;
       var pct = Math.max(8, Math.min(100, (t / maxTemp) * 100));
-      var bar = el('div', 'luna-weather-bar');
-      bar.style.height = pct + '%';
-      col.appendChild(bar);
-      var label = el('div', 'luna-weather-month-label', MONTH_LABELS[i]);
-      col.appendChild(label);
+      // Temp value FIRST — sits in reserved top slot
       var value = el('div', 'luna-weather-temp', Math.round(t) + '°');
       col.appendChild(value);
+      // Bar wrapper takes remaining flex space
+      var barWrap = el('div', 'luna-weather-bar-wrap');
+      var bar = el('div', 'luna-weather-bar');
+      bar.style.height = pct + '%';
+      barWrap.appendChild(bar);
+      col.appendChild(barWrap);
+      // Month label at the bottom
+      var label = el('div', 'luna-weather-month-label', MONTH_LABELS[i]);
+      col.appendChild(label);
       chart.appendChild(col);
     }
     body.appendChild(chart);
+
+    // "Best months" pill derived from seasons array
+    var bestRange = computeBestMonthsRange(seasons);
+    if (bestRange) {
+      var bestPill = el('div', 'luna-weather-best-pill');
+      bestPill.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15 8.5 22 9.3 17 14 18.2 21 12 17.8 5.8 21 7 14 2 9.3 9 8.5 12 2" fill="currentColor" fill-opacity="0.15"/></svg><span>Best months: ' + bestRange + '</span>';
+      body.appendChild(bestPill);
+    }
 
     // Legend
     var legend = el('div', 'luna-weather-legend');
@@ -1834,14 +1890,17 @@ function injectCSS() {
   +'#tgx-cw .luna-weather-name{font-size:13.5px;font-weight:600;color:'+T.text+';line-height:1.25;letter-spacing:-0.01em}'
   +'#tgx-cw .luna-weather-subtitle{font-size:11.5px;color:'+T.textMuted+';margin-top:2px;line-height:1.3}'
   +'#tgx-cw .luna-weather-body{padding:14px}'
-  +'#tgx-cw .luna-weather-chart{display:grid;grid-template-columns:repeat(12,1fr);gap:4px;height:110px;align-items:end;margin-bottom:12px}'
-  +'#tgx-cw .luna-weather-col{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;position:relative}'
-  +'#tgx-cw .luna-weather-bar{width:100%;max-width:18px;background:linear-gradient(180deg,'+C.brandColor+'40,'+C.brandColor+'10);border-radius:3px 3px 0 0;min-height:6px;transition:background .2s}'
-  +'#tgx-cw .luna-weather-col-shoulder .luna-weather-bar{background:linear-gradient(180deg,'+C.accentColor+'40,'+C.accentColor+'12)}'
-  +'#tgx-cw .luna-weather-col-best .luna-weather-bar{background:linear-gradient(180deg,'+C.accentColor+',#'+( '00A86B' )+');background:linear-gradient(180deg,'+C.accentColor+'D0,'+C.accentColor+'70)}'
-  +'#tgx-cw .luna-weather-col-highlight .luna-weather-bar{outline:2px solid '+C.brandColor+';outline-offset:1px}'
-  +'#tgx-cw .luna-weather-month-label{font-size:9px;color:'+T.textMuted+';margin-top:4px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase}'
-  +'#tgx-cw .luna-weather-temp{position:absolute;top:-15px;font-size:9.5px;font-weight:600;color:'+T.text+';white-space:nowrap}'
+  +'#tgx-cw .luna-weather-chart{display:grid;grid-template-columns:repeat(12,1fr);gap:4px;height:144px;margin-bottom:10px}'
+  +'#tgx-cw .luna-weather-col{display:flex;flex-direction:column;align-items:center;height:100%}'
+  +'#tgx-cw .luna-weather-temp{font-size:10px;font-weight:600;color:'+T.text+';line-height:1.2;height:14px;display:flex;align-items:center;justify-content:center;white-space:nowrap;letter-spacing:-0.01em}'
+  +'#tgx-cw .luna-weather-bar-wrap{flex:1;width:100%;display:flex;align-items:flex-end;justify-content:center;min-height:0;padding:2px 0}'
+  +'#tgx-cw .luna-weather-bar{width:100%;max-width:20px;background:linear-gradient(180deg,'+C.brandColor+'40,'+C.brandColor+'10);border-radius:4px 4px 1px 1px;min-height:6px;transition:background .2s}'
+  +'#tgx-cw .luna-weather-col-shoulder .luna-weather-bar{background:linear-gradient(180deg,'+C.accentColor+'55,'+C.accentColor+'18)}'
+  +'#tgx-cw .luna-weather-col-best .luna-weather-bar{background:linear-gradient(180deg,'+C.accentColor+','+C.accentColor+'70)}'
+  +'#tgx-cw .luna-weather-col-highlight .luna-weather-bar{outline:2px solid '+C.brandColor+';outline-offset:1px;box-shadow:0 0 0 4px '+C.brandColor+'15}'
+  +'#tgx-cw .luna-weather-col-highlight .luna-weather-temp{color:'+C.brandColor+';font-weight:700}'
+  +'#tgx-cw .luna-weather-month-label{font-size:9.5px;color:'+T.textMuted+';margin-top:6px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;line-height:1}'
+  +'#tgx-cw .luna-weather-best-pill{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:'+C.accentColor+'15;color:'+C.accentColor+';border-radius:999px;font-size:11.5px;font-weight:600;margin-top:4px;margin-bottom:10px;letter-spacing:0.01em}'
   +'#tgx-cw .luna-weather-legend{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px;font-size:10.5px;color:'+T.textMuted+'}'
   +'#tgx-cw .luna-weather-legend-item{display:inline-flex;align-items:center;gap:5px;line-height:1}'
   +'#tgx-cw .luna-weather-legend-swatch{display:inline-block;width:10px;height:10px;border-radius:2px}'
