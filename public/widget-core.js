@@ -39,6 +39,7 @@ const KNOWN_BLOCK_TYPES = new Set([
   'human_handoff_card',
   'emergency_card',
   'location_card',
+  'weather_card',
   'quick_replies'
 ]);
 
@@ -903,6 +904,104 @@ function renderLocationCard(props, ctx) {
   return card;
 }
 
+// ─────────── BLOCK: weather_card ───────────
+// Shows the 12-month climate at a glance: temperature bars, rainfall pills,
+// and an editorial summary. Data comes from Airtable destination records.
+
+var MONTH_LABELS = ['J','F','M','A','M','J','J','A','S','O','N','D'];
+var MONTH_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+function renderWeatherCard(props, ctx) {
+  var card = el('div', 'luna-weather-card');
+
+  var name = typeof props.name === 'string' ? props.name : '';
+  var subtitle = typeof props.subtitle === 'string' ? props.subtitle : '';
+  var summary = typeof props.summary === 'string' ? props.summary : '';
+  var temps = Array.isArray(props.tempsC) ? props.tempsC : [];
+  var rainfall = Array.isArray(props.rainfallMm) ? props.rainfallMm : [];
+  var seasons = Array.isArray(props.seasons) ? props.seasons : [];
+  var highlight = (typeof props.highlightMonth === 'number' && props.highlightMonth >= 0 && props.highlightMonth <= 11) ? props.highlightMonth : -1;
+
+  // Header
+  var head = el('div', 'luna-weather-head');
+  var icon = document.createElement('span');
+  icon.className = 'luna-weather-icon';
+  icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>';
+  head.appendChild(icon);
+  var headText = el('div', 'luna-weather-head-text');
+  if (name) headText.appendChild(el('div', 'luna-weather-name', 'Climate · ' + name));
+  if (subtitle) headText.appendChild(el('div', 'luna-weather-subtitle', subtitle));
+  head.appendChild(headText);
+  card.appendChild(head);
+
+  // Body
+  var body = el('div', 'luna-weather-body');
+
+  // Temperature chart — 12 vertical bars scaled to the max temp
+  if (temps.length === 12) {
+    var maxTemp = Math.max.apply(null, temps.map(function(t) { return (typeof t === 'number' && isFinite(t)) ? t : 0; }));
+    if (maxTemp < 30) maxTemp = 30; // floor so winters don't look hot
+    var chart = el('div', 'luna-weather-chart');
+    for (var i = 0; i < 12; i++) {
+      var col = el('div', 'luna-weather-col');
+      if (i === highlight) col.classList.add('luna-weather-col-highlight');
+      // Season tint on the col
+      var s = seasons[i] || '';
+      if (s === 'best') col.classList.add('luna-weather-col-best');
+      else if (s === 'shoulder') col.classList.add('luna-weather-col-shoulder');
+      // Bar fills bottom-up by percentage
+      var t = (typeof temps[i] === 'number') ? temps[i] : 0;
+      var pct = Math.max(8, Math.min(100, (t / maxTemp) * 100));
+      var bar = el('div', 'luna-weather-bar');
+      bar.style.height = pct + '%';
+      col.appendChild(bar);
+      var label = el('div', 'luna-weather-month-label', MONTH_LABELS[i]);
+      col.appendChild(label);
+      var value = el('div', 'luna-weather-temp', Math.round(t) + '°');
+      col.appendChild(value);
+      chart.appendChild(col);
+    }
+    body.appendChild(chart);
+
+    // Legend
+    var legend = el('div', 'luna-weather-legend');
+    var leg1 = el('span', 'luna-weather-legend-item');
+    leg1.innerHTML = '<span class="luna-weather-legend-swatch luna-weather-swatch-best"></span>Best months';
+    var leg2 = el('span', 'luna-weather-legend-item');
+    leg2.innerHTML = '<span class="luna-weather-legend-swatch luna-weather-swatch-shoulder"></span>Shoulder';
+    var leg3 = el('span', 'luna-weather-legend-item');
+    leg3.innerHTML = '<span class="luna-weather-legend-swatch luna-weather-swatch-off"></span>Off-peak';
+    legend.appendChild(leg1); legend.appendChild(leg2); legend.appendChild(leg3);
+    body.appendChild(legend);
+  }
+
+  // Summary text
+  if (summary) {
+    body.appendChild(el('div', 'luna-weather-summary', summary));
+  }
+
+  // Highlight-month callout
+  if (highlight >= 0 && temps[highlight] != null) {
+    var callout = el('div', 'luna-weather-callout');
+    var monthName = MONTH_FULL[highlight];
+    var temp = Math.round(temps[highlight]);
+    var rain = rainfall[highlight];
+    var season = seasons[highlight] || '';
+    var seasonLabel = season === 'best' ? 'a peak month' :
+                      season === 'shoulder' ? 'a shoulder month' :
+                      season === 'off' ? 'off-peak' : '';
+    var msg = 'In ' + monthName + ', expect around ' + temp + '°C';
+    if (typeof rain === 'number') msg += ', ' + Math.round(rain) + 'mm rainfall';
+    if (seasonLabel) msg += ' — ' + seasonLabel;
+    msg += '.';
+    callout.textContent = msg;
+    body.appendChild(callout);
+  }
+
+  card.appendChild(body);
+  return card;
+}
+
 // ─────────── DISPATCH ───────────
 
 const RENDERERS = {
@@ -913,6 +1012,7 @@ const RENDERERS = {
   human_handoff_card:  renderHumanHandoffCard,
   emergency_card:      renderEmergencyCard,
   location_card:       renderLocationCard,
+  weather_card:        renderWeatherCard,
   quick_replies:       renderQuickReplies
 };
 
@@ -1243,6 +1343,69 @@ var sessionRestored = false;
 
 /* ─── SESSION PERSISTENCE ───────────────────────────────── */
 var SESSION_KEY = "luna_session";
+/* Clear conversation flow.
+   Shows an inline confirmation in the email bar slot, then on confirm
+   wipes session + DOM and returns to the home screen. */
+function showClearConfirm() {
+  var bar = document.getElementById("tgxEmailBar");
+  if (!bar) {
+    // Fallback: native confirm if email bar not present
+    if (confirm("Start a new conversation? Your current chat will be cleared.")) {
+      clearConversation();
+    }
+    return;
+  }
+  bar.innerHTML =
+    '<div class="tgx-clear-confirm">' +
+      '<span class="tgx-clear-confirm-text">Clear this conversation and start fresh?</span>' +
+      '<div class="tgx-clear-confirm-actions">' +
+        '<button class="tgx-clear-confirm-btn tgx-clear-confirm-yes" id="tgxClearYes">Yes, clear it</button>' +
+        '<button class="tgx-clear-confirm-btn tgx-clear-confirm-no" id="tgxClearNo">Cancel</button>' +
+      '</div>' +
+    '</div>';
+  bar.style.display = "block";
+  document.getElementById("tgxClearYes").addEventListener("click", function() {
+    clearConversation();
+  });
+  document.getElementById("tgxClearNo").addEventListener("click", function() {
+    // Restore email link
+    bar.innerHTML = '<span class="tgx-email-link" id="tgxEmailLink">&#128231; Email this chat</span>';
+    var link = document.getElementById("tgxEmailLink");
+    if (link) link.addEventListener("click", handleEmailChat);
+  });
+}
+
+function clearConversation() {
+  // Reset in-memory state
+  msgs = [];
+  history = [];
+  convId = "v_" + Date.now() + "_" + Math.random().toString(36).substr(2,9);
+  convStarted = false;
+  // Keep userName, visitorEmail, marketingConsent, nameCollected — visitor identity persists
+  // Wipe the message rendering area
+  if ($msgs) $msgs.innerHTML = "";
+  // Clear pills
+  var pillsEl = document.getElementById("tgxPills");
+  if (pillsEl) pillsEl.innerHTML = "";
+  // Reset typing indicator
+  var typingRow = document.getElementById("tgxTypingRow");
+  if (typingRow) typingRow.classList.remove("active");
+  // Reset email bar to default
+  var bar = document.getElementById("tgxEmailBar");
+  if (bar) {
+    bar.innerHTML = '<span class="tgx-email-link" id="tgxEmailLink">&#128231; Email this chat</span>';
+    var link = document.getElementById("tgxEmailLink");
+    if (link) link.addEventListener("click", handleEmailChat);
+  }
+  // Hide more-below indicator
+  hideMoreBelow();
+  // Save the cleared state
+  saveSession();
+  // Go back to home view
+  if (typeof switchToHome === "function") switchToHome();
+  console.log("[Luna] conversation cleared");
+}
+
 function saveSession() {
   try {
     sessionStorage.setItem(SESSION_KEY, JSON.stringify({
@@ -1539,6 +1702,30 @@ function injectCSS() {
   +'#tgx-cw .luna-location-cta-primary:hover{filter:brightness(1.08)}'
   +'#tgx-cw .luna-location-cta-secondary{background:#fff;color:'+T.text+';border-color:'+T.line+'}'
   +'#tgx-cw .luna-location-cta-secondary:hover{background:'+T.line+'40}'
+  /* weather_card */
+  +'#tgx-cw .luna-weather-card{background:#fff;border:1px solid '+T.line+';border-radius:14px;overflow:hidden;box-shadow:0 4px 12px rgba(15,26,61,0.06);max-width:100%}'
+  +'#tgx-cw .luna-weather-head{display:flex;align-items:flex-start;gap:10px;padding:12px 14px 10px;background:linear-gradient(180deg,'+C.brandColor+'08 0%,transparent 100%);border-bottom:1px solid '+T.line+'}'
+  +'#tgx-cw .luna-weather-icon{width:26px;height:26px;border-radius:50%;background:'+C.brandColor+';color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0}'
+  +'#tgx-cw .luna-weather-head-text{flex:1;min-width:0}'
+  +'#tgx-cw .luna-weather-name{font-size:13.5px;font-weight:600;color:'+T.text+';line-height:1.25;letter-spacing:-0.01em}'
+  +'#tgx-cw .luna-weather-subtitle{font-size:11.5px;color:'+T.textMuted+';margin-top:2px;line-height:1.3}'
+  +'#tgx-cw .luna-weather-body{padding:14px}'
+  +'#tgx-cw .luna-weather-chart{display:grid;grid-template-columns:repeat(12,1fr);gap:4px;height:110px;align-items:end;margin-bottom:12px}'
+  +'#tgx-cw .luna-weather-col{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;position:relative}'
+  +'#tgx-cw .luna-weather-bar{width:100%;max-width:18px;background:linear-gradient(180deg,'+C.brandColor+'40,'+C.brandColor+'10);border-radius:3px 3px 0 0;min-height:6px;transition:background .2s}'
+  +'#tgx-cw .luna-weather-col-shoulder .luna-weather-bar{background:linear-gradient(180deg,'+C.accentColor+'40,'+C.accentColor+'12)}'
+  +'#tgx-cw .luna-weather-col-best .luna-weather-bar{background:linear-gradient(180deg,'+C.accentColor+',#'+( '00A86B' )+');background:linear-gradient(180deg,'+C.accentColor+'D0,'+C.accentColor+'70)}'
+  +'#tgx-cw .luna-weather-col-highlight .luna-weather-bar{outline:2px solid '+C.brandColor+';outline-offset:1px}'
+  +'#tgx-cw .luna-weather-month-label{font-size:9px;color:'+T.textMuted+';margin-top:4px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase}'
+  +'#tgx-cw .luna-weather-temp{position:absolute;top:-15px;font-size:9.5px;font-weight:600;color:'+T.text+';white-space:nowrap}'
+  +'#tgx-cw .luna-weather-legend{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px;font-size:10.5px;color:'+T.textMuted+'}'
+  +'#tgx-cw .luna-weather-legend-item{display:inline-flex;align-items:center;gap:5px;line-height:1}'
+  +'#tgx-cw .luna-weather-legend-swatch{display:inline-block;width:10px;height:10px;border-radius:2px}'
+  +'#tgx-cw .luna-weather-swatch-best{background:'+C.accentColor+'D0}'
+  +'#tgx-cw .luna-weather-swatch-shoulder{background:'+C.accentColor+'40}'
+  +'#tgx-cw .luna-weather-swatch-off{background:'+C.brandColor+'30}'
+  +'#tgx-cw .luna-weather-summary{font-size:12.5px;line-height:1.55;color:'+T.text+';margin-bottom:10px}'
+  +'#tgx-cw .luna-weather-callout{font-size:12px;line-height:1.5;padding:10px 12px;background:'+C.brandColor+'08;border-radius:8px;color:'+T.text+';border-left:3px solid '+C.brandColor+'}'
   +'#tgx-cw .tgx-msgs::-webkit-scrollbar{width:4px}'
   +'#tgx-cw .tgx-msgs::-webkit-scrollbar-thumb{background:'+T.line+';border-radius:2px}'
 
@@ -1633,6 +1820,15 @@ function injectCSS() {
   +'#tgx-cw .tgx-email-mini-btn{background:#fff;color:#0F1A3D;border:1px solid rgba(15,26,61,0.18);border-radius:999px;padding:5px 11px;font-size:11.5px;font-weight:500;cursor:pointer;font-family:inherit;transition:background .15s}'
   +'#tgx-cw .tgx-email-mini-btn:hover{background:#F5F3EC}'
   +'#tgx-cw .tgx-email-mini-btn-x{color:#8A92A0;border-color:rgba(15,26,61,0.10)}'
+  /* Clear-conversation confirm */
+  +'#tgx-cw .tgx-clear-confirm{padding:10px 14px;background:#FEF3C7;border:1px solid #FCD34D;border-radius:12px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}'
+  +'#tgx-cw .tgx-clear-confirm-text{font-size:12.5px;color:#78350F;font-weight:500;flex:1;min-width:140px}'
+  +'#tgx-cw .tgx-clear-confirm-actions{display:flex;gap:6px;flex-wrap:wrap}'
+  +'#tgx-cw .tgx-clear-confirm-btn{font-size:11.5px;font-weight:500;padding:6px 12px;border-radius:999px;cursor:pointer;border:1px solid transparent;font-family:inherit;line-height:1.2}'
+  +'#tgx-cw .tgx-clear-confirm-yes{background:#DC2626;color:#fff;border-color:#DC2626}'
+  +'#tgx-cw .tgx-clear-confirm-yes:hover{filter:brightness(1.08)}'
+  +'#tgx-cw .tgx-clear-confirm-no{background:#fff;color:#78350F;border-color:#FCD34D}'
+  +'#tgx-cw .tgx-clear-confirm-no:hover{background:#FEF3C7}'
 
   // Overlays
   +'#tgx-cw .tgx-overlay{position:absolute;inset:0;background:rgba(250,250,246,0.92);backdrop-filter:blur(16px) saturate(180%);-webkit-backdrop-filter:blur(16px) saturate(180%);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:36px 28px;z-index:10;border-radius:'+C.radius+'}'
@@ -2058,6 +2254,7 @@ function buildDOM() {
         +'<button class="tgx-hdr-btn" id="tgxBackHome"></button>'
         +'<div id="tgxChatAvatar"></div>'
         +'<div style="flex:1;min-width:0"><div class="tgx-hdr-name" id="tgxChatName" style="font-size:14px"></div><div class="tgx-hdr-sub"><div class="tgx-status"></div>Online</div></div>'
+        +'<button class="tgx-hdr-btn" id="tgxClearChat" title="Start a new conversation" aria-label="Start a new conversation"></button>'
         +'<button class="tgx-hdr-btn" id="tgxChatClose"></button>'
       +'</div>'
       +'<div class="tgx-date" id="tgxDateDiv">Today</div>'
@@ -2095,6 +2292,15 @@ function buildDOM() {
   document.getElementById("tgxHomeClose").innerHTML = svgIcon("minus",16,"rgba(255,255,255,0.65)");
   document.getElementById("tgxBackHome").innerHTML = svgIcon("arrowLeft",17,"rgba(255,255,255,0.7)");
   document.getElementById("tgxChatClose").innerHTML = svgIcon("minus",16,"rgba(255,255,255,0.65)");
+  /* Clear-conversation button — refresh icon */
+  var tgxClearChatBtn = document.getElementById("tgxClearChat");
+  if (tgxClearChatBtn) {
+    tgxClearChatBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>';
+    tgxClearChatBtn.addEventListener("click", function(e) {
+      e.preventDefault();
+      showClearConfirm();
+    });
+  }
   document.getElementById("tgxSend").innerHTML = svgIcon("send",16,"#fff");
 
   /* Tainted Airtable fields — textContent only */
@@ -2227,9 +2433,16 @@ function ensureMoreBelowIndicator() {
 }
 function scrollToNewMessage(firstNewRow) {
   if (!firstNewRow) { scrollBottom(); return; }
-  setTimeout(function () {
-    /* Anchor the new row's top within the visible area, leaving a small gap above */
-    var targetTop = firstNewRow.offsetTop - 12;
+  /* Wait for layout to settle (typing indicator removal, DOM insertion, image
+     load reservations, etc.) before measuring. requestAnimationFrame fires
+     after the browser has computed the next layout, which is more reliable
+     than setTimeout(0). We double-RAF for cases where layout flushes in two
+     stages (which can happen when the typing row collapses just as messages
+     are inserted). */
+  requestAnimationFrame(function () { requestAnimationFrame(function () {
+    /* Anchor the new row's top at the visible top with only a tiny breathing
+       gap (4px) so the response visibly starts at the top of the chat area. */
+    var targetTop = firstNewRow.offsetTop - 4;
     var maxTop = $msgs.scrollHeight - $msgs.clientHeight;
     if (targetTop > maxTop) targetTop = maxTop;
     if (targetTop < 0) targetTop = 0;
@@ -2252,7 +2465,7 @@ function scrollToNewMessage(firstNewRow) {
         indicator.classList.remove("active");
       }
     }, 350);
-  }, 50);
+  }); });
 }
 function hideMoreBelow() { if (_moreBelowEl) _moreBelowEl.classList.remove("active"); }
 
