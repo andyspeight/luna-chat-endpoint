@@ -5515,8 +5515,24 @@ setTimeout(function () {
     status.className = 'wed-footer-status';
 
     try {
-      // Mirror values into the legacy settings inputs so window._saveSettings
-      // picks them up. The legacy function reads from these DOM inputs.
+      // Find the client name. Multiple fallbacks because CONFIG is not on
+      // window — it's a closure variable in the main IIFE.
+      // 1. Topbar brand text (set by bootSignedIn on every load)
+      // 2. window._clientConfig.companyName (set by bootSignedIn)
+      // 3. Document title parse
+      var clientName = '';
+      var topbarBrand = document.getElementById('topbarBrand');
+      if (topbarBrand && topbarBrand.textContent) {
+        var t = topbarBrand.textContent.trim();
+        if (t && t !== 'Dashboard') clientName = t;
+      }
+      if (!clientName && window._clientConfig && window._clientConfig.companyName) {
+        clientName = window._clientConfig.companyName;
+      }
+      console.log('[WidgetEditor] saving for client:', clientName || '(none found)');
+      if (!clientName) throw new Error('Could not determine client name — try refreshing the page');
+
+      // Mirror our draft into the legacy state so future saves elsewhere stay consistent
       function setV(id, value) { var el = document.getElementById(id); if (el) el.value = value; }
       setV('setBrandColorHex', draft.brandColor);
       setV('setAccentColorHex', draft.accentColor);
@@ -5527,48 +5543,53 @@ setTimeout(function () {
       setV('setWelcome', draft.welcome);
       setV('setTagline', draft.tagline);
       setV('setHints', draft.hints.join('\n'));
-
-      // Mirror brand/accent into the closure variables via the existing
-      // hex-input listener (which fires `input` and updates selectedBrandColor).
-      var bhInput = document.getElementById('setBrandColorHex');
-      var ahInput = document.getElementById('setAccentColorHex');
-      if (bhInput) bhInput.dispatchEvent(new Event('input'));
-      if (ahInput) ahInput.dispatchEvent(new Event('input'));
-
-      // Push our capCards into the legacy closure-scoped array.
       if (typeof window._setCapCards === 'function') {
         window._setCapCards(JSON.parse(JSON.stringify(draft.capCards)));
       }
-
       // Update brand/accent preview swatches in the settings drawer
       var bpv = document.getElementById('brandColorPreview');
       if (bpv) bpv.style.background = draft.brandColor;
       var apv = document.getElementById('accentColorPreview');
       if (apv) apv.style.background = draft.accentColor;
 
-      // Delegate the actual save to the legacy function — it has the right
-      // endpoint URL (luna-chat-endpoint.vercel.app/api/profile), the right
-      // auth headers (X-Client-Name / X-Client-Pass via CONFIG), and reads
-      // from the DOM inputs we just populated above.
-      if (typeof window._saveSettingsFromEditor !== 'function') {
-        throw new Error('Save bridge missing');
-      }
-      // The legacy save uses alert() on error rather than throwing. To detect
-      // success, we listen for the .settings-saved.show class flip that
-      // happens on success.
-      var saveFlag = { ok: false };
-      // Temporarily intercept window.alert to capture error messages
-      var origAlert = window.alert;
-      var capturedAlert = null;
-      window.alert = function(msg) { capturedAlert = msg; };
+      // Build the payload — only the fields we own. The API does a partial
+      // update so unrelated fields stay untouched.
+      var payload = {
+        brandColor: draft.brandColor,
+        accentColor: draft.accentColor,
+        logoText: draft.logoText,
+        widgetBotName: draft.botName,
+        widgetTagline: draft.tagline,
+        widgetWelcome: draft.welcome,
+        widgetHints: draft.hints.join('\n'),
+        capabilityCards: draft.capCards.length ? JSON.stringify(draft.capCards) : ''
+      };
+      console.log('[WidgetEditor] payload:', payload);
+
+      var res;
       try {
-        await window._saveSettingsFromEditor();
-      } finally {
-        window.alert = origAlert;
+        res = await fetch('https://luna-chat-endpoint.vercel.app/api/profile', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Client-Name': clientName,
+            'X-Client-Pass': ''
+          },
+          body: JSON.stringify(payload)
+        });
+      } catch (fetchErr) {
+        console.error('[WidgetEditor] fetch threw:', fetchErr);
+        throw new Error('Network error: ' + fetchErr.message + ' (check console for details)');
       }
-      if (capturedAlert) {
-        throw new Error(capturedAlert.replace(/^Failed to save:\s*/, ''));
+
+      console.log('[WidgetEditor] response status:', res.status);
+      if (!res.ok) {
+        var bodyText = '';
+        try { bodyText = await res.text(); } catch(e){}
+        console.error('[WidgetEditor] server error body:', bodyText);
+        throw new Error('Save failed (' + res.status + '): ' + (bodyText || res.statusText));
       }
+
       // Update window._clientConfig so the welcome panel sees fresh values
       if (window._clientConfig) {
         window._clientConfig.brandColor = draft.brandColor;
@@ -5724,6 +5745,22 @@ setTimeout(function () {
   // Expose globally FIRST so the topbar button works even if anything below fails
   window._openWidgetEditor = openEditor;
   window._closeWidgetEditor = function() { closeEditor(true); };
+
+  // Debug helper — paste `_debugWidgetEditor()` in console to see what's going on
+  window._debugWidgetEditor = function() {
+    var out = {
+      hasOverlay: !!document.getElementById('wed-overlay'),
+      hasGetCapCards: typeof window._getCapCards === 'function',
+      legacyCapCards: typeof window._getCapCards === 'function' ? window._getCapCards() : '(getter missing)',
+      clientConfig: window._clientConfig || '(missing)',
+      topbarBrand: (function() { var e = document.getElementById('topbarBrand'); return e ? e.textContent : '(missing)'; })(),
+      draftCapCards: draft ? draft.capCards : '(editor never opened)',
+      isDirty: isDirty
+    };
+    console.log('=== WidgetEditor debug ===');
+    Object.keys(out).forEach(function(k) { console.log(k + ':', out[k]); });
+    return out;
+  };
 
   // Wire once on load. The actual fields are wired after open() too
   // since contenteditable elements aren't recreated.
