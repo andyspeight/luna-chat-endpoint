@@ -469,20 +469,75 @@ async function ensureDestinationImageIndex(atKey) {
 }
 
 // Fuzzy lookup: try several normalisation strategies before giving up.
+// Manual aliases for known umbrella destinations that don't have a single
+// Airtable record. Maps the umbrella term (normalised) to a preferred child
+// name. If the child exists in the index, we use its image. Keep this list
+// short and obvious — most cases are handled by the substring fallback below.
+var DC_UMBRELLA_ALIASES = {
+  'canary islands':       ['tenerife', 'gran canaria', 'lanzarote', 'fuerteventura'],
+  'canaries':             ['tenerife', 'gran canaria'],
+  'balearics':            ['mallorca', 'majorca', 'ibiza', 'menorca'],
+  'balearic islands':     ['mallorca', 'majorca', 'ibiza', 'menorca'],
+  'greek islands':        ['santorini', 'mykonos', 'crete', 'rhodes', 'corfu'],
+  'greek isles':          ['santorini', 'mykonos', 'crete', 'rhodes'],
+  'cyclades':             ['santorini', 'mykonos', 'naxos', 'paros'],
+  'caribbean':            ['barbados', 'jamaica', 'st lucia', 'antigua', 'bahamas'],
+  'french riviera':       ['nice', 'cannes', 'monaco', 'cote d azur'],
+  'amalfi coast':         ['amalfi', 'positano', 'sorrento'],
+  'cote d azur':          ['nice', 'cannes', 'monaco'],
+  'algarve coast':        ['algarve'],
+  // Country full-name aliases (Luna sometimes uses the long form)
+  'united arab emirates': ['uae', 'dubai', 'abu dhabi'],
+  'united states':        ['usa'],
+  'united states of america': ['usa'],
+  'united kingdom':       ['uk', 'england', 'scotland'],
+  'great britain':        ['uk', 'england']
+};
+
 function lookupDestinationImage(name, index) {
   if (!name || !index) return null;
   var k = normaliseDestName(name);
   if (index[k]) return index[k];
-  // Strip common suffixes ("Spain", "Greece" etc) from a long name
-  // "Crete, Greece" → already normalised to "crete greece" — try just "crete"
+
+  // First-word fallback: "Crete, Greece" → "crete"
   var firstWord = k.split(' ')[0];
   if (firstWord && firstWord !== k && index[firstWord]) return index[firstWord];
-  // Last word too — for cases like "the Algarve" → "algarve"
+
+  // Last-word fallback: "the Algarve" → "algarve"
   var parts = k.split(' ').filter(Boolean);
   if (parts.length >= 2) {
     var lastWord = parts[parts.length - 1];
     if (index[lastWord]) return index[lastWord];
   }
+
+  // Umbrella alias map: "canary islands" → try "tenerife", "gran canaria"...
+  if (DC_UMBRELLA_ALIASES[k]) {
+    var children = DC_UMBRELLA_ALIASES[k];
+    for (var i = 0; i < children.length; i++) {
+      if (index[children[i]]) return index[children[i]];
+    }
+  }
+
+  // Substring fallback: scan the index for a key that contains our query
+  // (or vice versa). Catches "canary islands" → "gran canaria" without
+  // needing an alias entry. Only triggers when the query is at least 4
+  // chars to avoid false positives ("bali" matching "balikpapan" etc).
+  if (k.length >= 4) {
+    var indexKeys = Object.keys(index);
+    // Try: any index key that contains a word from our query
+    var queryWords = parts.filter(function(w) { return w.length >= 4; });
+    for (var w = 0; w < queryWords.length; w++) {
+      var qw = queryWords[w];
+      for (var j = 0; j < indexKeys.length; j++) {
+        var ik = indexKeys[j];
+        if (ik.indexOf(qw) !== -1) return index[ik];
+      }
+    }
+    // Or: any index key for which our query contains the entire key
+    // ("canary islands" contains "canaria"? no... but "spanish islands" might contain "spain")
+    // This is less common — skip for now to keep things fast.
+  }
+
   return null;
 }
 
