@@ -2433,20 +2433,28 @@ function ensureMoreBelowIndicator() {
 }
 function scrollToNewMessage(firstNewRow) {
   if (!firstNewRow) { scrollBottom(); return; }
-  /* Wait for layout to settle (typing indicator removal, DOM insertion, image
-     load reservations, etc.) before measuring. requestAnimationFrame fires
-     after the browser has computed the next layout, which is more reliable
-     than setTimeout(0). We double-RAF for cases where layout flushes in two
-     stages (which can happen when the typing row collapses just as messages
-     are inserted). */
+  /* Use scrollIntoView with instant scroll for reliable top-anchoring. Smooth
+     scroll is unreliable on mobile during layout shifts (typing indicator
+     collapse, image loads) — the animation can end up at a stale offset.
+     scrollIntoView({block:'start'}) anchors the element to the visible top
+     consistently across browsers. Then we nudge a few px so we don't crop
+     into the row's padding. Double-RAF ensures we measure AFTER all layout
+     reflows from the message insertion + typing indicator removal. */
   requestAnimationFrame(function () { requestAnimationFrame(function () {
-    /* Anchor the new row's top at the visible top with only a tiny breathing
-       gap (4px) so the response visibly starts at the top of the chat area. */
-    var targetTop = firstNewRow.offsetTop - 4;
-    var maxTop = $msgs.scrollHeight - $msgs.clientHeight;
-    if (targetTop > maxTop) targetTop = maxTop;
-    if (targetTop < 0) targetTop = 0;
-    $msgs.scrollTo({ top: targetTop, behavior: "smooth" });
+    try {
+      firstNewRow.scrollIntoView({ block: "start", inline: "nearest", behavior: "auto" });
+      // Pull back a couple of pixels so the row's top edge clears the container's
+      // top padding cleanly. Without this the first line can be hidden behind
+      // the messages container's padding-top.
+      if ($msgs.scrollTop > 6) $msgs.scrollTop -= 6;
+    } catch (e) {
+      // Fallback to manual calc
+      var targetTop = firstNewRow.offsetTop - 4;
+      var maxTop = $msgs.scrollHeight - $msgs.clientHeight;
+      if (targetTop > maxTop) targetTop = maxTop;
+      if (targetTop < 0) targetTop = 0;
+      $msgs.scrollTop = targetTop;
+    }
     /* Toggle more-below indicator after the scroll settles */
     setTimeout(function () {
       var indicator = ensureMoreBelowIndicator();
@@ -2464,7 +2472,7 @@ function scrollToNewMessage(firstNewRow) {
       } else {
         indicator.classList.remove("active");
       }
-    }, 350);
+    }, 250);
   }); });
 }
 function hideMoreBelow() { if (_moreBelowEl) _moreBelowEl.classList.remove("active"); }
