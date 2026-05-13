@@ -38,6 +38,7 @@ const KNOWN_BLOCK_TYPES = new Set([
   'booking_lookup_card',
   'human_handoff_card',
   'emergency_card',
+  'location_card',
   'quick_replies'
 ]);
 
@@ -753,6 +754,147 @@ function renderFallback(blockType, props) {
   return card;
 }
 
+// ─────────── BLOCK: location_card ───────────
+// Renders a map preview + Open in Google/Apple Maps buttons for a geo location.
+// Uses Leaflet (lazy-loaded from CDN on first use) with free OpenStreetMap tiles.
+// No API keys, no tokens — works offline-ish (degrades to static link buttons if
+// Leaflet fails to load, e.g. CSP blocks CDN).
+
+var _leafletLoadPromise = null;
+function ensureLeaflet() {
+  if (typeof window === 'undefined') return Promise.reject(new Error('No window'));
+  if (window.L && window.L.map) return Promise.resolve(window.L);
+  if (_leafletLoadPromise) return _leafletLoadPromise;
+  _leafletLoadPromise = new Promise(function(resolve, reject) {
+    // Load CSS first (must be in head before Leaflet JS runs to compute marker positions)
+    var existingCss = document.querySelector('link[data-luna-leaflet]');
+    if (!existingCss) {
+      var css = document.createElement('link');
+      css.rel = 'stylesheet';
+      css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      css.integrity = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=';
+      css.crossOrigin = '';
+      css.setAttribute('data-luna-leaflet', '1');
+      document.head.appendChild(css);
+    }
+    var script = document.createElement('script');
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    script.integrity = 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=';
+    script.crossOrigin = '';
+    script.onload = function() {
+      if (window.L && window.L.map) resolve(window.L);
+      else reject(new Error('Leaflet loaded but window.L missing'));
+    };
+    script.onerror = function() { reject(new Error('Leaflet CDN failed to load')); };
+    document.head.appendChild(script);
+  });
+  return _leafletLoadPromise;
+}
+
+function renderLocationCard(props, ctx) {
+  var card = el('div', 'luna-location-card');
+
+  var name = typeof props.name === 'string' ? props.name : '';
+  var subtitle = typeof props.subtitle === 'string' ? props.subtitle : '';
+  var description = typeof props.description === 'string' ? props.description : '';
+  var lat = (typeof props.lat === 'number') ? props.lat : parseFloat(props.lat);
+  var lng = (typeof props.lng === 'number') ? props.lng : parseFloat(props.lng);
+  var zoom = (typeof props.zoom === 'number' && props.zoom > 0 && props.zoom <= 19) ? props.zoom : 13;
+
+  // Header band
+  var head = el('div', 'luna-location-head');
+  // Pin icon
+  var pin = document.createElement('span');
+  pin.className = 'luna-location-pin';
+  pin.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>';
+  head.appendChild(pin);
+  var headText = el('div', 'luna-location-head-text');
+  if (name) headText.appendChild(el('div', 'luna-location-name', name));
+  if (subtitle) headText.appendChild(el('div', 'luna-location-subtitle', subtitle));
+  head.appendChild(headText);
+  card.appendChild(head);
+
+  // Map container (or static fallback)
+  var mapWrap = el('div', 'luna-location-map');
+  card.appendChild(mapWrap);
+
+  if (isFinite(lat) && isFinite(lng)) {
+    var mapId = 'luna-map-' + Math.random().toString(36).slice(2, 9);
+    mapWrap.id = mapId;
+    // Fallback static text (replaced once Leaflet loads)
+    var loadingMsg = el('div', 'luna-location-map-loading', 'Loading map…');
+    mapWrap.appendChild(loadingMsg);
+
+    ensureLeaflet().then(function(L) {
+      // Defensive: container may have been removed from DOM by now (rare)
+      if (!mapWrap.isConnected) return;
+      mapWrap.innerHTML = '';
+      try {
+        var map = L.map(mapId, {
+          center: [lat, lng],
+          zoom: zoom,
+          zoomControl: true,
+          scrollWheelZoom: false,
+          attributionControl: true
+        });
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 18,
+          attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+        var marker = L.marker([lat, lng]).addTo(map);
+        if (name) marker.bindPopup(name);
+        // Fix sizing issue when card animates in
+        setTimeout(function() { try { map.invalidateSize(); } catch(e){} }, 120);
+      } catch (err) {
+        console.warn('[Luna] Leaflet init failed:', err.message);
+        mapWrap.innerHTML = '';
+        mapWrap.appendChild(el('div', 'luna-location-map-error', 'Map preview unavailable'));
+      }
+    }).catch(function(err) {
+      console.warn('[Luna] Leaflet load failed:', err.message);
+      if (!mapWrap.isConnected) return;
+      mapWrap.innerHTML = '';
+      mapWrap.appendChild(el('div', 'luna-location-map-error', 'Map preview unavailable'));
+    });
+  } else {
+    mapWrap.appendChild(el('div', 'luna-location-map-error', 'Coordinates not available'));
+  }
+
+  // Description below the map
+  if (description) {
+    card.appendChild(el('div', 'luna-location-desc', description));
+  }
+
+  // CTAs — universal deep links
+  if (isFinite(lat) && isFinite(lng)) {
+    var ctas = el('div', 'luna-location-ctas');
+
+    var qLabel = encodeURIComponent(name || (lat + ', ' + lng));
+    var googleUrl = 'https://www.google.com/maps/search/?api=1&query=' + qLabel + '&query_place_id=&center=' + lat + ',' + lng;
+    var appleUrl = 'https://maps.apple.com/?ll=' + lat + ',' + lng + (name ? '&q=' + qLabel : '');
+
+    var googleBtn = document.createElement('a');
+    googleBtn.className = 'luna-location-cta luna-location-cta-primary';
+    googleBtn.href = safeUrl(googleUrl);
+    googleBtn.target = '_blank';
+    googleBtn.rel = 'noopener noreferrer';
+    googleBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg><span>Open in Google Maps</span>';
+    ctas.appendChild(googleBtn);
+
+    var appleBtn = document.createElement('a');
+    appleBtn.className = 'luna-location-cta luna-location-cta-secondary';
+    appleBtn.href = safeUrl(appleUrl);
+    appleBtn.target = '_blank';
+    appleBtn.rel = 'noopener noreferrer';
+    appleBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg><span>Open in Apple Maps</span>';
+    ctas.appendChild(appleBtn);
+
+    card.appendChild(ctas);
+  }
+
+  return card;
+}
+
 // ─────────── DISPATCH ───────────
 
 const RENDERERS = {
@@ -762,6 +904,7 @@ const RENDERERS = {
   booking_lookup_card: renderBookingLookupCard,
   human_handoff_card:  renderHumanHandoffCard,
   emergency_card:      renderEmergencyCard,
+  location_card:       renderLocationCard,
   quick_replies:       renderQuickReplies
 };
 
@@ -1354,6 +1497,24 @@ function injectCSS() {
   +'#tgx-cw .tgx-more-below{position:absolute;left:50%;bottom:120px;transform:translateX(-50%) translateY(8px);background:'+C.brandColor+';color:#fff;border:none;border-radius:999px;padding:8px 14px;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;box-shadow:0 6px 18px rgba(15,26,61,0.25);display:none;align-items:center;gap:6px;opacity:0;transition:opacity .25s ease,transform .25s ease;z-index:10}'
   +'#tgx-cw .tgx-more-below.active{display:inline-flex;opacity:1;transform:translateX(-50%) translateY(0)}'
   +'#tgx-cw .tgx-more-below:hover{filter:brightness(1.08)}'
+  /* location_card */
+  +'#tgx-cw .luna-location-card{background:#fff;border:1px solid '+T.line+';border-radius:14px;overflow:hidden;box-shadow:0 4px 12px rgba(15,26,61,0.06);max-width:100%}'
+  +'#tgx-cw .luna-location-head{display:flex;align-items:flex-start;gap:10px;padding:12px 14px 10px;background:linear-gradient(180deg,'+C.brandColor+'08 0%,transparent 100%);border-bottom:1px solid '+T.line+'}'
+  +'#tgx-cw .luna-location-pin{width:26px;height:26px;border-radius:50%;background:'+C.brandColor+';color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0}'
+  +'#tgx-cw .luna-location-head-text{flex:1;min-width:0}'
+  +'#tgx-cw .luna-location-name{font-size:14px;font-weight:600;color:'+T.text+';line-height:1.25;letter-spacing:-0.01em}'
+  +'#tgx-cw .luna-location-subtitle{font-size:12px;color:'+T.textMuted+';margin-top:2px;line-height:1.3}'
+  +'#tgx-cw .luna-location-map{height:180px;width:100%;background:#EEF2F7;position:relative;display:flex;align-items:center;justify-content:center}'
+  +'#tgx-cw .luna-location-map-loading,#tgx-cw .luna-location-map-error{font-size:12px;color:'+T.textMuted+';padding:8px}'
+  +'#tgx-cw .luna-location-map .leaflet-container{font-family:inherit;font-size:11px}'
+  +'#tgx-cw .luna-location-desc{padding:10px 14px 0;font-size:12.5px;line-height:1.5;color:'+T.text+'}'
+  +'#tgx-cw .luna-location-ctas{display:flex;gap:8px;padding:12px 14px 14px}'
+  +'#tgx-cw .luna-location-cta{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 10px;border-radius:8px;font-size:12px;font-weight:600;font-family:inherit;text-decoration:none;border:1px solid transparent;transition:transform .12s,filter .15s;cursor:pointer;line-height:1}'
+  +'#tgx-cw .luna-location-cta:active{transform:scale(0.98)}'
+  +'#tgx-cw .luna-location-cta-primary{background:'+C.brandColor+';color:#fff}'
+  +'#tgx-cw .luna-location-cta-primary:hover{filter:brightness(1.08)}'
+  +'#tgx-cw .luna-location-cta-secondary{background:#fff;color:'+T.text+';border-color:'+T.line+'}'
+  +'#tgx-cw .luna-location-cta-secondary:hover{background:'+T.line+'40}'
   +'#tgx-cw .tgx-msgs::-webkit-scrollbar{width:4px}'
   +'#tgx-cw .tgx-msgs::-webkit-scrollbar-thumb{background:'+T.line+';border-radius:2px}'
 
