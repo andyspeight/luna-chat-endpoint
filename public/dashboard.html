@@ -824,6 +824,187 @@
   .scan-page-remove:hover { color:var(--red); background:rgba(239,68,68,0.1); }
   .scan-progress { width:100%; height:4px; border-radius:2px; background:var(--navy-light); margin-top:var(--space-3); overflow:hidden; }
   .scan-progress-bar { height:100%; border-radius:2px; background:var(--teal); transition:width 0.4s ease-out; }
+
+  /* ═══ WELCOME PANEL (in chatEmpty for new clients) ═══ */
+  .welcome-panel { display:none; width:100%; max-width:720px; margin:0 auto; padding:32px 28px; flex-direction:column; gap:20px; }
+  .welcome-panel.active { display:flex; }
+  .welcome-panel-hero {
+    background: linear-gradient(135deg, #0B1D3A 0%, #132C54 100%);
+    border-radius: 20px; padding: 32px 32px 28px; color:#fff;
+    box-shadow: 0 12px 32px rgba(11,29,58,0.22);
+    position:relative; overflow:hidden;
+  }
+  .welcome-panel-hero::before {
+    content:''; position:absolute; top:-80px; right:-60px;
+    width:260px; height:260px;
+    background: radial-gradient(circle, rgba(0,180,182,0.20) 0%, transparent 70%);
+    pointer-events:none;
+  }
+  .welcome-panel-hero-inner { position:relative; z-index:1; }
+  .welcome-headline {
+    font-family:'Fraunces', Georgia, serif;
+    font-size:28px; font-weight:600; line-height:1.1;
+    letter-spacing:-0.01em; margin:0 0 8px 0;
+  }
+  .welcome-headline .brand { color:#00B4B6; }
+  .welcome-subhead {
+    font-size:14.5px; line-height:1.55;
+    color:rgba(255,255,255,0.76); margin:0 0 24px 0; max-width:520px;
+  }
+  .welcome-progress-strip { display:flex; align-items:center; gap:14px; margin-bottom:20px; }
+  .welcome-progress-bar { flex:1; height:6px; background:rgba(255,255,255,0.12); border-radius:999px; overflow:hidden; }
+  .welcome-progress-fill { height:100%; background:#00B4B6; border-radius:999px; transition:width 0.6s cubic-bezier(0.22, 1, 0.36, 1); }
+  .welcome-progress-text { font-size:10.5px; font-weight:700; letter-spacing:0.10em; color:rgba(255,255,255,0.70); text-transform:uppercase; white-space:nowrap; }
+
+  .welcome-checklist { display:flex; flex-direction:column; gap:8px; }
+  .welcome-step {
+    background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.10);
+    border-radius:12px; padding:14px 16px; display:flex; align-items:center; gap:14px;
+    transition:border-color 0.18s, background 0.18s;
+  }
+  .welcome-step.done { background:rgba(16,185,129,0.10); border-color:rgba(16,185,129,0.32); }
+  .welcome-step-icon {
+    width:30px; height:30px; border-radius:50%;
+    background:rgba(255,255,255,0.10); color:rgba(255,255,255,0.65);
+    font-size:13px; font-weight:600; display:flex; align-items:center; justify-content:center;
+    flex-shrink:0; transition:all 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .welcome-step.done .welcome-step-icon { background:#10B981; color:#fff; }
+  .welcome-step-text { flex:1; min-width:0; }
+  .welcome-step-title { font-size:13.5px; font-weight:600; color:#fff; margin:0 0 2px 0; }
+  .welcome-step.done .welcome-step-title { text-decoration:line-through; color:rgba(255,255,255,0.55); }
+  .welcome-step-desc { font-size:12px; color:rgba(255,255,255,0.58); margin:0; line-height:1.45; }
+  .welcome-step-cta {
+    background:#00B4B6; color:#fff; border:none;
+    padding:9px 14px; border-radius:8px; font-size:12px; font-weight:600;
+    cursor:pointer; display:inline-flex; align-items:center; justify-content:center;
+    gap:5px; font-family:inherit; min-width:120px; white-space:nowrap;
+    transition:background 0.18s, transform 0.18s;
+  }
+  .welcome-step-cta:hover { background:#009A9C; transform:translateX(1px); }
+  .welcome-step.done .welcome-step-cta { display:none; }
+
+  .welcome-tour-cta {
+    background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.15);
+    border-radius:12px; padding:14px 16px; cursor:pointer; color:#fff;
+    text-align:left; display:flex; gap:12px; align-items:center; margin-top:18px;
+    font-family:inherit; width:100%;
+    transition:background 0.18s, border-color 0.18s;
+  }
+  .welcome-tour-cta:hover { background:rgba(255,255,255,0.10); border-color:rgba(0,180,182,0.45); }
+  .welcome-tour-cta-icon {
+    width:34px; height:34px; border-radius:50%; background:#00B4B6;
+    display:flex; align-items:center; justify-content:center; color:#fff; flex-shrink:0;
+  }
+  .welcome-tour-cta-title { font-size:13px; font-weight:600; }
+  .welcome-tour-cta-meta { font-size:11px; color:rgba(255,255,255,0.55); margin-top:2px; }
+
+  /* ═══ SHOWCASE MODAL ═══ */
+  .showcase-overlay {
+    position:fixed; inset:0; background:rgba(15,23,42,0.94);
+    backdrop-filter:blur(8px); z-index:9999;
+    opacity:0; transition:opacity 0.35s ease; pointer-events:none;
+  }
+  .showcase-overlay.active { opacity:1; pointer-events:auto; }
+  .showcase-overlay[hidden] { display:none !important; }
+  .showcase-modal {
+    position:absolute; inset:0; background:#0B1D3A;
+    overflow:hidden; display:flex; flex-direction:column; outline:none;
+  }
+  .showcase-skip {
+    position:absolute; top:26px; left:32px; background:none; border:none;
+    color:rgba(255,255,255,0.5); cursor:pointer; font-size:13px; font-weight:500;
+    font-family:inherit; z-index:10; padding:8px 4px; transition:color 0.18s;
+  }
+  .showcase-skip:hover { color:rgba(255,255,255,0.9); }
+  .showcase-close {
+    position:absolute; top:20px; right:32px; width:36px; height:36px;
+    border-radius:50%; background:rgba(255,255,255,0.08);
+    border:1px solid rgba(255,255,255,0.12); color:#fff; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; z-index:10;
+    transition:background 0.18s;
+  }
+  .showcase-close:hover { background:rgba(255,255,255,0.18); }
+  .showcase-stage {
+    flex:1; display:flex; align-items:center; justify-content:center;
+    overflow:hidden; padding:80px 40px 40px; position:relative;
+  }
+  .showcase-chapter {
+    width:100%; max-width:1100px; display:none;
+    animation: showcaseChapterIn 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .showcase-chapter.active { display:block; }
+  @keyframes showcaseChapterIn {
+    from { opacity:0; transform:translateY(14px); }
+    to { opacity:1; transform:translateY(0); }
+  }
+  .showcase-chapter-grid {
+    display:grid; grid-template-columns:1fr 1fr; gap:64px; align-items:center;
+  }
+  .showcase-eyebrow {
+    font-size:11px; font-weight:700; letter-spacing:0.16em;
+    text-transform:uppercase; color:#00B4B6;
+    margin-bottom:22px; position:relative; padding-left:32px;
+  }
+  .showcase-eyebrow::before {
+    content:''; position:absolute; left:0; top:50%; width:22px; height:2px; background:#00B4B6;
+  }
+  .showcase-headline {
+    font-family:'Fraunces', Georgia, serif; font-size:46px; font-weight:600;
+    line-height:1.08; letter-spacing:-0.02em; color:#fff; margin:0 0 24px 0;
+  }
+  .showcase-headline em { font-style:italic; color:#00B4B6; }
+  .showcase-body { font-size:17px; line-height:1.6; color:rgba(255,255,255,0.78); margin:0; max-width:480px; }
+  .showcase-visual { position:relative; height:380px; display:flex; align-items:center; justify-content:center; }
+  .showcase-visual svg { width:100%; height:100%; max-width:480px; }
+  .showcase-chapter.closing { text-align:center; max-width:720px; margin:0 auto; }
+  .showcase-chapter.closing .showcase-eyebrow { display:inline-block; }
+  .showcase-chapter.closing .showcase-eyebrow::before { display:none; }
+  .showcase-chapter.closing .showcase-headline { font-size:56px; margin-top:12px; }
+  .showcase-chapter.closing .showcase-body { max-width:540px; margin:0 auto 36px; font-size:18px; }
+  .showcase-closing-cta {
+    background:#00B4B6; color:#fff; border:none; padding:16px 32px;
+    border-radius:12px; font-size:15px; font-weight:600; cursor:pointer;
+    font-family:inherit; display:inline-flex; align-items:center; gap:8px;
+    transition:background 0.18s, transform 0.18s;
+  }
+  .showcase-closing-cta:hover { background:#009A9C; transform:translateY(-1px); }
+  .showcase-footer {
+    padding:24px 40px 32px; display:flex; align-items:center; justify-content:space-between;
+    gap:32px; border-top:1px solid rgba(255,255,255,0.08);
+  }
+  .showcase-dots { display:flex; gap:8px; }
+  .showcase-dot {
+    width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,0.20);
+    border:none; cursor:pointer; padding:0; transition:background 0.18s, transform 0.18s;
+  }
+  .showcase-dot:hover { background:rgba(255,255,255,0.40); }
+  .showcase-dot.visited { background:rgba(255,255,255,0.45); }
+  .showcase-dot.active { background:#00B4B6; transform:scale(1.4); }
+  .showcase-nav { display:flex; gap:10px; }
+  .showcase-btn {
+    background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.15);
+    color:#fff; padding:10px 18px; border-radius:10px; font-size:13.5px; font-weight:600;
+    cursor:pointer; font-family:inherit; display:inline-flex; align-items:center; gap:6px;
+    transition:background 0.18s, border-color 0.18s;
+  }
+  .showcase-btn:hover { background:rgba(255,255,255,0.12); }
+  .showcase-btn:disabled { opacity:0.4; cursor:not-allowed; }
+  .showcase-btn.primary { background:#00B4B6; border-color:#00B4B6; }
+  .showcase-btn.primary:hover { background:#009A9C; border-color:#009A9C; }
+
+  @media (max-width: 860px) {
+    .welcome-panel-hero { padding:24px 20px; }
+    .welcome-headline { font-size:22px; }
+    .showcase-chapter-grid { grid-template-columns:1fr; gap:32px; }
+    .showcase-headline { font-size:32px; }
+    .showcase-body { font-size:15px; }
+    .showcase-visual { height:240px; }
+    .showcase-stage { padding:70px 24px 24px; }
+    .showcase-footer { padding:16px 20px 20px; flex-direction:column; gap:16px; }
+    .showcase-chapter.closing .showcase-headline { font-size:40px; }
+  }
+
 </style>
 <!-- Central auth gate. Bounces to id.travelify.io/signin.html if not signed in.
      Product slug "*" because client linkage is checked separately via the
@@ -863,7 +1044,7 @@
       <div class="connection-dot" id="connDot"></div>
       <span id="connLabel">Connecting…</span>
     </div>
-    <button class="topbar-stats-btn" id="welcomeBtn" onclick="window.location.href='/welcome.html'" title="Welcome &amp; tour"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> Welcome</button>
+    <button class="topbar-stats-btn" id="welcomeBtn" onclick="window._openShowcase('topbar')" title="See what Luna can do"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg> Tour</button>
     <button class="topbar-stats-btn" id="statsToggle" onclick="window._toggleStats()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg> Stats</button>
     <button class="topbar-stats-btn" id="switchCompanyBtn" onclick="window._switchCompany()" title="Switch to another Luna Chat client" style="display:none"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg> Switch</button>
     <button class="topbar-stats-btn" id="settingsToggle" onclick="window._toggleSettings()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> Settings</button>
@@ -905,8 +1086,19 @@
   <!-- CHAT -->
   <div class="chat-panel" id="chatPanel">
     <div class="chat-empty" id="chatEmpty">
-      <div class="chat-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.3"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></div>
-      <div class="chat-empty-text">Select a conversation to start</div>
+      <!-- Welcome panel (new clients) — toggled by JS based on client state -->
+      <div class="welcome-panel" id="welcomePanel">
+        <div class="welcome-panel-hero">
+          <div class="welcome-panel-hero-inner" id="welcomeHeroInner">
+            <!-- populated by renderWelcomePanel() -->
+          </div>
+        </div>
+      </div>
+      <!-- Default empty state (returning clients with no active conversation) -->
+      <div class="chat-empty-default" id="chatEmptyDefault">
+        <div class="chat-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.3"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></div>
+        <div class="chat-empty-text">Select a conversation to start</div>
+      </div>
     </div>
     <div id="chatActive" style="display:none;flex-direction:column;flex:1;">
       <div class="chat-header" id="chatHeader">
@@ -1339,23 +1531,6 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
 
 <script>
 (function() {
-  // ─── FIRST-TIME REDIRECT TO WELCOME ───
-  // New clients land on /welcome.html for the onboarding tour. Once they've
-  // visited the welcome page (any time, even briefly), they're not redirected
-  // again — the "Welcome" topbar button is how they revisit. Skip when:
-  //   - they've already visited welcome.html (luna-chat-welcome-visited flag)
-  //   - URL has ?skipWelcome=1 (e.g. when navigating from welcome.html)
-  //   - URL has ?open= (deep-linked into a specific dashboard tab)
-  try {
-    var skipFlag = new URLSearchParams(window.location.search).has('skipWelcome');
-    var openFlag = new URLSearchParams(window.location.search).has('open');
-    var hasVisited = !!localStorage.getItem('luna-chat-welcome-visited');
-    if (!hasVisited && !skipFlag && !openFlag) {
-      window.location.replace('/welcome.html');
-      return; // halt the rest of the IIFE
-    }
-  } catch (e) { /* localStorage blocked — just skip the redirect */ }
-
   // ─── LUCIDE ICON SYSTEM ───
   // All structural icons use consistent 16px Lucide-style SVGs (stroke-width:1.5)
   var ICONS = {
@@ -1396,6 +1571,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
   let dashboardChannel = null;
   let presenceChannel = null;
   let conversations = {};
+  window.conversations = conversations;
   let activeConvId = null;
   let activeTab = 'live';
   let activeHistoryId = null;
@@ -1506,6 +1682,20 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     document.getElementById('agentInitials').textContent = CONFIG.AGENT_NAME.split(' ').map(function (w) { return w[0]; }).join('').toUpperCase().slice(0, 2);
 
     STORAGE_PREFIX = 'luna_' + (CONFIG.CLIENT_NAME || 'default').toLowerCase().replace(/[^a-z0-9]/g, '_') + '_';
+
+    // Expose client config for the welcome panel (added by splice)
+    window._clientConfig = window._clientConfig || {};
+    window._clientConfig.companyName = CONFIG.CLIENT_NAME;
+    // Trigger profile load + welcome refresh so onboarding steps update accurately
+    setTimeout(function () {
+      try {
+        if (typeof loadProfile === 'function') {
+          loadProfile().then(function () {
+            if (typeof window._refreshWelcomePanel === 'function') window._refreshWelcomePanel();
+          });
+        }
+      } catch (e) {}
+    }, 200);
 
     loadCannedFromAPI();
 
@@ -2999,6 +3189,19 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       const data = await res.json();
       const p = data.profile || {};
 
+      // Expose to welcome panel (added by splice)
+      window._clientConfig = window._clientConfig || {};
+      window._clientConfig.brandColor = p.brandColor;
+      window._clientConfig.accentColor = p.accentColor;
+      window._clientConfig.widgetWelcome = p.widgetWelcome;
+      window._clientConfig.widgetTagline = p.widgetTagline;
+      window._clientConfig.capabilityCards = p.capabilityCards;
+      window._clientConfig.emergencyPhone = p.emergencyPhone;
+      if (typeof window._refreshWelcomePanel === 'function') {
+        try { window._refreshWelcomePanel(); } catch (e) {}
+      }
+
+
       // Business profile
       const parts = [p.description || ''];
       if (p.specialisms) parts.push('Specialisms: ' + p.specialisms);
@@ -4100,7 +4303,420 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     }
   };
 
+
+// ═══════════════════════════════════════════════════════
+// WELCOME PANEL + SHOWCASE MODAL (added by splice)
+// ═══════════════════════════════════════════════════════
+var WELCOME_VISITED_KEY = 'luna-chat-welcome-visited';
+var SHOWCASE_STORAGE_KEY = 'luna-chat-showcase-seen';
+var showcaseState = { current: 0, visited: [], chapters: [] };
+
+function escHtml(s) {
+  if (s == null) return '';
+  return String(s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+
+function computeWelcomeState() {
+  // Pull from window globals set by the dashboard boot
+  var c = (window._clientConfig || {});
+  var convCount = 0;
+  try { convCount = Object.keys(window.conversations || {}).length; } catch (e) {}
+
+  var step1Done = !!(c.brandColor && c.widgetWelcome && c.widgetWelcome.length > 0);
+  var capCards = [];
+  if (c.capabilityCards) {
+    try { capCards = typeof c.capabilityCards === 'string' ? JSON.parse(c.capabilityCards) : c.capabilityCards; }
+    catch (e) {}
+  }
+  var step2Done = Array.isArray(capCards) && capCards.length > 0;
+  var step3Done = convCount > 0;
+  var done = (step1Done?1:0) + (step2Done?1:0) + (step3Done?1:0);
+
+  return {
+    name: c.companyName || c.name || 'there',
+    steps: [
+      { done: step1Done, title: 'Configure your brand', desc: 'Pick your colours, write your welcome message, and choose your tone.', ctaLabel: 'Configure', ctaAction: 'settings' },
+      { done: step2Done, title: 'Set up capability cards', desc: "Tell Luna what she can help visitors do — find a holiday, manage a booking, speak to an expert.", ctaLabel: 'Set up', ctaAction: 'capabilities' },
+      { done: step3Done, title: 'Embed on your website', desc: 'One line of code. Paste it before your closing body tag. Test by sending a message.', ctaLabel: 'Get code', ctaAction: 'embed' }
+    ],
+    done: done,
+    total: 3,
+    graduated: done === 3
+  };
+}
+
+function renderWelcomePanel() {
+  var $panel = document.getElementById('welcomePanel');
+  var $defaultEmpty = document.getElementById('chatEmptyDefault');
+  var $inner = document.getElementById('welcomeHeroInner');
+  if (!$panel || !$inner) return;
+
+  var state = computeWelcomeState();
+
+  // If graduated AND there are conversations, the empty state shows the default
+  // "Select a conversation" message. If not graduated, show the welcome panel.
+  if (state.graduated) {
+    $panel.classList.remove('active');
+    if ($defaultEmpty) $defaultEmpty.style.display = '';
+    return;
+  }
+
+  if ($defaultEmpty) $defaultEmpty.style.display = 'none';
+  $panel.classList.add('active');
+
+  var pct = Math.round((state.done / state.total) * 100);
+  var brandSpan = state.name && state.name !== 'there'
+    ? '<span class="brand">' + escHtml(state.name) + '</span>'
+    : '<span class="brand">Travelgenix</span>';
+
+  var subhead = state.done === 0
+    ? "Three short steps and Luna will be answering visitor questions on your site, 24/7."
+    : state.done < 3
+      ? "Almost there. A couple more steps and Luna's ready to go live."
+      : "You're all set up. Luna's live and learning from every conversation.";
+
+  var stepsHtml = state.steps.map(function (s, i) {
+    var icon = s.done
+      ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
+      : (i+1).toString();
+    return '<div class="welcome-step' + (s.done?' done':'') + '">' +
+      '<div class="welcome-step-icon">' + icon + '</div>' +
+      '<div class="welcome-step-text">' +
+        '<div class="welcome-step-title">' + escHtml(s.title) + '</div>' +
+        '<div class="welcome-step-desc">' + escHtml(s.desc) + '</div>' +
+      '</div>' +
+      '<button class="welcome-step-cta" data-step-action="' + escHtml(s.ctaAction) + '">' +
+        escHtml(s.ctaLabel) +
+        '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>' +
+      '</button>' +
+    '</div>';
+  }).join('');
+
+  $inner.innerHTML =
+    '<h1 class="welcome-headline">Welcome to Luna, ' + brandSpan + '</h1>' +
+    '<p class="welcome-subhead">' + escHtml(subhead) + '</p>' +
+    '<div class="welcome-progress-strip">' +
+      '<div class="welcome-progress-bar"><div class="welcome-progress-fill" style="width:' + pct + '%"></div></div>' +
+      '<div class="welcome-progress-text">' + state.done + ' OF ' + state.total + ' COMPLETE</div>' +
+    '</div>' +
+    '<div class="welcome-checklist">' + stepsHtml + '</div>' +
+    '<button class="welcome-tour-cta" onclick="window._openShowcase(\'welcome\')">' +
+      '<div class="welcome-tour-cta-icon">' +
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>' +
+      '</div>' +
+      '<div>' +
+        '<div class="welcome-tour-cta-title">See what Luna can do</div>' +
+        '<div class="welcome-tour-cta-meta">3 minutes · 7 chapters</div>' +
+      '</div>' +
+    '</button>';
+
+  // Wire step CTAs
+  document.querySelectorAll('[data-step-action]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var action = btn.getAttribute('data-step-action');
+      if (action === 'settings' || action === 'capabilities') {
+        if (typeof window._toggleSettings === 'function') window._toggleSettings();
+      } else if (action === 'embed') {
+        // Embed code lives in settings → advanced tab. Open settings for now.
+        if (typeof window._toggleSettings === 'function') window._toggleSettings();
+      }
+    });
+  });
+}
+
+// Re-render whenever the dashboard adds/removes a conversation,
+// so the welcome panel auto-graduates when step 3 completes.
+window._refreshWelcomePanel = renderWelcomePanel;
+
+// ═══════════════════════════════════════════════════════
+// SHOWCASE MODAL — 7 chapters
+// ═══════════════════════════════════════════════════════
+
+function buildShowcaseChapters() {
+  // Chapter 1 — Visitors leave on static site
+  var ch1 = '<svg viewBox="0 0 400 320" xmlns="http://www.w3.org/2000/svg">' +
+    '<rect x="20" y="40" width="360" height="240" rx="14" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.12)"/>' +
+    '<circle cx="40" cy="58" r="4" fill="rgba(255,255,255,0.20)"/>' +
+    '<circle cx="56" cy="58" r="4" fill="rgba(255,255,255,0.20)"/>' +
+    '<circle cx="72" cy="58" r="4" fill="rgba(255,255,255,0.20)"/>' +
+    '<rect x="36" y="84" width="120" height="14" rx="3" fill="rgba(255,255,255,0.18)"/>' +
+    '<rect x="36" y="106" width="200" height="8" rx="2" fill="rgba(255,255,255,0.10)"/>' +
+    '<rect x="36" y="122" width="180" height="8" rx="2" fill="rgba(255,255,255,0.10)"/>' +
+    '<g opacity="0.6">' +
+      '<circle cx="100" cy="220" r="3" fill="#00B4B6"/>' +
+      '<circle cx="135" cy="225" r="2.5" fill="#00B4B6" opacity="0.7"/>' +
+      '<circle cx="170" cy="222" r="2" fill="#00B4B6" opacity="0.5"/>' +
+      '<circle cx="205" cy="228" r="1.6" fill="#00B4B6" opacity="0.35"/>' +
+      '<circle cx="240" cy="225" r="1.2" fill="#00B4B6" opacity="0.2"/>' +
+    '</g>' +
+    '<g>' +
+      '<rect x="240" y="180" width="120" height="68" rx="14" fill="#00B4B6" stroke="#00B4B6"/>' +
+      '<circle cx="262" cy="200" r="8" fill="#fff"/>' +
+      '<text x="262" y="205" text-anchor="middle" fill="#00B4B6" font-family="Fraunces, serif" font-size="12" font-weight="600">L</text>' +
+      '<rect x="278" y="194" width="68" height="6" rx="2" fill="rgba(255,255,255,0.8)"/>' +
+      '<rect x="278" y="206" width="56" height="6" rx="2" fill="rgba(255,255,255,0.6)"/>' +
+      '<rect x="252" y="222" width="96" height="20" rx="10" fill="rgba(255,255,255,0.15)"/>' +
+      '<text x="300" y="236" text-anchor="middle" fill="#fff" font-family="Inter, sans-serif" font-size="10" font-weight="500">Need help finding a holiday?</text>' +
+    '</g>' +
+    '</svg>';
+
+  // Chapter 2 — Brand voice
+  var ch2 = '<svg viewBox="0 0 400 320" xmlns="http://www.w3.org/2000/svg">' +
+    '<rect x="20" y="30" width="180" height="260" rx="14" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.12)"/>' +
+    '<text x="36" y="56" fill="rgba(255,255,255,0.9)" font-family="Inter, sans-serif" font-size="12" font-weight="600">Brand voice</text>' +
+    '<rect x="36" y="74" width="148" height="32" rx="6" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.08)"/>' +
+    '<text x="44" y="93" fill="rgba(255,255,255,0.55)" font-family="Inter, sans-serif" font-size="9">Tone</text>' +
+    '<text x="170" y="93" text-anchor="end" fill="#00B4B6" font-family="Inter, sans-serif" font-size="9.5" font-weight="600">Warm</text>' +
+    '<rect x="36" y="114" width="148" height="32" rx="6" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.08)"/>' +
+    '<text x="44" y="133" fill="rgba(255,255,255,0.55)" font-family="Inter, sans-serif" font-size="9">Formality</text>' +
+    '<text x="170" y="133" text-anchor="end" fill="#00B4B6" font-family="Inter, sans-serif" font-size="9.5" font-weight="600">Conversational</text>' +
+    '<rect x="36" y="154" width="148" height="32" rx="6" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.08)"/>' +
+    '<text x="44" y="173" fill="rgba(255,255,255,0.55)" font-family="Inter, sans-serif" font-size="9">Specialism</text>' +
+    '<text x="170" y="173" text-anchor="end" fill="#00B4B6" font-family="Inter, sans-serif" font-size="9.5" font-weight="600">Luxury beach</text>' +
+    '<rect x="36" y="194" width="148" height="32" rx="6" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.08)"/>' +
+    '<text x="44" y="213" fill="rgba(255,255,255,0.55)" font-family="Inter, sans-serif" font-size="9">Emoji</text>' +
+    '<text x="170" y="213" text-anchor="end" fill="#00B4B6" font-family="Inter, sans-serif" font-size="9.5" font-weight="600">Sparingly</text>' +
+    '<path d="M210 160 L230 160" stroke="#00B4B6" stroke-width="2" stroke-linecap="round"/>' +
+    '<path d="M226 156 L230 160 L226 164" stroke="#00B4B6" stroke-width="2" stroke-linecap="round" fill="none"/>' +
+    '<rect x="240" y="50" width="140" height="220" rx="14" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.12)"/>' +
+    '<circle cx="260" cy="78" r="10" fill="#00D4D6"/>' +
+    '<text x="260" y="83" text-anchor="middle" fill="#0B1D3A" font-family="Fraunces, serif" font-size="12" font-weight="600">L</text>' +
+    '<rect x="252" y="98" width="120" height="48" rx="10" fill="rgba(255,255,255,0.08)"/>' +
+    '<text x="260" y="116" fill="#fff" font-family="Inter, sans-serif" font-size="9.5">Hi! Looking for a</text>' +
+    '<text x="260" y="129" fill="#fff" font-family="Inter, sans-serif" font-size="9.5">last-minute escape?</text>' +
+    '<text x="260" y="142" fill="rgba(255,255,255,0.6)" font-family="Inter, sans-serif" font-size="8.5">Mauritius is perfect this time…</text>' +
+    '</svg>';
+
+  // Chapter 3 — Knowledge base
+  var ch3 = '<svg viewBox="0 0 400 320" xmlns="http://www.w3.org/2000/svg">' +
+    '<rect x="40" y="60" width="320" height="60" rx="10" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.10)"/>' +
+    '<text x="56" y="85" fill="rgba(255,255,255,0.85)" font-family="Inter, sans-serif" font-size="10.5" font-weight="600">Cancellation policy</text>' +
+    '<text x="56" y="102" fill="rgba(255,255,255,0.5)" font-family="Inter, sans-serif" font-size="9">Free up to 56 days before departure…</text>' +
+    '<rect x="60" y="138" width="320" height="60" rx="10" fill="rgba(0,180,182,0.10)" stroke="#00B4B6"/>' +
+    '<text x="76" y="163" fill="#fff" font-family="Inter, sans-serif" font-size="10.5" font-weight="600">Visa requirements — Türkiye</text>' +
+    '<text x="76" y="180" fill="rgba(255,255,255,0.7)" font-family="Inter, sans-serif" font-size="9">UK passport holders need e-visa, valid 6 months…</text>' +
+    '<rect x="40" y="216" width="320" height="60" rx="10" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.10)"/>' +
+    '<text x="56" y="241" fill="rgba(255,255,255,0.85)" font-family="Inter, sans-serif" font-size="10.5" font-weight="600">Baggage allowance</text>' +
+    '<text x="56" y="258" fill="rgba(255,255,255,0.5)" font-family="Inter, sans-serif" font-size="9">Varies by airline. Most include 20kg hold + 7kg cabin…</text>' +
+    '<path d="M30 168 L52 168" stroke="#00B4B6" stroke-width="2"/>' +
+    '<path d="M48 164 L52 168 L48 172" stroke="#00B4B6" stroke-width="2" fill="none"/>' +
+    '<text x="14" y="172" fill="#00B4B6" font-family="Inter, sans-serif" font-size="9" font-weight="600">Instant</text>' +
+    '</svg>';
+
+  // Chapter 4 — Rich blocks (destination card)
+  var ch4 = '<svg viewBox="0 0 400 320" xmlns="http://www.w3.org/2000/svg">' +
+    '<rect x="40" y="40" width="160" height="180" rx="14" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.14)"/>' +
+    '<rect x="40" y="40" width="160" height="76" rx="14" fill="#00B4B6" opacity="0.6"/>' +
+    '<path d="M40 116 L200 116" stroke="rgba(255,255,255,0.08)"/>' +
+    '<text x="56" y="138" fill="#fff" font-family="Inter, sans-serif" font-size="13" font-weight="700">Tenerife</text>' +
+    '<text x="56" y="155" fill="rgba(255,255,255,0.6)" font-family="Inter, sans-serif" font-size="10">22°C · 4h flight</text>' +
+    '<text x="56" y="173" fill="rgba(255,255,255,0.75)" font-family="Inter, sans-serif" font-size="9.5">Year-round sun, brilliant for families</text>' +
+    '<rect x="56" y="186" width="48" height="20" rx="10" fill="#00B4B6"/>' +
+    '<text x="80" y="200" text-anchor="middle" fill="#fff" font-family="Inter, sans-serif" font-size="9" font-weight="600">See deals</text>' +
+    '<rect x="220" y="40" width="160" height="180" rx="14" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.14)"/>' +
+    '<rect x="220" y="40" width="160" height="76" rx="14" fill="#00D4D6" opacity="0.6"/>' +
+    '<path d="M220 116 L380 116" stroke="rgba(255,255,255,0.08)"/>' +
+    '<text x="236" y="138" fill="#fff" font-family="Inter, sans-serif" font-size="13" font-weight="700">Maldives</text>' +
+    '<text x="236" y="155" fill="rgba(255,255,255,0.6)" font-family="Inter, sans-serif" font-size="10">29°C · 11h flight</text>' +
+    '<text x="236" y="173" fill="rgba(255,255,255,0.75)" font-family="Inter, sans-serif" font-size="9.5">Crystal water, no plans needed</text>' +
+    '<rect x="236" y="186" width="48" height="20" rx="10" fill="#00B4B6"/>' +
+    '<text x="260" y="200" text-anchor="middle" fill="#fff" font-family="Inter, sans-serif" font-size="9" font-weight="600">See deals</text>' +
+    '<rect x="40" y="240" width="86" height="28" rx="14" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.14)"/>' +
+    '<text x="83" y="258" text-anchor="middle" fill="rgba(255,255,255,0.85)" font-family="Inter, sans-serif" font-size="10">From Manchester</text>' +
+    '<rect x="140" y="240" width="78" height="28" rx="14" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.14)"/>' +
+    '<text x="179" y="258" text-anchor="middle" fill="rgba(255,255,255,0.85)" font-family="Inter, sans-serif" font-size="10">With kids</text>' +
+    '<rect x="232" y="240" width="100" height="28" rx="14" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.14)"/>' +
+    '<text x="282" y="258" text-anchor="middle" fill="rgba(255,255,255,0.85)" font-family="Inter, sans-serif" font-size="10">All-inclusive only</text>' +
+    '</svg>';
+
+  // Chapter 5 — Emergency
+  var ch5 = '<svg viewBox="0 0 400 320" xmlns="http://www.w3.org/2000/svg">' +
+    '<rect x="30" y="50" width="340" height="220" rx="16" fill="rgba(255,255,255,0.06)" stroke="rgba(239,68,68,0.40)"/>' +
+    '<rect x="30" y="50" width="340" height="48" rx="16" fill="rgba(239,68,68,0.20)"/>' +
+    '<circle cx="58" cy="74" r="12" fill="#EF4444"/>' +
+    '<path d="M58 70 L58 76 M58 80 L58 80" stroke="#fff" stroke-width="2" stroke-linecap="round"/>' +
+    '<text x="80" y="79" fill="#fff" font-family="Inter, sans-serif" font-size="12" font-weight="700">URGENT — TRAVELLING NOW?</text>' +
+    '<text x="48" y="138" fill="rgba(255,255,255,0.75)" font-family="Inter, sans-serif" font-size="11">If you\'re abroad and need help right now, call our</text>' +
+    '<text x="48" y="156" fill="rgba(255,255,255,0.75)" font-family="Inter, sans-serif" font-size="11">24/7 duty line.</text>' +
+    '<text x="200" y="208" text-anchor="middle" fill="#fff" font-family="Fraunces, serif" font-size="28" font-weight="600">+44 800 123 4567</text>' +
+    '<rect x="120" y="226" width="160" height="32" rx="8" fill="#EF4444"/>' +
+    '<text x="200" y="246" text-anchor="middle" fill="#fff" font-family="Inter, sans-serif" font-size="12" font-weight="600">Call now</text>' +
+    '</svg>';
+
+  // Chapter 6 — Numbers projection
+  var ch6 = '<svg viewBox="0 0 400 320" xmlns="http://www.w3.org/2000/svg">' +
+    '<rect x="30" y="40" width="160" height="120" rx="14" fill="rgba(0,180,182,0.10)" stroke="rgba(0,180,182,0.30)"/>' +
+    '<text x="110" y="84" text-anchor="middle" fill="#00B4B6" font-family="Fraunces, serif" font-size="44" font-weight="600">847</text>' +
+    '<text x="110" y="118" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-family="Inter, sans-serif" font-size="10.5" font-weight="500">CONVERSATIONS</text>' +
+    '<text x="110" y="138" text-anchor="middle" fill="rgba(255,255,255,0.5)" font-family="Inter, sans-serif" font-size="9.5">in 90 days</text>' +
+    '<rect x="210" y="40" width="160" height="120" rx="14" fill="rgba(16,185,129,0.10)" stroke="rgba(16,185,129,0.30)"/>' +
+    '<text x="290" y="84" text-anchor="middle" fill="#10B981" font-family="Fraunces, serif" font-size="44" font-weight="600">68%</text>' +
+    '<text x="290" y="118" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-family="Inter, sans-serif" font-size="10.5" font-weight="500">FAQ DEFLECTION</text>' +
+    '<text x="290" y="138" text-anchor="middle" fill="rgba(255,255,255,0.5)" font-family="Inter, sans-serif" font-size="9.5">no human needed</text>' +
+    '<rect x="30" y="180" width="160" height="120" rx="14" fill="rgba(0,212,214,0.10)" stroke="rgba(0,212,214,0.30)"/>' +
+    '<text x="110" y="224" text-anchor="middle" fill="#00D4D6" font-family="Fraunces, serif" font-size="44" font-weight="600">142</text>' +
+    '<text x="110" y="258" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-family="Inter, sans-serif" font-size="10.5" font-weight="500">LEADS CAPTURED</text>' +
+    '<text x="110" y="278" text-anchor="middle" fill="rgba(255,255,255,0.5)" font-family="Inter, sans-serif" font-size="9.5">with contact info</text>' +
+    '<rect x="210" y="180" width="160" height="120" rx="14" fill="rgba(245,158,11,0.10)" stroke="rgba(245,158,11,0.30)"/>' +
+    '<text x="290" y="224" text-anchor="middle" fill="#F59E0B" font-family="Fraunces, serif" font-size="44" font-weight="600">93h</text>' +
+    '<text x="290" y="258" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-family="Inter, sans-serif" font-size="10.5" font-weight="500">TIME BACK</text>' +
+    '<text x="290" y="278" text-anchor="middle" fill="rgba(255,255,255,0.5)" font-family="Inter, sans-serif" font-size="9.5">in your week</text>' +
+    '</svg>';
+
+  // Closing chapter
+  var ch7 = '<div class="showcase-chapter closing" data-chapter-idx="6">' +
+    '<div class="showcase-eyebrow">BEGIN</div>' +
+    '<h2 class="showcase-headline">Ready when <em>you</em> are.</h2>' +
+    '<p class="showcase-body">Three steps and Luna\'s live on your site. We\'ll be here every step of the way.</p>' +
+    '<button class="showcase-closing-cta" onclick="window._closeShowcase()">' +
+      'Let\'s get started' +
+      '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>' +
+    '</button>' +
+  '</div>';
+
+  return [
+    { eyebrow:'CHAPTER 1', headline:'Your visitors arrived. <em>Then they left.</em>', body:"Most websites are silent salespeople. They sit there. People look, they leave. Luna's different — she greets every visitor, answers their questions in seconds, and turns silent traffic into real conversations.", visual:ch1 },
+    { eyebrow:'CHAPTER 2', headline:"She speaks <em>your brand</em>. Not generic AI.", body:"Tell Luna your colours, your tone, what you specialise in. Every reply sounds like it came from your team — not a chatbot. Warm where you're warm, sharp where you're sharp.", visual:ch2 },
+    { eyebrow:'CHAPTER 3', headline:"She knows your business <em>inside out</em>.", body:"Your cancellation policy, your visa advice, your baggage rules — all loaded in. When a visitor asks, Luna answers instantly with the right facts from your own knowledge base, not made-up nonsense.", visual:ch3 },
+    { eyebrow:'CHAPTER 4', headline:"She suggests, <em>books</em>, and resolves.", body:"Destination cards, live offers, instant booking lookup. Luna doesn't just chat — she takes visitors all the way through, from \"any ideas?\" to a booking on your system.", visual:ch4 },
+    { eyebrow:'CHAPTER 5', headline:"She knows when to <em>step aside</em>.", body:"Emergency abroad? She surfaces your 24/7 phone instantly. Complex query? She hands over to a human with full context. Luna is honest about what she can and can't do.", visual:ch5 },
+    { eyebrow:'CHAPTER 6', headline:"By month three, the maths starts to look <em>silly</em>.", body:"Real numbers from real clients. Hundreds of conversations handled. Two-thirds of questions answered without a human ever stepping in. Time back in your week. Leads captured while you slept.", visual:ch6 },
+    { isClosing:true, visual:ch7 }
+  ];
+}
+
+function openShowcase(source) {
+  showcaseState.chapters = buildShowcaseChapters();
+  showcaseState.current = 0;
+  showcaseState.visited = [0];
+
+  var overlay = document.getElementById('showcase-overlay');
+  var stage = document.getElementById('showcase-stage');
+  if (!overlay || !stage) return;
+
+  var chaptersHtml = showcaseState.chapters.map(function (ch, idx) {
+    if (ch.isClosing) return ch.visual.replace('data-chapter-idx="6"', 'data-chapter-idx="' + idx + '"');
+    return '<div class="showcase-chapter" data-chapter-idx="' + idx + '">' +
+      '<div class="showcase-chapter-grid">' +
+        '<div class="showcase-text">' +
+          '<div class="showcase-eyebrow">' + escHtml(ch.eyebrow) + '</div>' +
+          '<h2 class="showcase-headline" id="showcase-headline-' + idx + '">' + ch.headline + '</h2>' +
+          '<p class="showcase-body">' + escHtml(ch.body) + '</p>' +
+        '</div>' +
+        '<div class="showcase-visual">' + ch.visual + '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+  stage.innerHTML = chaptersHtml;
+
+  var dotsHtml = showcaseState.chapters.map(function (_, idx) {
+    return '<button class="showcase-dot" data-dot-idx="' + idx + '" role="tab" aria-label="Chapter ' + (idx + 1) + '"></button>';
+  }).join('');
+  document.getElementById('showcase-dots').innerHTML = dotsHtml;
+
+  overlay.hidden = false;
+  setTimeout(function () { overlay.classList.add('active'); }, 10);
+  setTimeout(function () { showcaseGoTo(0); }, 50);
+  document.body.style.overflow = 'hidden';
+  try { localStorage.setItem(SHOWCASE_STORAGE_KEY, '1'); } catch (e) {}
+  setTimeout(function () { document.getElementById('showcase-modal').focus(); }, 100);
+}
+
+function closeShowcase() {
+  var overlay = document.getElementById('showcase-overlay');
+  if (!overlay) return;
+  overlay.classList.remove('active');
+  setTimeout(function () { overlay.hidden = true; }, 350);
+  document.body.style.overflow = '';
+}
+
+function showcaseGoTo(idx) {
+  var max = showcaseState.chapters.length - 1;
+  if (idx < 0) idx = 0;
+  if (idx > max) idx = max;
+  showcaseState.current = idx;
+  if (showcaseState.visited.indexOf(idx) === -1) showcaseState.visited.push(idx);
+
+  document.querySelectorAll('.showcase-chapter').forEach(function (el) {
+    var i = parseInt(el.getAttribute('data-chapter-idx'), 10);
+    el.classList.toggle('active', i === idx);
+  });
+  document.querySelectorAll('.showcase-dot').forEach(function (el) {
+    var i = parseInt(el.getAttribute('data-dot-idx'), 10);
+    el.classList.toggle('active', i === idx);
+    el.classList.toggle('visited', i !== idx && showcaseState.visited.indexOf(i) >= 0);
+  });
+  var prev = document.getElementById('showcase-prev');
+  var next = document.getElementById('showcase-next');
+  if (prev) prev.disabled = idx === 0;
+  if (next) {
+    if (idx === max) next.innerHTML = 'Get started<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>';
+    else next.innerHTML = 'Next<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>';
+  }
+}
+
+// Wire showcase controls
+document.addEventListener('click', function (e) {
+  var dot = e.target.closest && e.target.closest('.showcase-dot');
+  if (dot) { showcaseGoTo(parseInt(dot.getAttribute('data-dot-idx'), 10)); return; }
+  if (e.target.closest && e.target.closest('#showcase-prev')) { showcaseGoTo(showcaseState.current - 1); return; }
+  if (e.target.closest && e.target.closest('#showcase-next')) {
+    if (showcaseState.current === showcaseState.chapters.length - 1) closeShowcase();
+    else showcaseGoTo(showcaseState.current + 1);
+    return;
+  }
+  if (e.target.closest && (e.target.closest('#showcase-skip') || e.target.closest('#showcase-close'))) { closeShowcase(); return; }
+});
+
+document.addEventListener('keydown', function (e) {
+  var overlay = document.getElementById('showcase-overlay');
+  if (!overlay || overlay.hidden) return;
+  if (e.key === 'Escape') closeShowcase();
+  if (e.key === 'ArrowLeft') showcaseGoTo(showcaseState.current - 1);
+  if (e.key === 'ArrowRight') {
+    if (showcaseState.current === showcaseState.chapters.length - 1) closeShowcase();
+    else showcaseGoTo(showcaseState.current + 1);
+  }
+});
+
+window._openShowcase = openShowcase;
+window._closeShowcase = closeShowcase;
+
+// Render welcome panel after a brief delay to give dashboard time to load
+// client config and conversations. Re-render on conversation changes via
+// window._refreshWelcomePanel.
+setTimeout(function () {
+  try { renderWelcomePanel(); } catch (e) { console.error('[Welcome] render failed:', e); }
+}, 800);
+
 })();
 </script>
+
+<!-- ═══ SHOWCASE MODAL (popover, triggered from welcome panel or topbar) ═══ -->
+<div id="showcase-overlay" class="showcase-overlay" role="dialog" aria-modal="true" aria-labelledby="showcase-headline" hidden>
+  <div class="showcase-modal" id="showcase-modal" tabindex="-1">
+    <button class="showcase-skip" id="showcase-skip" aria-label="Skip tour">Skip</button>
+    <button class="showcase-close" id="showcase-close" aria-label="Close">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+    <div class="showcase-stage" id="showcase-stage"></div>
+    <div class="showcase-footer">
+      <div class="showcase-dots" id="showcase-dots" role="tablist" aria-label="Chapter navigation"></div>
+      <div class="showcase-nav">
+        <button class="showcase-btn" id="showcase-prev" aria-label="Previous chapter">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+          Back
+        </button>
+        <button class="showcase-btn primary" id="showcase-next" aria-label="Next chapter">
+          Next
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
