@@ -1759,56 +1759,80 @@ function injectCSS() {
   +'}';
 
   // Mobile
+  /* Mobile responsive — comprehensive. Uses 100dvh (dynamic viewport height)
+     to correctly track Android Chrome and iOS Safari URL-bar collapse, with
+     100vh as fallback for older browsers. All selectors verified to match
+     real elements in the DOM (avoid the previous no-op bugs). */
   var mobileCSS = '@media(max-width:480px){'
-    /* Full-screen panel — unchanged */
-    +'#tgx-cw .tgx-panel{right:0;bottom:0;left:0;top:0;width:100vw;height:100vh;max-height:100vh;border-radius:0}'
+    /* Panel — full screen, dvh-aware so the input bar stays visible when
+       the mobile URL bar is showing. */
+    +'#tgx-cw .tgx-panel{right:0;bottom:0;left:0;top:0;width:100vw;width:100dvw;height:100vh;height:100dvh;max-height:100vh;max-height:100dvh;border-radius:0}'
     +'#tgx-cw .tgx-fab.open{display:none}'
-    /* Touch targets: minimum 44px for all interactive elements (Apple HIG) */
-    +'#tgx-cw .tgx-msgs{padding:14px 12px}'
+    /* Home body — reduce padding so greeting + cards + starters + demoted +
+       input all fit comfortably. */
+    +'#tgx-cw .tgx-home-body{padding:14px 14px 8px;gap:10px}'
+    /* Greeting — slightly smaller font so it doesn\'t eat half the screen */
+    +'#tgx-cw .tgx-greeting-zone .tgx-big-hi{font-size:22px;letter-spacing:-0.015em}'
+    +'#tgx-cw .tgx-greeting-zone .tgx-sub-hi{font-size:12.5px;margin-top:4px}'
+    +'#tgx-cw .tgx-greeting-zone{margin-bottom:0}'
+    /* Section labels — tighten margin */
+    +'#tgx-cw .tgx-section-label{margin-bottom:6px;font-size:10px}'
+    /* Capability cards — REAL selectors. #tgxCapCards is the grid container. */
+    +'#tgx-cw #tgxCapCards{grid-template-columns:1fr 1fr;gap:7px}'
+    +'#tgx-cw .tgx-cap-card{padding:11px 12px;min-height:0;gap:6px;border-radius:12px}'
+    +'#tgx-cw .tgx-cap-icon{width:30px;height:30px;border-radius:9px}'
+    +'#tgx-cw .tgx-cap-icon svg{width:15px;height:15px}'
+    +'#tgx-cw .tgx-cap-title{font-size:12.5px}'
+    +'#tgx-cw .tgx-cap-desc{display:none}' /* already hidden, reinforced for mobile */
+    /* Starters — horizontal scroll lane, smaller pills */
+    +'#tgx-cw #tgxStarters{margin:0 -14px;padding:2px 14px 4px;gap:5px;min-height:32px}'
+    +'#tgx-cw #tgxStarters > *{font-size:11.5px;padding:6px 10px;flex-shrink:0;white-space:nowrap}'
+    /* Demoted footer — tighten */
+    +'#tgx-cw .tgx-demoted{font-size:11.5px;gap:6px;margin-top:2px;padding:0 2px;flex-wrap:wrap}'
+    +'#tgx-cw .tgx-demoted button{font-size:11.5px}'
+    /* Input wrap — reduce padding for max body real estate */
+    +'#tgx-cw .tgx-input-wrap{padding:10px 14px 12px;gap:6px}'
+    +'#tgx-cw .tgx-input-inner{padding:3px 3px 3px 14px}'
+    +'#tgx-cw .tgx-input{font-size:16px}' /* 16px stops iOS zoom on focus */
+    +'#tgx-cw .tgx-send{min-width:38px;min-height:38px;width:38px;height:38px}'
+    /* Chat view tightening */
+    +'#tgx-cw .tgx-msgs{padding:14px 12px;gap:10px}'
     +'#tgx-cw .tgx-bar{padding:10px 12px 12px;gap:8px}'
-    +'#tgx-cw .tgx-input{font-size:16px;padding:12px 14px}' /* 16px stops iOS zoom */
-    +'#tgx-cw .tgx-send{min-width:44px;min-height:44px}'
     /* Header tightens slightly */
-    +'#tgx-cw .tgx-header{padding:12px 14px}'
-    +'#tgx-cw .tgx-header h3{font-size:15px}'
-    /* Empty state - cards in single column under 380px */
-    +'#tgx-cw .tgx-empty{padding:18px 12px}'
-    +'#tgx-cw .tgx-cap-grid{grid-template-columns:1fr 1fr;gap:8px}'
-    +'#tgx-cw .tgx-cap-card{padding:10px 12px;min-height:0}'
-    +'#tgx-cw .tgx-cap-card-title{font-size:13px}'
-    +'#tgx-cw .tgx-cap-card-desc{font-size:11.5px;-webkit-line-clamp:2}'
-    /* Hint pills scroll horizontally instead of wrapping a tall column */
-    +'#tgx-cw .tgx-hints{flex-wrap:nowrap;overflow-x:auto;padding-bottom:6px;-webkit-overflow-scrolling:touch;scrollbar-width:none}'
+    +'#tgx-cw .tgx-header{padding:11px 14px}'
+    +'#tgx-cw .tgx-hdr-name{font-size:14.5px}'
+    +'#tgx-cw .tgx-hdr-sub{font-size:11px}'
+    +'#tgx-cw .tgx-avatar-hdr{width:34px;height:34px;font-size:14px;border-radius:10px}'
+    /* Hint pills below chat input — horizontal scroll */
+    +'#tgx-cw .tgx-hints{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}'
     +'#tgx-cw .tgx-hints::-webkit-scrollbar{display:none}'
     +'#tgx-cw .tgx-hint{flex-shrink:0;white-space:nowrap}'
-    /* Block (rich card) tightening so width:100% blocks stop clipping inside narrow chat */
+    /* Rich blocks — keep within bubble width */
     +'#tgx-cw .luna-dest-card,#tgx-cw .luna-offer-card,#tgx-cw .luna-faq-policy-card,#tgx-cw .luna-emergency-card,#tgx-cw .luna-location-card,#tgx-cw .luna-booking-card,#tgx-cw .luna-human-handoff-card{max-width:100%}'
     +'#tgx-cw .luna-dest-img,#tgx-cw .luna-offer-img{height:140px}'
     +'#tgx-cw .luna-location-map{height:150px}'
     +'#tgx-cw .luna-location-head,#tgx-cw .luna-dest-body,#tgx-cw .luna-offer-body{padding:10px 12px}'
-    +'#tgx-cw .luna-location-ctas,#tgx-cw .luna-dest-cta-row,#tgx-cw .luna-offer-cta-row{padding:10px 12px;flex-direction:row;gap:6px}'
-    +'#tgx-cw .luna-location-cta,#tgx-cw .luna-dest-cta,#tgx-cw .luna-offer-cta{padding:11px 8px;font-size:11.5px}'
+    +'#tgx-cw .luna-location-ctas,#tgx-cw .luna-dest-cta-row,#tgx-cw .luna-offer-cta-row{padding:10px 12px;gap:6px}'
+    +'#tgx-cw .luna-location-cta,#tgx-cw .luna-dest-cta,#tgx-cw .luna-offer-cta{padding:10px 8px;font-size:11.5px}'
     +'#tgx-cw .luna-location-name,#tgx-cw .luna-dest-name,#tgx-cw .luna-offer-title{font-size:13.5px}'
-    /* Email bar — wrap cleanly on narrow */
+    /* Email bar */
     +'#tgx-cw .tgx-email-bar{padding:6px 12px 0}'
     +'#tgx-cw .tgx-email-inline{flex-wrap:wrap;gap:6px;padding:6px 12px 0}'
     +'#tgx-cw .tgx-email-inline input{flex:1 1 100%;min-width:0}'
     +'#tgx-cw .tgx-email-inline button{padding:9px 14px;min-height:36px}'
     +'#tgx-cw .tgx-email-status{font-size:11.5px;padding:8px 12px}'
     +'#tgx-cw .tgx-email-mini-btn{min-height:32px;padding:6px 12px}'
-    /* Booking embed tightens */
+    /* Booking embed */
     +'#tgx-cw .tgx-booking-mount{border-radius:12px}'
-    /* Welcome panel and showcase modal tightening */
-    +'#tgx-cw .tgx-welcome{padding:14px}'
-    +'#tgx-cw .tgx-welcome-title{font-size:14px}'
-    +'#tgx-cw .tgx-welcome-step{font-size:12.5px}'
     /* More-below pill stays clear of input */
     +'#tgx-cw .tgx-more-below{bottom:78px}'
-    /* Quick replies chip row — single column on narrow */
+    /* Quick-reply chips → single column for tap-friendly width */
     +'#tgx-cw .luna-chips{flex-direction:column;gap:6px}'
     +'#tgx-cw .luna-chip{width:100%;text-align:center}'
-    /* Avatar slightly smaller in header */
-    +'#tgx-cw .tgx-avatar-hdr{width:30px;height:30px;font-size:13px;border-radius:9px}';
+    /* Welcome panel inside chat */
+    +'#tgx-cw .tgx-welcome{padding:14px}'
+    +'#tgx-cw .tgx-welcome-title{font-size:14px}'
+    +'#tgx-cw .tgx-welcome-step{font-size:12.5px}';
   if (C.mobileBubble === "small") {
     mobileCSS += '#tgx-cw .tgx-fab{width:46px;height:46px;box-shadow:0 4px 14px rgba(0,0,0,0.25)}'
       +'#tgx-cw .tgx-fab svg{width:22px;height:22px}';
@@ -1816,11 +1840,13 @@ function injectCSS() {
     mobileCSS += '#tgx-cw .tgx-fab{display:none}';
   }
   mobileCSS += '}';
-  /* Ultra-narrow refinement under 360px (very small phones / split-screen) */
+  /* Ultra-narrow refinement under 360px (small Android phones, split screen) */
   mobileCSS += '@media(max-width:360px){'
-    +'#tgx-cw .tgx-cap-grid{grid-template-columns:1fr;gap:6px}'
-    +'#tgx-cw .tgx-cap-card{padding:11px 13px;min-height:0}'
-    +'#tgx-cw .tgx-bar{padding:8px 10px 10px}'
+    +'#tgx-cw .tgx-greeting-zone .tgx-big-hi{font-size:20px}'
+    +'#tgx-cw .tgx-home-body{padding:12px 12px 6px;gap:9px}'
+    +'#tgx-cw #tgxCapCards{grid-template-columns:1fr 1fr;gap:6px}'
+    +'#tgx-cw .tgx-cap-card{padding:10px 11px}'
+    +'#tgx-cw .tgx-input-wrap{padding:8px 12px 10px}'
     +'#tgx-cw .luna-dest-img,#tgx-cw .luna-offer-img{height:120px}'
     +'#tgx-cw .luna-location-map{height:130px}'
     +'#tgx-cw .luna-location-ctas{flex-direction:column}'
