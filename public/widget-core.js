@@ -349,7 +349,7 @@ function iconNode(name) {
 function renderDestinationCard(props, ctx) {
   const card = el('div', 'luna-dest-card');
 
-  // Image (optional, validated)
+  // Image (optional, validated) — gracefully hide if URL fails to load
   if (props.image) {
     const imgWrap = el('div', 'luna-dest-img');
     const img = document.createElement('img');
@@ -357,6 +357,9 @@ function renderDestinationCard(props, ctx) {
     img.alt = ''; // decorative; name is below
     img.loading = 'lazy';
     img.referrerPolicy = 'no-referrer';
+    img.onerror = function() {
+      if (imgWrap.parentNode) imgWrap.parentNode.removeChild(imgWrap);
+    };
     imgWrap.appendChild(img);
     card.appendChild(imgWrap);
   }
@@ -394,13 +397,20 @@ function renderDestinationCard(props, ctx) {
   actions.appendChild(tellMe);
 
   if (props.deepLink) {
-    const link = document.createElement('a');
+    /* v2: render as button with JS click handler, NOT as <a href>.
+       This prevents host-site travel-tech scripts from auto-fetching
+       the deep link when they scan the DOM for tvllnk URLs. */
+    const safeDeepLink = safeUrl(props.deepLink);
+    const link = document.createElement('button');
     link.className = 'luna-btn luna-btn-primary';
-    link.href = safeUrl(props.deepLink);
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
+    link.type = 'button';
     link.textContent = 'See deals';
     link.appendChild(iconNode('arrow-right'));
+    link.addEventListener('click', () => {
+      if (safeDeepLink && safeDeepLink !== '#') {
+        window.open(safeDeepLink, '_blank', 'noopener,noreferrer');
+      }
+    });
     actions.appendChild(link);
   }
 
@@ -422,6 +432,9 @@ function renderOfferCard(props, ctx) {
     img.alt = '';
     img.loading = 'lazy';
     img.referrerPolicy = 'no-referrer';
+    img.onerror = function() {
+      if (imgWrap.parentNode) imgWrap.parentNode.removeChild(imgWrap);
+    };
     imgWrap.appendChild(img);
     card.appendChild(imgWrap);
   }
@@ -462,13 +475,18 @@ function renderOfferCard(props, ctx) {
   }
 
   if (props.bookUrl) {
-    const book = document.createElement('a');
+    /* v2: button + JS click handler, not <a href>. See destination_card for rationale. */
+    const safeBookUrl = safeUrl(props.bookUrl);
+    const book = document.createElement('button');
     book.className = 'luna-btn luna-btn-primary';
-    book.href = safeUrl(props.bookUrl);
-    book.target = '_blank';
-    book.rel = 'noopener noreferrer';
+    book.type = 'button';
     book.textContent = 'Book';
     book.appendChild(iconNode('arrow-right'));
+    book.addEventListener('click', () => {
+      if (safeBookUrl && safeBookUrl !== '#') {
+        window.open(safeBookUrl, '_blank', 'noopener,noreferrer');
+      }
+    });
     priceRow.appendChild(book);
   }
   body.appendChild(priceRow);
@@ -2681,14 +2699,13 @@ async function sendToAI(text) {
     addMsg("widget", { kind: "booking_lookup", widgetId: bookingExtracted.widgetId }, false, null, deferredPills);
   }
 
-  /* Auto-redirect for search deep links (same tab) */
-  var deepLinkMatch = (data.reply || "").match(/(https?:\/\/dl\.tvllnk\.com[^\s\)\]"<>]+)/i);
-  if (deepLinkMatch) {
-    saveSession();
-    setTimeout(function(){ window.location.href = deepLinkMatch[1]; }, 1500);
-    $input.disabled = false;
-    return;
-  }
+  /* v2: auto-redirect for deep links DISABLED.
+     In v1, Luna emitted deep links as prose markdown and the widget navigated
+     to the first dl.tvllnk.com URL after 1.5s. In v2, deep links live inside
+     destination_card / offer_card blocks as a "See deals" button the visitor
+     clicks intentionally. Auto-redirecting on URL detection (a) triggers
+     host-site scripts that pre-fetch travel URLs and (b) yanks the visitor
+     out of the chat without consent. Both are bugs. v2 requires explicit click. */
 
   if (data.escalate === true) setTimeout(function(){ escalateToHuman(); }, 100);
 
