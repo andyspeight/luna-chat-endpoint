@@ -863,6 +863,7 @@
       <div class="connection-dot" id="connDot"></div>
       <span id="connLabel">Connecting…</span>
     </div>
+    <button class="topbar-stats-btn" id="welcomeBtn" onclick="window.location.href='/welcome.html'" title="Welcome &amp; tour"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> Welcome</button>
     <button class="topbar-stats-btn" id="statsToggle" onclick="window._toggleStats()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg> Stats</button>
     <button class="topbar-stats-btn" id="switchCompanyBtn" onclick="window._switchCompany()" title="Switch to another Luna Chat client" style="display:none"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg> Switch</button>
     <button class="topbar-stats-btn" id="settingsToggle" onclick="window._toggleSettings()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> Settings</button>
@@ -1338,6 +1339,23 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
 
 <script>
 (function() {
+  // ─── FIRST-TIME REDIRECT TO WELCOME ───
+  // New clients land on /welcome.html for the onboarding tour. Once they've
+  // visited the welcome page (any time, even briefly), they're not redirected
+  // again — the "Welcome" topbar button is how they revisit. Skip when:
+  //   - they've already visited welcome.html (luna-chat-welcome-visited flag)
+  //   - URL has ?skipWelcome=1 (e.g. when navigating from welcome.html)
+  //   - URL has ?open= (deep-linked into a specific dashboard tab)
+  try {
+    var skipFlag = new URLSearchParams(window.location.search).has('skipWelcome');
+    var openFlag = new URLSearchParams(window.location.search).has('open');
+    var hasVisited = !!localStorage.getItem('luna-chat-welcome-visited');
+    if (!hasVisited && !skipFlag && !openFlag) {
+      window.location.replace('/welcome.html');
+      return; // halt the rest of the IIFE
+    }
+  } catch (e) { /* localStorage blocked — just skip the redirect */ }
+
   // ─── LUCIDE ICON SYSTEM ───
   // All structural icons use consistent 16px Lucide-style SVGs (stroke-width:1.5)
   var ICONS = {
