@@ -1593,7 +1593,16 @@ function injectCSS() {
   +'#tgx-cw .tgx-email-inline input{flex:1;background:#FAFAF6;border:1px solid rgba(15,26,61,0.10);border-radius:999px;padding:7px 14px;color:'+C.brandColor+';font-size:12.5px;outline:none;font-family:inherit}'
   +'#tgx-cw .tgx-email-inline input::placeholder{color:#8A92A0}'
   +'#tgx-cw .tgx-email-inline button{background:'+C.accentColor+';color:#fff;border:none;border-radius:999px;padding:7px 14px;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap;font-family:inherit}'
-  +'#tgx-cw .tgx-email-inline .tgx-email-cancel{background:none;color:#5C6470;padding:6px 6px;font-size:11.5px;font-weight:400}'
+  +'#tgx-cw .tgx-email-inline .tgx-email-cancel{background:none;color:#5C6470;padding:6px 6px;font-size:14px;font-weight:400;line-height:1}'
+  +'#tgx-cw .tgx-email-status{padding:8px 14px;border-radius:999px;font-size:12px;line-height:1.4;display:inline-flex;align-items:center;gap:8px;max-width:100%;flex-wrap:wrap}'
+  +'#tgx-cw .tgx-email-status-loading{background:#F5F3EC;color:#5C6470}'
+  +'#tgx-cw .tgx-email-status-success{background:#ECFDF5;color:#065F46;border:1px solid #A7F3D0}'
+  +'#tgx-cw .tgx-email-status-error{background:#FEF2F2;color:#991B1B;border:1px solid #FECACA;padding:10px 14px;border-radius:12px;flex-direction:column;align-items:flex-start;gap:8px}'
+  +'#tgx-cw .tgx-email-status-text{font-weight:500}'
+  +'#tgx-cw .tgx-email-status-actions{display:flex;gap:6px;flex-wrap:wrap}'
+  +'#tgx-cw .tgx-email-mini-btn{background:#fff;color:#0F1A3D;border:1px solid rgba(15,26,61,0.18);border-radius:999px;padding:5px 11px;font-size:11.5px;font-weight:500;cursor:pointer;font-family:inherit;transition:background .15s}'
+  +'#tgx-cw .tgx-email-mini-btn:hover{background:#F5F3EC}'
+  +'#tgx-cw .tgx-email-mini-btn-x{color:#8A92A0;border-color:rgba(15,26,61,0.10)}'
 
   // Overlays
   +'#tgx-cw .tgx-overlay{position:absolute;inset:0;background:rgba(250,250,246,0.92);backdrop-filter:blur(16px) saturate(180%);-webkit-backdrop-filter:blur(16px) saturate(180%);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:36px 28px;z-index:10;border-radius:'+C.radius+'}'
@@ -2534,43 +2543,155 @@ function buildTranscript() {
   return lines.join("\n\n");
 }
 
-function openMailto(email) {
-  var today = new Date().toLocaleDateString("en-GB", {day:"numeric",month:"long",year:"numeric"});
-  var subject = "Chat transcript — " + (C.clientName || C.name);
-  var header = "Here's a copy of your conversation with " + (C.name || "Luna AI") + " at " + (C.clientName || "") + " on " + today + "\n\n---\n\n";
-  var body = header + buildTranscript();
-  window.location.href = "mailto:" + encodeURIComponent(email) + "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
+// Derive the email-transcript endpoint from the chat endpoint URL.
+function emailTranscriptEndpoint() {
+  if (typeof C.emailTranscriptEndpoint === 'string' && C.emailTranscriptEndpoint) {
+    return C.emailTranscriptEndpoint;
+  }
+  // Same host as the chat endpoint, different path
+  return C.endpoint.replace(/\/api\/luna-chat\b.*$/, '/api/email-chat-transcript');
 }
 
+// Reset the email bar back to its idle link state.
+function resetEmailBar() {
+  var bar = $emailBar;
+  if (!bar) return;
+  bar.innerHTML = '<span class="tgx-email-link" id="tgxEmailLink">&#128231; Email this chat</span>';
+  var link = document.getElementById('tgxEmailLink');
+  if (link) link.addEventListener('click', handleEmailChat);
+}
+
+// Copy the transcript text to the clipboard. Fallback for if email send fails.
+function copyTranscriptToClipboard(btnEl) {
+  var text = buildTranscript();
+  var done = function(ok) {
+    if (!btnEl) return;
+    var orig = btnEl.textContent;
+    btnEl.textContent = ok ? 'Copied!' : 'Copy failed';
+    setTimeout(function() { btnEl.textContent = orig; }, 1500);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function() { done(true); }, function() { done(false); });
+  } else {
+    // Older browser fallback
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.top = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      done(ok);
+    } catch (e) {
+      done(false);
+    }
+  }
+}
+
+// Actually send the transcript via the server-side endpoint.
+// Updates the email bar to show loading -> success / error states.
+function sendChatTranscript(email) {
+  var bar = $emailBar;
+  if (!bar) return;
+  bar.innerHTML = '<div class="tgx-email-status tgx-email-status-loading">Sending\u2026</div>';
+
+  var payload = {
+    clientName: C.clientName || '',
+    visitorEmail: email,
+    transcript: buildTranscript(),
+    visitorName: userName || '',
+    conversationId: convId || '',
+    brandColor: C.brandColor || '',
+    accentColor: C.accentColor || ''
+  };
+
+  fetch(emailTranscriptEndpoint(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }).then(function(r) {
+    return r.json().then(function(data) { return { ok: r.ok, status: r.status, data: data }; });
+  }).then(function(result) {
+    if (result.ok) {
+      // Success — show toast then revert after a few seconds
+      visitorEmail = email; // remember for next time
+      bar.innerHTML = '<div class="tgx-email-status tgx-email-status-success">\u2713 Sent to ' + email + '. Check your inbox.</div>';
+      setTimeout(resetEmailBar, 4500);
+    } else {
+      // Server-side error — show message + copy fallback
+      var msg = (result.data && result.data.error) || 'Something went wrong';
+      showEmailError(msg, email);
+    }
+  }).catch(function(err) {
+    console.warn('[Luna] email transcript send failed:', err && err.message);
+    showEmailError('Couldn\'t reach the server', email);
+  });
+}
+
+// Show an error state with a copy-fallback option.
+function showEmailError(message, email) {
+  var bar = $emailBar;
+  if (!bar) return;
+  bar.innerHTML =
+    '<div class="tgx-email-status tgx-email-status-error">' +
+      '<div class="tgx-email-status-text">' + (message || 'Send failed') + '</div>' +
+      '<div class="tgx-email-status-actions">' +
+        '<button class="tgx-email-mini-btn" id="tgxEmailRetry">Try again</button>' +
+        '<button class="tgx-email-mini-btn" id="tgxEmailCopy">Copy transcript</button>' +
+        '<button class="tgx-email-mini-btn tgx-email-mini-btn-x" id="tgxEmailDismiss">Cancel</button>' +
+      '</div>' +
+    '</div>';
+  document.getElementById('tgxEmailRetry').addEventListener('click', function() {
+    if (email) sendChatTranscript(email); else handleEmailChat();
+  });
+  document.getElementById('tgxEmailCopy').addEventListener('click', function(e) {
+    copyTranscriptToClipboard(e.target);
+  });
+  document.getElementById('tgxEmailDismiss').addEventListener('click', resetEmailBar);
+}
+
+// Entry point — clicking "Email this chat" link
 function handleEmailChat() {
   if (visitorEmail) {
-    openMailto(visitorEmail);
-  } else {
-    var bar = $emailBar;
-    bar.innerHTML = '';
-    var wrap = document.createElement("div");
-    wrap.className = "tgx-email-inline";
-    wrap.innerHTML = '<input type="email" id="tgxInlineEmail" placeholder="Enter your email"><button id="tgxInlineEmailGo">Send</button><button class="tgx-email-cancel" id="tgxInlineEmailX">Cancel</button>';
-    bar.appendChild(wrap);
-    bar.style.display = "block";
-    setTimeout(function(){
-      var inp = document.getElementById("tgxInlineEmail");
-      inp.focus();
-      document.getElementById("tgxInlineEmailGo").addEventListener("click", function(){
-        var em = inp.value.trim();
-        if (em && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) {
-          visitorEmail = em; openMailto(em);
-          bar.innerHTML = '<span class="tgx-email-link" id="tgxEmailLink">&#128231; Email this chat</span>';
-          document.getElementById("tgxEmailLink").addEventListener("click", handleEmailChat);
-        }
-      });
-      document.getElementById("tgxInlineEmailX").addEventListener("click", function(){
-        bar.innerHTML = '<span class="tgx-email-link" id="tgxEmailLink">&#128231; Email this chat</span>';
-        document.getElementById("tgxEmailLink").addEventListener("click", handleEmailChat);
-      });
-      inp.addEventListener("keydown", function(e){ if (e.key === "Enter") { e.preventDefault(); document.getElementById("tgxInlineEmailGo").click(); } });
-    }, 50);
+    // Already have an email from previous interaction — confirm before sending
+    sendChatTranscript(visitorEmail);
+    return;
   }
+  // No email yet — prompt for one
+  var bar = $emailBar;
+  if (!bar) return;
+  bar.innerHTML = '';
+  var wrap = document.createElement("div");
+  wrap.className = "tgx-email-inline";
+  wrap.innerHTML =
+    '<input type="email" id="tgxInlineEmail" placeholder="Enter your email" autocomplete="email">' +
+    '<button id="tgxInlineEmailGo">Send</button>' +
+    '<button class="tgx-email-cancel" id="tgxInlineEmailX" aria-label="Cancel">\u00d7</button>';
+  bar.appendChild(wrap);
+  bar.style.display = "block";
+  setTimeout(function(){
+    var inp = document.getElementById("tgxInlineEmail");
+    if (!inp) return;
+    inp.focus();
+    var submit = function() {
+      var em = inp.value.trim();
+      if (em && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) {
+        sendChatTranscript(em);
+      } else {
+        inp.style.borderColor = '#EF4444';
+        inp.focus();
+        setTimeout(function() { inp.style.borderColor = ''; }, 1200);
+      }
+    };
+    document.getElementById("tgxInlineEmailGo").addEventListener("click", submit);
+    document.getElementById("tgxInlineEmailX").addEventListener("click", resetEmailBar);
+    inp.addEventListener("keydown", function(e){
+      if (e.key === "Enter") { e.preventDefault(); submit(); }
+      if (e.key === "Escape") { e.preventDefault(); resetEmailBar(); }
+    });
+  }, 50);
 }
 
 /* ─── ABLY: init (capability token auth) ───────────────────── */
