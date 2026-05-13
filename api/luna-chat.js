@@ -2057,6 +2057,10 @@ module.exports = async function handler(req, res) {
     content: sanitizeInput(h.content)
   })) : [];
 
+  // Streaming: client sets body.stream=true (or query ?stream=1) to opt in.
+  // We respond with text/event-stream instead of JSON.
+  const wantStream = body.stream === true || (req.query && req.query.stream === '1');
+
   if (!message) {
     return res.status(400).json({ error: 'Missing or invalid message' });
   }
@@ -2443,6 +2447,134 @@ No problem, drop your email and departure date in below and I'll find it.
       ? (process.env.LUNA_HAIKU_MODEL || 'claude-haiku-4-5-20251001')
       : (process.env.LUNA_MODEL || 'claude-sonnet-4-20250514');
 
+    // ═══════════════════════════════════════════════════════════
+    // STREAMING PATH — SSE response, real-time token delivery
+    // ═══════════════════════════════════════════════════════════
+    if (wantStream) {
+      // Set SSE headers. CORS allow-origin was already set above.
+      res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-cache, no-transform');
+      res.setHeader('Connection', 'keep-alive');
+      // Prevent some proxies from buffering (Vercel uses Edge in some setups; helps belt-and-braces)
+      res.setHeader('X-Accel-Buffering', 'no');
+      // Flush headers if available so the client knows we're streaming
+      if (typeof res.flushHeaders === 'function') res.flushHeaders();
+
+      var sendEvent = function(eventName, data) {
+        try {
+          res.write('event: ' + eventName + '\n');
+          res.write('data: ' + JSON.stringify(data) + '\n\n');
+        } catch (writeErr) {
+          console.warn('[luna-chat] SSE write failed:', writeErr.message);
+        }
+      };
+
+      // Send initial meta event so the client knows the stream is alive
+      sendEvent('meta', { convId: convId });
+
+      var accumulated = '';
+      var firstTextChunkSeen = false;
+      var detectedLang = null;
+      var langStripped = false;
+
+      try {
+        var stream = await client.messages.stream({
+          model: modelId,
+          max_tokens: 2048,
+          system: systemPrompt,
+          messages: claudeMessages,
+          metadata: { user_id: convId || 'unknown' }
+        });
+
+        // The SDK exposes a text-event stream we can iterate
+        for await (var event of stream) {
+          if (event.type === 'content_block_delta' && event.delta && event.delta.type === 'text_delta') {
+            var deltaText = event.delta.text || '';
+            if (!deltaText) continue;
+            accumulated += deltaText;
+
+            // Strip [LANG:xx] marker as soon as we see one. It only appears at
+            // the very start of the response.
+            if (!langStripped && !firstTextChunkSeen) {
+              var head = accumulated.slice(0, 32);
+              var lm = head.match(/^\[LANG:([^\]]+)\]\s*/);
+              if (lm) {
+                detectedLang = lm[1].trim();
+                accumulated = accumulated.replace(/^\[LANG:[^\]]+\]\s*/, '');
+                langStripped = true;
+                // What's left of accumulated is the text we want to forward.
+                if (accumulated.length > 0) {
+                  sendEvent('text', { delta: accumulated });
+                  firstTextChunkSeen = true;
+                }
+                continue;
+              }
+              // Heuristic: if first ~32 chars don't start with '[LANG:' we can stop watching for it.
+              if (head.length >= 8 && head.indexOf('[LANG:') === -1) {
+                langStripped = true;
+              }
+            }
+
+            // Send delta. If we just stripped LANG, the delta we forward is
+            // the unstripped portion; for subsequent chunks, just forward as-is.
+            sendEvent('text', { delta: deltaText });
+            firstTextChunkSeen = true;
+          }
+          // We don't need to handle message_delta, message_stop etc — the
+          // for-await loop completes when the stream ends.
+        }
+
+        // Final message from the SDK — includes usage
+        var finalMessage = await stream.finalMessage();
+
+        // Post-process the accumulated text (enrichment + output filter)
+        var cleanReply = accumulated;
+
+        try {
+          var enrichKey = isTravelgenix ? process.env.AIRTABLE_KEY : atKey;
+          if (enrichKey) {
+            cleanReply = await enrichDestinationCardImages(cleanReply, enrichKey);
+          }
+        } catch (enrichErr) {
+          console.warn('[luna-chat] enrichment skipped:', enrichErr.message);
+        }
+
+        // Layer 2: Output filter
+        var outputCheck = filterOutput(cleanReply);
+        if (outputCheck.flagged) {
+          console.error('[Luna Filter] AI output was filtered! convId:', convId);
+          cleanReply = outputCheck.filtered;
+        }
+
+        var escalate = detectEscalation(cleanReply, message);
+
+        var donePayload = {
+          reply: cleanReply,
+          escalate: escalate,
+          convId: convId,
+          usage: {
+            input_tokens: finalMessage && finalMessage.usage ? finalMessage.usage.input_tokens : null,
+            output_tokens: finalMessage && finalMessage.usage ? finalMessage.usage.output_tokens : null
+          }
+        };
+        if (detectedLang) donePayload.detectedLanguage = detectedLang;
+
+        sendEvent('done', donePayload);
+        return res.end();
+
+      } catch (streamErr) {
+        console.error('[luna-chat] streaming error:', streamErr.message || streamErr);
+        sendEvent('error', {
+          message: 'stream_failed',
+          fallbackReply: "I'm having a little trouble right now. Let me connect you with one of the team who can help directly."
+        });
+        return res.end();
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // NON-STREAMING PATH — original JSON response (unchanged)
+    // ═══════════════════════════════════════════════════════════
     const response = await client.messages.create({
       model: modelId,
       max_tokens: 2048,
@@ -2482,7 +2614,7 @@ No problem, drop your email and departure date in below and I'll find it.
       cleanReply = outputCheck.filtered;
     }
 
-    const escalate = detectEscalation(cleanReply, message);
+    var escalate = detectEscalation(cleanReply, message);
 
     var responseJson = {
       reply: cleanReply,
@@ -2499,6 +2631,18 @@ No problem, drop your email and departure date in below and I'll find it.
 
   } catch (err) {
     console.error('Luna AI error:', err?.message || err);
+    if (wantStream) {
+      // Try to send an SSE error event if we haven't ended yet
+      try {
+        res.write('event: error\ndata: ' + JSON.stringify({
+          message: 'server_error',
+          fallbackReply: "I'm having a little trouble right now. Let me connect you with one of the team who can help directly."
+        }) + '\n\n');
+        return res.end();
+      } catch (sseErr) {
+        // Fall through to JSON error
+      }
+    }
     return res.status(200).json({
       reply: "I'm having a little trouble right now. Let me connect you with one of the team who can help directly.",
       escalate: true,
