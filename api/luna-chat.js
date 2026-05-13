@@ -353,6 +353,190 @@ async function getDestinationContext(message, atKey) {
   }
 }
 
+// ─── DESTINATION IMAGE INDEX ─────────────────────────────────
+// Curated Unsplash photos for ~364 destinations stored in Airtable.
+// Pulled once per cold start and cached in module scope for 1 hour.
+// Lookup by normalised name (lowercase, no diacritics, no punctuation).
+
+var DC_COUNTRIES_TABLE = 'tblsxbqbyhTDoWhbo';
+var DC_CITIES_TABLE = 'tblTkKujdVZgWPAQe';
+var DC_RESORTS_TABLE = 'tblwV9gnbVEyZ99gI';
+var DC_COUNTRIES_NAME_FIELD = 'Country';
+var DC_COUNTRIES_IMG_FIELD = 'Image URLs';
+var DC_CITIES_NAME_FIELD = 'City/Region';
+var DC_CITIES_IMG_FIELD = 'Image URLs';
+var DC_RESORTS_NAME_FIELD = 'Resort/Area';
+var DC_RESORTS_IMG_FIELD = 'Image URLs';
+
+var dcImageIndex = null;
+var dcImageIndexBuiltAt = 0;
+var dcImageIndexBuildPromise = null;
+var DC_IMAGE_INDEX_TTL = 60 * 60 * 1000; // 1 hour
+
+// Normalise a destination name for fuzzy lookup.
+// "Costa del Sol", "costa-del-sol", "COSTA DEL SOL" → "costa del sol"
+// "Algarve, Portugal" → "algarve portugal"
+function normaliseDestName(name) {
+  if (!name || typeof name !== 'string') return '';
+  return name
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // strip diacritics
+    .replace(/[^a-z0-9\s]/g, ' ') // remove punctuation
+    .replace(/\s+/g, ' ') // collapse whitespace
+    .trim();
+}
+
+// Pick the first valid URL from the Image URLs field (newline-separated)
+function firstImageFrom(value) {
+  if (!value || typeof value !== 'string') return null;
+  var lines = value.split(/\r?\n/).map(function(l) { return l.trim(); }).filter(Boolean);
+  for (var i = 0; i < lines.length; i++) {
+    var url = lines[i];
+    if (/^https?:\/\//i.test(url)) return url;
+  }
+  return null;
+}
+
+async function buildDestinationImageIndex(atKey) {
+  if (!atKey) return {};
+  var index = {};
+  var addImg = function(name, url) {
+    if (!name || !url) return;
+    var k = normaliseDestName(name);
+    if (!k) return;
+    if (index[k]) return; // first wins
+    index[k] = url;
+  };
+
+  // Pull all three tables in parallel
+  var results = await Promise.all([
+    fetchAllRecords(DC_COUNTRIES_TABLE, atKey, [DC_COUNTRIES_NAME_FIELD, DC_COUNTRIES_IMG_FIELD]),
+    fetchAllRecords(DC_CITIES_TABLE, atKey, [DC_CITIES_NAME_FIELD, DC_CITIES_IMG_FIELD]),
+    fetchAllRecords(DC_RESORTS_TABLE, atKey, [DC_RESORTS_NAME_FIELD, DC_RESORTS_IMG_FIELD])
+  ]);
+  var countries = results[0] || [];
+  var cities = results[1] || [];
+  var resorts = results[2] || [];
+
+  countries.forEach(function(rec) {
+    var f = rec.fields || {};
+    addImg(f[DC_COUNTRIES_NAME_FIELD], firstImageFrom(f[DC_COUNTRIES_IMG_FIELD]));
+  });
+  cities.forEach(function(rec) {
+    var f = rec.fields || {};
+    var name = f[DC_CITIES_NAME_FIELD];
+    var url = firstImageFrom(f[DC_CITIES_IMG_FIELD]);
+    addImg(name, url);
+    // Also index split forms: "Sousse & Port El Kantaoui" → also "Sousse"
+    if (name && name.indexOf('&') !== -1) {
+      var firstSegment = name.split('&')[0].trim();
+      addImg(firstSegment, url);
+    }
+  });
+  resorts.forEach(function(rec) {
+    var f = rec.fields || {};
+    var name = f[DC_RESORTS_NAME_FIELD];
+    var url = firstImageFrom(f[DC_RESORTS_IMG_FIELD]);
+    addImg(name, url);
+    if (name && name.indexOf('&') !== -1) {
+      var firstSegment = name.split('&')[0].trim();
+      addImg(firstSegment, url);
+    }
+  });
+
+  console.log('[luna-chat] destination image index built:',
+    Object.keys(index).length, 'images from',
+    countries.length, 'countries +',
+    cities.length, 'cities +',
+    resorts.length, 'resorts');
+  return index;
+}
+
+async function ensureDestinationImageIndex(atKey) {
+  var now = Date.now();
+  if (dcImageIndex && (now - dcImageIndexBuiltAt < DC_IMAGE_INDEX_TTL)) return dcImageIndex;
+  if (dcImageIndexBuildPromise) return dcImageIndexBuildPromise;
+  dcImageIndexBuildPromise = (async function() {
+    try {
+      dcImageIndex = await buildDestinationImageIndex(atKey);
+      dcImageIndexBuiltAt = Date.now();
+      return dcImageIndex;
+    } finally {
+      dcImageIndexBuildPromise = null;
+    }
+  })();
+  return dcImageIndexBuildPromise;
+}
+
+// Fuzzy lookup: try several normalisation strategies before giving up.
+function lookupDestinationImage(name, index) {
+  if (!name || !index) return null;
+  var k = normaliseDestName(name);
+  if (index[k]) return index[k];
+  // Strip common suffixes ("Spain", "Greece" etc) from a long name
+  // "Crete, Greece" → already normalised to "crete greece" — try just "crete"
+  var firstWord = k.split(' ')[0];
+  if (firstWord && firstWord !== k && index[firstWord]) return index[firstWord];
+  // Last word too — for cases like "the Algarve" → "algarve"
+  var parts = k.split(' ').filter(Boolean);
+  if (parts.length >= 2) {
+    var lastWord = parts[parts.length - 1];
+    if (index[lastWord]) return index[lastWord];
+  }
+  return null;
+}
+
+// Scan Luna's reply for destination_card blocks. For each one without an
+// image set, look up the destination name and inject the curated URL.
+// Mutates the reply text and returns the new version.
+async function enrichDestinationCardImages(reply, atKey) {
+  if (!reply || !atKey) return reply;
+  // Quick check — bail early if no destination_card blocks present
+  if (reply.indexOf('destination_card') === -1) return reply;
+  try {
+    var index = await ensureDestinationImageIndex(atKey);
+    if (!index || Object.keys(index).length === 0) return reply;
+
+    // Match each [BLOCK]{...}[/BLOCK] separately so we can mutate the JSON
+    var blockRe = /\[BLOCK\](\{[\s\S]*?\})\[\/BLOCK\]/g;
+    var lastIndex = 0;
+    var out = '';
+    var match;
+    var enrichedCount = 0;
+    var fallbackCount = 0;
+    while ((match = blockRe.exec(reply)) !== null) {
+      out += reply.slice(lastIndex, match.index);
+      lastIndex = match.index + match[0].length;
+      var jsonStr = match[1];
+      var parsed = null;
+      try { parsed = JSON.parse(jsonStr); } catch (e) { parsed = null; }
+      if (parsed && parsed.type === 'destination_card' && parsed.props && !parsed.props.image) {
+        var destName = parsed.props.name;
+        var url = lookupDestinationImage(destName, index);
+        if (url) {
+          parsed.props.image = url;
+          enrichedCount++;
+        } else {
+          fallbackCount++;
+          console.log('[luna-chat] image fallback for destination:', destName);
+        }
+        out += '[BLOCK]' + JSON.stringify(parsed) + '[/BLOCK]';
+      } else {
+        // Not a destination_card or already has image — leave as-is
+        out += match[0];
+      }
+    }
+    out += reply.slice(lastIndex);
+    if (enrichedCount || fallbackCount) {
+      console.log('[luna-chat] destination_card images:', enrichedCount, 'enriched,', fallbackCount, 'fallback');
+    }
+    return out;
+  } catch (err) {
+    console.warn('[luna-chat] enrichDestinationCardImages error:', err.message);
+    return reply;
+  }
+}
+
 async function searchLunaBrain(message, atKey) {
   if (!atKey || !isTravelQuestion(message)) return '';
 
@@ -2047,6 +2231,16 @@ No problem, drop your email and departure date in below and I'll find it.
     if (langMatch) {
       detectedLang = langMatch[1].trim();
       cleanReply = replyText.replace(/^\[LANG:[^\]]+\]\s*/, '').trim();
+    }
+
+    // Inject curated images into destination_card blocks (server-side enrichment)
+    try {
+      var enrichKey = isTravelgenix ? process.env.AIRTABLE_KEY : atKey;
+      if (enrichKey) {
+        cleanReply = await enrichDestinationCardImages(cleanReply, enrichKey);
+      }
+    } catch (enrichErr) {
+      console.warn('[luna-chat] enrichment skipped:', enrichErr.message);
     }
 
     // Layer 2: Output filter — catch anything that slipped through the system prompt
