@@ -1032,6 +1032,322 @@
     .showcase-chapter.closing .showcase-headline { font-size:32px; }
   }
 
+  /* ═══════════════════════════════════════════════════════ */
+  /* ═══ WIDGET WYSIWYG EDITOR ═══════════════════════════ */
+  /* ═══════════════════════════════════════════════════════ */
+  .wed-overlay {
+    position:fixed; inset:0;
+    background:rgba(11,29,58,0.55);
+    backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+    z-index:9998;
+    opacity:0; transition:opacity 0.3s ease; pointer-events:none;
+    display:flex; align-items:center; justify-content:center;
+    padding:48px;
+  }
+  .wed-overlay.active { opacity:1; pointer-events:auto; }
+  .wed-overlay[hidden] { display:none !important; }
+  .wed-modal {
+    position:relative; background:#FAFAF6;
+    width:100%; max-width:1180px; height:auto; max-height:calc(100vh - 96px); min-height:680px;
+    border-radius:20px; overflow:hidden;
+    box-shadow:0 30px 80px rgba(0,0,0,0.45);
+    display:flex; flex-direction:column; outline:none;
+  }
+  .wed-header {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:18px 24px; border-bottom:1px solid #E8E5DD;
+    background:#FFFFFF;
+  }
+  .wed-title { font-size:14px; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; color:#0B1D3A; }
+  .wed-title-sub { font-size:13px; font-weight:500; color:#5A6B86; margin-left:10px; }
+  .wed-close-x {
+    width:32px; height:32px; border-radius:50%; background:rgba(11,29,58,0.06);
+    border:1px solid rgba(11,29,58,0.10); color:#0B1D3A; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    transition:background 0.18s;
+  }
+  .wed-close-x:hover { background:rgba(11,29,58,0.10); }
+  .wed-body {
+    flex:1; display:grid; grid-template-columns:minmax(380px, 420px) 1fr;
+    gap:0; overflow:hidden;
+  }
+
+  /* Left column: the actual widget preview */
+  .wed-stage {
+    background:linear-gradient(180deg, #E9E6DC 0%, #DFDDD3 100%);
+    padding:32px 28px; display:flex; align-items:center; justify-content:center;
+    overflow-y:auto;
+  }
+  .wed-widget {
+    width:360px; min-height:560px; max-height:600px;
+    background:#FAFAF6; border-radius:16px;
+    box-shadow:0 16px 40px rgba(15,26,61,0.18);
+    display:flex; flex-direction:column; overflow:hidden;
+    font-family:'Inter', system-ui, sans-serif;
+    position:relative;
+  }
+  /* Widget header band (uses brand colour live) */
+  .wed-widget-header {
+    background:var(--wed-brand, #0F1A3D);
+    color:#fff;
+    padding:14px 16px;
+    display:flex; align-items:center; gap:10px;
+    transition:background 0.2s;
+  }
+  .wed-widget-header-title { font-size:14px; font-weight:600; letter-spacing:0.01em; }
+  .wed-widget-header-status { margin-left:auto; font-size:11px; opacity:0.78; display:flex; align-items:center; gap:5px; }
+  .wed-widget-header-status::before { content:''; width:6px; height:6px; border-radius:50%; background:#4ADE80; box-shadow:0 0 6px rgba(74,222,128,0.7); }
+  /* Greeting zone */
+  .wed-widget-greeting {
+    padding:24px 20px 18px; text-align:center; background:#FAFAF6;
+  }
+  .wed-widget-avatar {
+    width:56px; height:56px; border-radius:50%; margin:0 auto 14px;
+    background:var(--wed-accent, #F26A4F); color:#fff;
+    font-family:'Fraunces', Georgia, serif; font-size:24px; font-weight:600;
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 6px 16px rgba(15,26,61,0.18);
+    cursor:pointer;
+    transition:transform 0.18s, box-shadow 0.18s;
+    position:relative;
+  }
+  .wed-widget-avatar:hover { transform:scale(1.04); box-shadow:0 8px 22px rgba(15,26,61,0.24); }
+  .wed-widget-greeting-text {
+    font-family:'Fraunces', Georgia, serif; font-size:21px; font-weight:500; line-height:1.25;
+    color:#0F1A3D; letter-spacing:-0.01em; margin:0 0 6px 0;
+    cursor:text; outline:none; padding:2px 4px; border-radius:6px;
+    transition:background 0.15s, box-shadow 0.15s;
+  }
+  .wed-widget-greeting-text em, .wed-widget-greeting-text i {
+    font-style:italic; color:var(--wed-accent, #F26A4F);
+  }
+  .wed-widget-tagline {
+    font-size:13px; line-height:1.45; color:#5A6B86; margin:0;
+    cursor:text; outline:none; padding:2px 4px; border-radius:6px;
+    transition:background 0.15s, box-shadow 0.15s;
+  }
+  /* Hoverable / editable surfaces */
+  .wed-edit-zone {
+    position:relative;
+    cursor:pointer;
+    border-radius:6px;
+    transition:background 0.15s, outline 0.15s, box-shadow 0.15s;
+  }
+  .wed-edit-zone::after {
+    content:'✎';
+    position:absolute; top:-8px; right:-6px;
+    width:18px; height:18px; border-radius:50%;
+    background:#0F1A3D; color:#fff; font-size:10px;
+    display:flex; align-items:center; justify-content:center;
+    opacity:0; transform:scale(0.7);
+    transition:opacity 0.18s, transform 0.18s;
+    pointer-events:none;
+    box-shadow:0 2px 6px rgba(0,0,0,0.2);
+    z-index:5;
+  }
+  .wed-edit-zone:hover::after { opacity:1; transform:scale(1); }
+  .wed-edit-zone:hover {
+    background:rgba(15,26,61,0.04);
+    outline:1px dashed rgba(15,26,61,0.25);
+    outline-offset:2px;
+  }
+  .wed-edit-zone:focus,
+  [contenteditable="true"]:focus {
+    background:rgba(15,26,61,0.06);
+    outline:2px solid var(--wed-brand, #0F1A3D);
+    outline-offset:2px;
+  }
+  /* Cards grid */
+  .wed-widget-cards {
+    padding:4px 16px 12px; display:grid;
+    grid-template-columns:1fr 1fr; gap:8px;
+  }
+  .wed-widget-card {
+    background:#FFFFFF; border:1px solid #E8E5DD; border-radius:12px;
+    padding:12px 12px 14px; cursor:grab; position:relative;
+    transition:transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+    user-select:none;
+  }
+  .wed-widget-card:hover {
+    border-color:var(--wed-brand, #0F1A3D);
+    box-shadow:0 6px 16px rgba(15,26,61,0.08);
+  }
+  .wed-widget-card.dragging { opacity:0.4; cursor:grabbing; }
+  .wed-widget-card.drag-over { border-color:var(--wed-accent, #F26A4F); background:rgba(242,106,79,0.05); }
+  .wed-card-drag-handle {
+    position:absolute; left:4px; top:50%; transform:translateY(-50%);
+    width:14px; height:24px; opacity:0;
+    display:flex; flex-direction:column; justify-content:center; align-items:center;
+    gap:2px; cursor:grab; transition:opacity 0.18s; pointer-events:auto;
+  }
+  .wed-card-drag-handle::before,
+  .wed-card-drag-handle::after {
+    content:''; width:10px; height:2px; border-radius:1px;
+    background:#5A6B86;
+    box-shadow:0 4px 0 #5A6B86, 0 -4px 0 #5A6B86;
+  }
+  .wed-card-drag-handle::after { display:none; }
+  .wed-widget-card:hover .wed-card-drag-handle { opacity:0.6; }
+  .wed-card-icon-btn {
+    width:30px; height:30px; border-radius:8px;
+    background:var(--wed-brand, #0F1A3D); color:#fff;
+    display:flex; align-items:center; justify-content:center;
+    margin-bottom:8px; cursor:pointer; border:none;
+    transition:transform 0.18s;
+    position:relative;
+  }
+  .wed-card-icon-btn:hover { transform:scale(1.05); }
+  .wed-card-title {
+    font-size:13px; font-weight:600; color:#0F1A3D; margin:0 0 3px 0;
+    line-height:1.3; outline:none; min-height:17px;
+  }
+  .wed-card-desc {
+    font-size:11.5px; line-height:1.35; color:#5A6B86; margin:0;
+    outline:none; min-height:16px;
+  }
+  .wed-card-remove {
+    position:absolute; top:6px; right:6px; width:20px; height:20px;
+    border-radius:50%; border:none; background:rgba(15,26,61,0.06);
+    color:#5A6B86; cursor:pointer; opacity:0;
+    display:flex; align-items:center; justify-content:center;
+    transition:opacity 0.18s, background 0.15s, color 0.15s;
+  }
+  .wed-widget-card:hover .wed-card-remove { opacity:1; }
+  .wed-card-remove:hover { background:#EF4444; color:#fff; }
+  .wed-card-add {
+    background:#FFFFFF; border:1.5px dashed #C4C0B4; border-radius:12px;
+    padding:12px; cursor:pointer; min-height:84px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:4px; color:#5A6B86; font-size:11.5px; font-weight:500;
+    transition:border-color 0.15s, background 0.15s, color 0.15s;
+  }
+  .wed-card-add:hover { border-color:var(--wed-brand, #0F1A3D); color:var(--wed-brand, #0F1A3D); background:rgba(15,26,61,0.03); }
+  .wed-card-add svg { stroke:currentColor; }
+  /* Hints */
+  .wed-widget-hints {
+    padding:6px 16px 14px; display:flex; flex-direction:column; gap:6px;
+  }
+  .wed-widget-hint {
+    background:#FFFFFF; border:1px solid #E8E5DD; border-radius:999px;
+    padding:7px 12px; font-size:12px; color:#0F1A3D;
+    display:flex; align-items:center; gap:6px;
+    cursor:text; outline:none; transition:border-color 0.15s, background 0.15s;
+    min-height:18px;
+  }
+  .wed-widget-hint:hover { border-color:var(--wed-brand, #0F1A3D); }
+  .wed-widget-hint-bullet { width:4px; height:4px; border-radius:50%; background:var(--wed-accent, #F26A4F); flex-shrink:0; }
+  .wed-widget-hint-remove {
+    margin-left:auto; opacity:0; width:16px; height:16px; border-radius:50%;
+    border:none; background:rgba(15,26,61,0.08); color:#5A6B86; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; font-size:12px;
+    transition:opacity 0.15s, background 0.15s, color 0.15s; line-height:1;
+  }
+  .wed-widget-hint:hover .wed-widget-hint-remove { opacity:1; }
+  .wed-widget-hint-remove:hover { background:#EF4444; color:#fff; }
+  .wed-widget-hint-add {
+    background:transparent; border:1.5px dashed #C4C0B4; border-radius:999px;
+    padding:7px 12px; font-size:12px; color:#5A6B86; cursor:pointer; text-align:center;
+    transition:border-color 0.15s, color 0.15s;
+  }
+  .wed-widget-hint-add:hover { border-color:var(--wed-brand, #0F1A3D); color:var(--wed-brand, #0F1A3D); }
+  /* Widget input bar */
+  .wed-widget-input {
+    margin-top:auto; padding:12px 14px;
+    border-top:1px solid #E8E5DD; background:#FFFFFF;
+    display:flex; align-items:center; gap:10px;
+  }
+  .wed-widget-input-bubble {
+    flex:1; background:#FAFAF6; border:1px solid #E8E5DD;
+    border-radius:999px; padding:9px 14px; color:#5A6B86;
+    font-size:13px;
+  }
+  .wed-widget-input-send {
+    width:34px; height:34px; border-radius:50%;
+    background:var(--wed-brand, #0F1A3D); color:#fff;
+    display:flex; align-items:center; justify-content:center;
+  }
+
+  /* Right column: tools */
+  .wed-tools {
+    background:#FFFFFF; padding:24px 28px; overflow-y:auto;
+    border-left:1px solid #E8E5DD;
+    display:flex; flex-direction:column; gap:20px;
+  }
+  .wed-tools-section { display:flex; flex-direction:column; gap:8px; }
+  .wed-tools-label {
+    font-size:11px; font-weight:700; letter-spacing:0.08em;
+    text-transform:uppercase; color:#5A6B86;
+  }
+  .wed-tools-hint { font-size:12.5px; line-height:1.5; color:#5A6B86; }
+  /* Color swatch row */
+  .wed-swatch-row { display:flex; gap:8px; flex-wrap:wrap; }
+  .wed-swatch {
+    width:30px; height:30px; border-radius:8px; cursor:pointer;
+    border:2px solid transparent; transition:transform 0.15s, border-color 0.15s;
+    box-shadow:inset 0 0 0 1px rgba(0,0,0,0.08);
+  }
+  .wed-swatch:hover { transform:scale(1.08); }
+  .wed-swatch.active { border-color:#0F1A3D; transform:scale(1.1); }
+  .wed-swatch-custom {
+    width:30px; height:30px; border-radius:8px; border:1.5px dashed #C4C0B4;
+    background:conic-gradient(from 0deg, #ff0080, #ff8c00, #ffd200, #00d4d6, #6366f1, #ff0080);
+    cursor:pointer; transition:transform 0.15s; position:relative;
+  }
+  .wed-swatch-custom input[type="color"] {
+    position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%;
+  }
+  .wed-swatch-custom:hover { transform:scale(1.08); }
+  .wed-hex-input {
+    width:88px; padding:6px 8px; border-radius:6px; border:1px solid #E8E5DD;
+    background:#FAFAF6; font-family:'JetBrains Mono', ui-monospace, monospace;
+    font-size:11.5px; color:#0F1A3D; text-transform:uppercase;
+  }
+  .wed-hex-input:focus { outline:2px solid var(--wed-brand, #0F1A3D); outline-offset:1px; }
+
+  /* Icon picker popover */
+  .wed-icon-pop {
+    position:absolute; top:38px; left:0; z-index:50;
+    background:#fff; border:1px solid #E8E5DD; border-radius:10px;
+    padding:8px; display:none; gap:4px; flex-wrap:wrap; width:184px;
+    box-shadow:0 12px 28px rgba(15,26,61,0.15);
+  }
+  .wed-icon-pop.open { display:flex; }
+  .wed-icon-pop-opt {
+    width:30px; height:30px; border-radius:6px; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    color:#0F1A3D; transition:background 0.15s;
+  }
+  .wed-icon-pop-opt:hover { background:rgba(15,26,61,0.08); }
+  .wed-icon-pop-opt.active { background:var(--wed-brand, #0F1A3D); color:#fff; }
+
+  /* Footer */
+  .wed-footer {
+    padding:14px 24px; background:#FFFFFF; border-top:1px solid #E8E5DD;
+    display:flex; align-items:center; justify-content:space-between; gap:14px;
+  }
+  .wed-footer-status { font-size:12px; color:#5A6B86; }
+  .wed-footer-status.dirty { color:#F26A4F; font-weight:500; }
+  .wed-footer-status.saved { color:#10B981; font-weight:500; }
+  .wed-footer-buttons { display:flex; gap:10px; }
+  .wed-btn {
+    padding:9px 18px; border-radius:8px; font-size:13px; font-weight:600;
+    cursor:pointer; font-family:inherit; border:1px solid transparent;
+    transition:background 0.15s, border-color 0.15s, transform 0.1s;
+  }
+  .wed-btn:active { transform:translateY(1px); }
+  .wed-btn-secondary { background:transparent; color:#5A6B86; border-color:#E8E5DD; }
+  .wed-btn-secondary:hover { background:#F5F3EC; color:#0F1A3D; }
+  .wed-btn-primary { background:#0F1A3D; color:#fff; }
+  .wed-btn-primary:hover { background:#1B2B5B; }
+  .wed-btn-primary:disabled { opacity:0.5; cursor:not-allowed; }
+
+  @media (max-width: 980px) {
+    .wed-overlay { padding:16px; }
+    .wed-body { grid-template-columns:1fr; }
+    .wed-tools { border-left:none; border-top:1px solid #E8E5DD; }
+    .wed-modal { min-height:auto; }
+  }
+
 </style>
 <!-- Central auth gate. Bounces to id.travelify.io/signin.html if not signed in.
      Product slug "*" because client linkage is checked separately via the
@@ -1072,6 +1388,7 @@
       <span id="connLabel">Connecting…</span>
     </div>
     <button class="topbar-stats-btn" id="welcomeBtn" onclick="window._openShowcase('topbar')" title="See what Luna can do"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg> Tour</button>
+    <button class="topbar-stats-btn" id="customizeBtn" onclick="window._openWidgetEditor()" title="Customise widget appearance"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg> Customise</button>
     <button class="topbar-stats-btn" id="statsToggle" onclick="window._toggleStats()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg> Stats</button>
     <button class="topbar-stats-btn" id="switchCompanyBtn" onclick="window._switchCompany()" title="Switch to another Luna Chat client" style="display:none"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg> Switch</button>
     <button class="topbar-stats-btn" id="settingsToggle" onclick="window._toggleSettings()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> Settings</button>
@@ -4452,7 +4769,13 @@ function renderWelcomePanel() {
   document.querySelectorAll('[data-step-action]').forEach(function (btn) {
     btn.addEventListener('click', function () {
       var action = btn.getAttribute('data-step-action');
-      if (action === 'settings' || action === 'capabilities') {
+      if (action === 'capabilities') {
+        if (typeof window._openWidgetEditor === 'function') {
+          window._openWidgetEditor();
+        } else if (typeof window._toggleSettings === 'function') {
+          window._toggleSettings();
+        }
+      } else if (action === 'settings') {
         if (typeof window._toggleSettings === 'function') window._toggleSettings();
       } else if (action === 'embed') {
         // Embed code lives in settings → advanced tab. Open settings for now.
@@ -4739,6 +5062,621 @@ setTimeout(function () {
 })();
 </script>
 
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ═══ WIDGET WYSIWYG EDITOR — script ════════════════════ -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<script>
+(function () {
+  // ── Icon library (18 icons) ──────────────────────────────
+  var WED_ICONS = {
+    plane: '<path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2Z"/>',
+    compass: '<circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>',
+    helpCircle: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
+    star: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
+    monitor: '<rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>',
+    chat: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+    search: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
+    suitcase: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>',
+    map: '<polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21 3 6"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/>',
+    calendar: '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+    ticket: '<path d="M3 7v3a2 2 0 1 1 0 4v3a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-3a2 2 0 1 1 0-4V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2z"/><line x1="13" y1="5" x2="13" y2="7"/><line x1="13" y1="11" x2="13" y2="13"/><line x1="13" y1="17" x2="13" y2="19"/>',
+    phone: '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.37 1.91.72 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.35 1.85.59 2.81.72A2 2 0 0 1 22 16.92z"/>',
+    briefcase: '<rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>',
+    sun: '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>',
+    mountain: '<path d="m8 3 4 8 5-5 5 15H2L8 3z"/>',
+    sparkles: '<path d="M12 3v3M12 18v3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M3 12h3M18 12h3M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>',
+    headphones: '<path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>',
+    heart: '<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>'
+  };
+  function wedIconSvg(name, size) {
+    var path = WED_ICONS[name] || WED_ICONS.helpCircle;
+    return '<svg width="'+(size||16)+'" height="'+(size||16)+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">'+path+'</svg>';
+  }
+
+  // ── Preset colour palettes (smaller, focused set) ────────
+  var BRAND_PALETTE = ['#0F1A3D', '#1B2B5B', '#0B1D3A', '#1E40AF', '#0F766E', '#7C2D12', '#581C87', '#831843', '#111827'];
+  var ACCENT_PALETTE = ['#F26A4F', '#F59E0B', '#00B4B6', '#00D4D6', '#EC4899', '#10B981', '#8B5CF6', '#3B82F6', '#EF4444'];
+
+  // ── State ────────────────────────────────────────────────
+  // Snapshot of the values when the editor opens. Used to detect changes
+  // and to discard back to original on cancel.
+  var initial = null;
+  // Live working copy
+  var draft = null;
+  var isDirty = false;
+
+  function readCurrentSettingsToDraft() {
+    function val(id, def) { var el = document.getElementById(id); return (el && el.value) || def || ''; }
+    var capCardsCurrent = [];
+    try {
+      // Read from the legacy capCards array if present in window scope
+      // Otherwise parse from current client config
+      if (window._clientConfig && window._clientConfig.capabilityCards) {
+        var raw = window._clientConfig.capabilityCards;
+        capCardsCurrent = typeof raw === 'string' ? JSON.parse(raw || '[]') : (raw || []);
+      }
+    } catch (e) { capCardsCurrent = []; }
+    if (!Array.isArray(capCardsCurrent) || capCardsCurrent.length === 0) {
+      // Sensible default starter set
+      capCardsCurrent = [
+        { icon:'search', title:'Find a holiday', desc:'Tell me dates and a vibe.' },
+        { icon:'suitcase', title:'My booking', desc:'Check on a trip you\u2019ve already booked.' },
+        { icon:'chat', title:'Speak to our team', desc:'Get a real person on the line.' },
+        { icon:'helpCircle', title:'I have a question', desc:'About anything — passports, policies, advice.' }
+      ];
+    }
+    var hintsRaw = val('setHints', '');
+    var hintsArr = hintsRaw.split('\n').map(function(s){return s.trim();}).filter(Boolean);
+
+    return {
+      brandColor: val('setBrandColorHex', '#0F1A3D'),
+      accentColor: val('setAccentColorHex', '#F26A4F'),
+      logoText: val('setLogoText', 'L'),
+      botName: val('setBotName', 'Luna'),
+      welcome: val('setWelcome', 'Hi there \u2014 how can I *help*?'),
+      tagline: val('setTagline', ''),
+      hints: hintsArr,
+      capCards: JSON.parse(JSON.stringify(capCardsCurrent))
+    };
+  }
+
+  function snapshotsEqual(a, b) {
+    try { return JSON.stringify(a) === JSON.stringify(b); } catch (e) { return false; }
+  }
+
+  function setDirty(dirty) {
+    isDirty = dirty;
+    var status = document.getElementById('wed-status');
+    var saveBtn = document.getElementById('wed-save');
+    if (!status || !saveBtn) return;
+    if (dirty) {
+      status.textContent = 'Unsaved changes';
+      status.className = 'wed-footer-status dirty';
+      saveBtn.disabled = false;
+    } else {
+      status.textContent = 'No changes yet';
+      status.className = 'wed-footer-status';
+      saveBtn.disabled = true;
+    }
+  }
+
+  function checkDirty() {
+    setDirty(!snapshotsEqual(draft, initial));
+  }
+
+  // ── Greeting parse/serialise ─────────────────────────────
+  // Welcome string uses *word* for italic emphasis. Convert between
+  // wire format and inline HTML.
+  function welcomeToHtml(str) {
+    if (!str) return '';
+    var safe = String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    return safe.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+  }
+  function welcomeFromHtml(html) {
+    if (!html) return '';
+    // Replace <em>...</em> and <i>...</i> with *...*, strip other tags
+    var div = document.createElement('div');
+    div.innerHTML = html;
+    function walk(node) {
+      var out = '';
+      for (var i = 0; i < node.childNodes.length; i++) {
+        var n = node.childNodes[i];
+        if (n.nodeType === 3) { out += n.nodeValue; }
+        else if (n.nodeType === 1) {
+          var tag = n.tagName.toLowerCase();
+          if (tag === 'br') out += '\n';
+          else if (tag === 'em' || tag === 'i') out += '*' + walk(n).replace(/\*/g, '') + '*';
+          else out += walk(n);
+        }
+      }
+      return out;
+    }
+    return walk(div).replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  // ── Render functions ─────────────────────────────────────
+  function applyBrandColor() {
+    var modal = document.getElementById('wed-modal');
+    if (modal) {
+      modal.style.setProperty('--wed-brand', draft.brandColor);
+      modal.style.setProperty('--wed-accent', draft.accentColor);
+    }
+  }
+
+  function renderSwatches() {
+    function build(containerId, palette, currentValue, onPick) {
+      var el = document.getElementById(containerId);
+      if (!el) return;
+      el.innerHTML = palette.map(function(hex) {
+        var active = hex.toLowerCase() === (currentValue || '').toLowerCase();
+        return '<div class="wed-swatch'+(active?' active':'')+'" data-hex="'+hex+'" style="background:'+hex+'"></div>';
+      }).join('');
+      Array.prototype.forEach.call(el.querySelectorAll('.wed-swatch'), function(node) {
+        node.addEventListener('click', function() { onPick(node.getAttribute('data-hex')); });
+      });
+    }
+    build('wed-brand-swatches', BRAND_PALETTE, draft.brandColor, function(hex) {
+      draft.brandColor = hex.toUpperCase();
+      document.getElementById('wed-brand-hex').value = draft.brandColor;
+      document.getElementById('wed-brand-picker').value = draft.brandColor;
+      applyBrandColor();
+      renderSwatches();
+      checkDirty();
+    });
+    build('wed-accent-swatches', ACCENT_PALETTE, draft.accentColor, function(hex) {
+      draft.accentColor = hex.toUpperCase();
+      document.getElementById('wed-accent-hex').value = draft.accentColor;
+      document.getElementById('wed-accent-picker').value = draft.accentColor;
+      applyBrandColor();
+      renderSwatches();
+      checkDirty();
+    });
+  }
+
+  function renderPreviewHeader() {
+    var bn = document.getElementById('wed-preview-botname');
+    if (bn) bn.textContent = draft.botName || 'Luna';
+  }
+
+  function renderPreviewAvatar() {
+    var av = document.getElementById('wed-preview-avatar');
+    if (av) av.textContent = (draft.logoText || 'L').slice(0, 2);
+  }
+
+  function renderPreviewGreeting() {
+    var g = document.getElementById('wed-preview-greeting');
+    var t = document.getElementById('wed-preview-tagline');
+    if (g && document.activeElement !== g) g.innerHTML = welcomeToHtml(draft.welcome);
+    if (t && document.activeElement !== t) t.textContent = draft.tagline || '';
+  }
+
+  function renderPreviewCards() {
+    var el = document.getElementById('wed-preview-cards');
+    if (!el) return;
+    el.innerHTML = '';
+    draft.capCards.forEach(function(card, idx) {
+      var node = document.createElement('div');
+      node.className = 'wed-widget-card';
+      node.draggable = true;
+      node.dataset.idx = String(idx);
+      node.innerHTML =
+        '<div class="wed-card-drag-handle" aria-label="Drag to reorder"></div>' +
+        '<button class="wed-card-remove" title="Remove" data-action="remove">' +
+          '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' +
+        '</button>' +
+        '<div style="position:relative">' +
+          '<button class="wed-card-icon-btn" data-action="icon" title="Change icon">' + wedIconSvg(card.icon, 16) + '</button>' +
+          '<div class="wed-icon-pop" data-icon-pop="">' +
+            Object.keys(WED_ICONS).map(function(name) {
+              var active = name === card.icon ? ' active' : '';
+              return '<div class="wed-icon-pop-opt'+active+'" data-icon-name="'+name+'">'+wedIconSvg(name, 14)+'</div>';
+            }).join('') +
+          '</div>' +
+        '</div>' +
+        '<div class="wed-card-title" contenteditable="true" spellcheck="false" data-field="title" data-placeholder="Card title">'+escText(card.title)+'</div>' +
+        '<div class="wed-card-desc" contenteditable="true" spellcheck="false" data-field="desc" data-placeholder="Short description">'+escText(card.desc)+'</div>';
+      el.appendChild(node);
+      wireCardNode(node, idx);
+    });
+    // Add-card slot (only if fewer than 4)
+    if (draft.capCards.length < 4) {
+      var add = document.createElement('div');
+      add.className = 'wed-card-add';
+      add.innerHTML =
+        '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' +
+        '<span>Add card</span>';
+      add.addEventListener('click', function() {
+        if (draft.capCards.length >= 4) return;
+        draft.capCards.push({ icon:'helpCircle', title:'New action', desc:'Describe what this does.' });
+        renderPreviewCards();
+        checkDirty();
+      });
+      el.appendChild(add);
+    }
+  }
+
+  function escText(s) {
+    return String(s || '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function wireCardNode(node, idx) {
+    // Inline editing
+    Array.prototype.forEach.call(node.querySelectorAll('[contenteditable="true"]'), function(field) {
+      field.addEventListener('input', function() {
+        var k = field.getAttribute('data-field');
+        if (draft.capCards[idx]) draft.capCards[idx][k] = field.textContent;
+        checkDirty();
+      });
+      field.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); field.blur(); }
+      });
+    });
+    // Remove
+    var rm = node.querySelector('[data-action="remove"]');
+    if (rm) rm.addEventListener('click', function(e) {
+      e.stopPropagation();
+      draft.capCards.splice(idx, 1);
+      renderPreviewCards();
+      checkDirty();
+    });
+    // Icon picker
+    var iconBtn = node.querySelector('[data-action="icon"]');
+    var iconPop = node.querySelector('[data-icon-pop]');
+    if (iconBtn && iconPop) {
+      iconBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        // Close any other open pops
+        Array.prototype.forEach.call(document.querySelectorAll('.wed-icon-pop.open'), function(p) {
+          if (p !== iconPop) p.classList.remove('open');
+        });
+        iconPop.classList.toggle('open');
+      });
+      Array.prototype.forEach.call(iconPop.querySelectorAll('[data-icon-name]'), function(opt) {
+        opt.addEventListener('click', function(e) {
+          e.stopPropagation();
+          draft.capCards[idx].icon = opt.getAttribute('data-icon-name');
+          iconPop.classList.remove('open');
+          renderPreviewCards();
+          checkDirty();
+        });
+      });
+    }
+    // Drag and drop reordering
+    node.addEventListener('dragstart', function(e) {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', String(idx));
+      node.classList.add('dragging');
+    });
+    node.addEventListener('dragend', function() {
+      node.classList.remove('dragging');
+      Array.prototype.forEach.call(document.querySelectorAll('.wed-widget-card.drag-over'), function(n) { n.classList.remove('drag-over'); });
+    });
+    node.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      node.classList.add('drag-over');
+    });
+    node.addEventListener('dragleave', function() {
+      node.classList.remove('drag-over');
+    });
+    node.addEventListener('drop', function(e) {
+      e.preventDefault();
+      node.classList.remove('drag-over');
+      var fromIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
+      var toIdx = idx;
+      if (isNaN(fromIdx) || fromIdx === toIdx) return;
+      var moved = draft.capCards.splice(fromIdx, 1)[0];
+      draft.capCards.splice(toIdx, 0, moved);
+      renderPreviewCards();
+      checkDirty();
+    });
+  }
+
+  function renderPreviewHints() {
+    var el = document.getElementById('wed-preview-hints');
+    if (!el) return;
+    el.innerHTML = '';
+    draft.hints.forEach(function(hint, idx) {
+      var row = document.createElement('div');
+      row.className = 'wed-widget-hint';
+      row.innerHTML =
+        '<span class="wed-widget-hint-bullet"></span>' +
+        '<span contenteditable="true" spellcheck="false" style="outline:none;flex:1">'+escText(hint)+'</span>' +
+        '<button class="wed-widget-hint-remove" title="Remove">×</button>';
+      var span = row.querySelector('[contenteditable]');
+      span.addEventListener('input', function() {
+        draft.hints[idx] = span.textContent;
+        checkDirty();
+      });
+      span.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); span.blur(); }
+      });
+      var rm = row.querySelector('.wed-widget-hint-remove');
+      rm.addEventListener('click', function() {
+        draft.hints.splice(idx, 1);
+        renderPreviewHints();
+        checkDirty();
+      });
+      el.appendChild(row);
+    });
+    if (draft.hints.length < 6) {
+      var add = document.createElement('div');
+      add.className = 'wed-widget-hint-add';
+      add.textContent = '+ Add hint';
+      add.addEventListener('click', function() {
+        draft.hints.push('New suggestion');
+        renderPreviewHints();
+        checkDirty();
+        // Focus the new one for immediate editing
+        setTimeout(function() {
+          var rows = document.querySelectorAll('#wed-preview-hints .wed-widget-hint');
+          var last = rows[rows.length - 1];
+          if (last) {
+            var span = last.querySelector('[contenteditable]');
+            if (span) {
+              span.focus();
+              // Select all so typing replaces "New suggestion"
+              var range = document.createRange();
+              range.selectNodeContents(span);
+              var sel = window.getSelection();
+              sel.removeAllRanges();
+              sel.addRange(range);
+            }
+          }
+        }, 0);
+      });
+      el.appendChild(add);
+    }
+  }
+
+  function renderAll() {
+    applyBrandColor();
+    renderSwatches();
+    renderPreviewHeader();
+    renderPreviewAvatar();
+    renderPreviewGreeting();
+    renderPreviewCards();
+    renderPreviewHints();
+    document.getElementById('wed-brand-hex').value = draft.brandColor;
+    document.getElementById('wed-accent-hex').value = draft.accentColor;
+    document.getElementById('wed-brand-picker').value = draft.brandColor;
+    document.getElementById('wed-accent-picker').value = draft.accentColor;
+  }
+
+  // ── Open / close ─────────────────────────────────────────
+  function openEditor() {
+    initial = readCurrentSettingsToDraft();
+    draft = JSON.parse(JSON.stringify(initial));
+    setDirty(false);
+    renderAll();
+    var ov = document.getElementById('wed-overlay');
+    ov.hidden = false;
+    requestAnimationFrame(function() { ov.classList.add('active'); });
+    setTimeout(function() {
+      var modal = document.getElementById('wed-modal');
+      if (modal) modal.focus();
+    }, 50);
+    document.body.style.overflow = 'hidden';
+  }
+  function closeEditor(force) {
+    if (isDirty && !force) {
+      var ok = confirm('You have unsaved changes. Discard them?');
+      if (!ok) return;
+    }
+    var ov = document.getElementById('wed-overlay');
+    ov.classList.remove('active');
+    setTimeout(function() { ov.hidden = true; }, 300);
+    document.body.style.overflow = '';
+  }
+
+  // ── Save ─────────────────────────────────────────────────
+  async function saveEditor() {
+    var saveBtn = document.getElementById('wed-save');
+    var status = document.getElementById('wed-status');
+    saveBtn.disabled = true;
+    status.textContent = 'Saving…';
+    status.className = 'wed-footer-status';
+
+    try {
+      // Mirror values back into the legacy settings inputs so the rest of
+      // the dashboard stays consistent and the existing save flow can be
+      // reused if needed.
+      function setV(id, value) { var el = document.getElementById(id); if (el) el.value = value; }
+      setV('setBrandColorHex', draft.brandColor);
+      setV('setAccentColorHex', draft.accentColor);
+      setV('setBrandColorPicker', draft.brandColor);
+      setV('setAccentColorPicker', draft.accentColor);
+      setV('setLogoText', draft.logoText);
+      setV('setBotName', draft.botName);
+      setV('setWelcome', draft.welcome);
+      setV('setTagline', draft.tagline);
+      setV('setHints', draft.hints.join('\n'));
+      // Update brand/accent preview swatches in the settings drawer
+      var bp = document.getElementById('brandColorPreview');
+      if (bp) bp.style.background = draft.brandColor;
+      var ap = document.getElementById('accentColorPreview');
+      if (ap) ap.style.background = draft.accentColor;
+
+      // Push directly via the same endpoint the legacy settings save uses
+      var clientId = (window._clientConfig && window._clientConfig.clientId) || '';
+      if (!clientId) throw new Error('No client linked');
+      var sess = (window._tgAuth && window._tgAuth.session) || null;
+      var token = sess && sess.token;
+      var res = await fetch('/api/luna-update-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (token || '') },
+        body: JSON.stringify({
+          clientId: clientId,
+          brandColor: draft.brandColor,
+          accentColor: draft.accentColor,
+          logoText: draft.logoText,
+          widgetBotName: draft.botName,
+          widgetTagline: draft.tagline,
+          widgetWelcome: draft.welcome,
+          widgetHints: draft.hints.join('\n'),
+          capabilityCards: draft.capCards.length ? JSON.stringify(draft.capCards) : ''
+        })
+      });
+      if (!res.ok) throw new Error('Save failed: ' + res.status);
+      // Update window._clientConfig so the welcome panel sees fresh values
+      if (window._clientConfig) {
+        window._clientConfig.brandColor = draft.brandColor;
+        window._clientConfig.accentColor = draft.accentColor;
+        window._clientConfig.logoText = draft.logoText;
+        window._clientConfig.widgetWelcome = draft.welcome;
+        window._clientConfig.widgetTagline = draft.tagline;
+        window._clientConfig.widgetHints = draft.hints.join('\n');
+        window._clientConfig.capabilityCards = JSON.stringify(draft.capCards);
+      }
+      if (typeof window._refreshWelcomePanel === 'function') {
+        try { window._refreshWelcomePanel(); } catch (e) {}
+      }
+
+      initial = JSON.parse(JSON.stringify(draft));
+      setDirty(false);
+      status.textContent = '✓ Saved';
+      status.className = 'wed-footer-status saved';
+      setTimeout(function() {
+        if (!isDirty) {
+          status.textContent = 'No changes yet';
+          status.className = 'wed-footer-status';
+        }
+      }, 2200);
+    } catch (e) {
+      console.error('[WED] save failed:', e);
+      status.textContent = 'Save failed: ' + e.message;
+      status.className = 'wed-footer-status dirty';
+      saveBtn.disabled = false;
+    }
+  }
+
+  // ── Inline edit wiring (top-level fields) ────────────────
+  function wireTopLevelEdits() {
+    // Greeting
+    var g = document.getElementById('wed-preview-greeting');
+    if (g) {
+      g.addEventListener('input', function() {
+        draft.welcome = welcomeFromHtml(g.innerHTML);
+        checkDirty();
+      });
+      g.addEventListener('blur', function() { renderPreviewGreeting(); });
+      g.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); g.blur(); }
+      });
+    }
+    // Tagline
+    var t = document.getElementById('wed-preview-tagline');
+    if (t) {
+      t.addEventListener('input', function() {
+        draft.tagline = t.textContent;
+        checkDirty();
+      });
+      t.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); t.blur(); }
+      });
+    }
+    // Avatar — prompt for new letter (or image upload could be added later)
+    var av = document.getElementById('wed-preview-avatar');
+    if (av) {
+      av.addEventListener('click', function() {
+        var current = draft.logoText || 'L';
+        var next = prompt('Avatar letter (1\u20132 characters):', current);
+        if (next !== null) {
+          var trimmed = String(next).trim().slice(0, 2);
+          if (trimmed) {
+            draft.logoText = trimmed;
+            renderPreviewAvatar();
+            checkDirty();
+          }
+        }
+      });
+    }
+    // Hex inputs
+    var bh = document.getElementById('wed-brand-hex');
+    bh.addEventListener('input', function() {
+      var v = bh.value.trim();
+      if (!/^#?[0-9A-Fa-f]{6}$/.test(v)) return;
+      var hex = ('#' + v.replace('#','')).toUpperCase();
+      draft.brandColor = hex;
+      document.getElementById('wed-brand-picker').value = hex;
+      applyBrandColor();
+      renderSwatches();
+      renderPreviewCards();
+      checkDirty();
+    });
+    var ah = document.getElementById('wed-accent-hex');
+    ah.addEventListener('input', function() {
+      var v = ah.value.trim();
+      if (!/^#?[0-9A-Fa-f]{6}$/.test(v)) return;
+      var hex = ('#' + v.replace('#','')).toUpperCase();
+      draft.accentColor = hex;
+      document.getElementById('wed-accent-picker').value = hex;
+      applyBrandColor();
+      renderSwatches();
+      renderPreviewGreeting();
+      renderPreviewHints();
+      checkDirty();
+    });
+    var bp = document.getElementById('wed-brand-picker');
+    bp.addEventListener('input', function() {
+      draft.brandColor = bp.value.toUpperCase();
+      document.getElementById('wed-brand-hex').value = draft.brandColor;
+      applyBrandColor();
+      renderSwatches();
+      renderPreviewCards();
+      checkDirty();
+    });
+    var ap = document.getElementById('wed-accent-picker');
+    ap.addEventListener('input', function() {
+      draft.accentColor = ap.value.toUpperCase();
+      document.getElementById('wed-accent-hex').value = draft.accentColor;
+      applyBrandColor();
+      renderSwatches();
+      renderPreviewGreeting();
+      renderPreviewHints();
+      checkDirty();
+    });
+  }
+
+  function wireGlobalHandlers() {
+    document.getElementById('wed-close-x').addEventListener('click', function() { closeEditor(false); });
+    document.getElementById('wed-discard').addEventListener('click', function() { closeEditor(false); });
+    document.getElementById('wed-save').addEventListener('click', saveEditor);
+    // Click outside the modal closes (with dirty check)
+    document.getElementById('wed-overlay').addEventListener('click', function(e) {
+      if (e.target.id === 'wed-overlay') closeEditor(false);
+    });
+    // ESC closes
+    document.addEventListener('keydown', function(e) {
+      var ov = document.getElementById('wed-overlay');
+      if (!ov || ov.hidden) return;
+      if (e.key === 'Escape') closeEditor(false);
+    });
+    // Close icon popovers when clicking outside
+    document.addEventListener('click', function(e) {
+      if (!e.target.closest('.wed-icon-pop') && !e.target.closest('[data-action="icon"]')) {
+        Array.prototype.forEach.call(document.querySelectorAll('.wed-icon-pop.open'), function(p) {
+          p.classList.remove('open');
+        });
+      }
+    });
+  }
+
+  // Wire once on load. The actual fields are wired after open() too
+  // since contenteditable elements aren't recreated.
+  wireTopLevelEdits();
+  wireGlobalHandlers();
+
+  // Expose
+  window._openWidgetEditor = openEditor;
+  window._closeWidgetEditor = function() { closeEditor(true); };
+})();
+</script>
+
 <!-- ═══ SHOWCASE MODAL (popover, triggered from welcome panel or topbar) ═══ -->
 <div id="showcase-overlay" class="showcase-overlay" role="dialog" aria-modal="true" aria-labelledby="showcase-headline" hidden>
   <div class="showcase-modal" id="showcase-modal" tabindex="-1">
@@ -4758,6 +5696,86 @@ setTimeout(function () {
           Next
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
         </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ WIDGET WYSIWYG EDITOR MODAL ═══ -->
+<div id="wed-overlay" class="wed-overlay" role="dialog" aria-modal="true" aria-labelledby="wed-title" hidden>
+  <div class="wed-modal" id="wed-modal" tabindex="-1">
+    <div class="wed-header">
+      <div>
+        <span class="wed-title" id="wed-title">Customise widget</span>
+        <span class="wed-title-sub">Click any element to edit · Drag cards to reorder</span>
+      </div>
+      <button class="wed-close-x" id="wed-close-x" aria-label="Close">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="wed-body">
+      <!-- Left: live widget preview -->
+      <div class="wed-stage">
+        <div class="wed-widget" id="wed-widget">
+          <div class="wed-widget-header">
+            <span class="wed-widget-header-title" id="wed-preview-botname">Luna</span>
+            <span class="wed-widget-header-status">Online</span>
+          </div>
+          <div class="wed-widget-greeting">
+            <div class="wed-widget-avatar wed-edit-zone" id="wed-preview-avatar" title="Click to change">L</div>
+            <div class="wed-widget-greeting-text wed-edit-zone" id="wed-preview-greeting" contenteditable="true" spellcheck="false">Hi there — how can I <em>help</em>?</div>
+            <div class="wed-widget-tagline wed-edit-zone" id="wed-preview-tagline" contenteditable="true" spellcheck="false">Find a holiday, manage a booking, or speak to our team.</div>
+          </div>
+          <div class="wed-widget-cards" id="wed-preview-cards"></div>
+          <div class="wed-widget-hints" id="wed-preview-hints"></div>
+          <div class="wed-widget-input">
+            <div class="wed-widget-input-bubble">Type a message…</div>
+            <div class="wed-widget-input-send">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Right: tools panel -->
+      <div class="wed-tools">
+        <div class="wed-tools-section">
+          <span class="wed-tools-label">Brand colour</span>
+          <div class="wed-tools-hint">Used for header, buttons, and card icons.</div>
+          <div class="wed-swatch-row" id="wed-brand-swatches"></div>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+            <input type="text" class="wed-hex-input" id="wed-brand-hex" maxlength="7" placeholder="#000000">
+            <span class="wed-swatch-custom" title="Pick any colour">
+              <input type="color" id="wed-brand-picker">
+            </span>
+          </div>
+        </div>
+        <div class="wed-tools-section">
+          <span class="wed-tools-label">Accent colour</span>
+          <div class="wed-tools-hint">Used for the avatar and italic emphasis in the greeting.</div>
+          <div class="wed-swatch-row" id="wed-accent-swatches"></div>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+            <input type="text" class="wed-hex-input" id="wed-accent-hex" maxlength="7" placeholder="#000000">
+            <span class="wed-swatch-custom" title="Pick any colour">
+              <input type="color" id="wed-accent-picker">
+            </span>
+          </div>
+        </div>
+        <div class="wed-tools-section">
+          <span class="wed-tools-label">Tips</span>
+          <ul style="margin:0;padding-left:18px;font-size:12.5px;line-height:1.7;color:#5A6B86">
+            <li>Wrap text in <code style="background:rgba(15,26,61,0.06);padding:1px 4px;border-radius:3px;font-size:11.5px">*asterisks*</code> in the greeting to italicise.</li>
+            <li>Click any card icon to swap it.</li>
+            <li>Hover a card and grab the handle on the left to reorder.</li>
+            <li>Cards work best in pairs — 2 or 4 of them.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="wed-footer">
+      <span class="wed-footer-status" id="wed-status">No changes yet</span>
+      <div class="wed-footer-buttons">
+        <button class="wed-btn wed-btn-secondary" id="wed-discard">Discard</button>
+        <button class="wed-btn wed-btn-primary" id="wed-save" disabled>Save changes</button>
       </div>
     </div>
   </div>
