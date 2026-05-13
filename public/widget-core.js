@@ -1790,11 +1790,18 @@ function injectCSS() {
     /* Demoted footer — tighten */
     +'#tgx-cw .tgx-demoted{font-size:11.5px;gap:6px;margin-top:2px;padding:0 2px;flex-wrap:wrap}'
     +'#tgx-cw .tgx-demoted button{font-size:11.5px}'
-    /* Input wrap — reduce padding for max body real estate */
-    +'#tgx-cw .tgx-input-wrap{padding:10px 14px 12px;gap:6px}'
-    +'#tgx-cw .tgx-input-inner{padding:3px 3px 3px 14px}'
-    +'#tgx-cw .tgx-input{font-size:16px}' /* 16px stops iOS zoom on focus */
-    +'#tgx-cw .tgx-send{min-width:38px;min-height:38px;width:38px;height:38px}'
+    /* Anchor the demoted footer to the bottom of the home body so the empty
+       space appears in a deliberate-looking band above it, not as dead space
+       below it. */
+    +'#tgx-cw .tgx-demoted{margin-top:auto;padding-top:8px}'
+    /* Input wrap — clearly elevated so it reads as the input zone, not as
+       background. White background, accent border-top, subtle upward shadow. */
+    +'#tgx-cw .tgx-input-wrap{padding:12px 14px 14px;gap:8px;background:#fff;border-top:1px solid rgba(15,26,61,0.10);box-shadow:0 -4px 14px rgba(15,26,61,0.04)}'
+    +'#tgx-cw .tgx-input-inner{padding:4px 4px 4px 16px;border:1.5px solid rgba(15,26,61,0.15);background:#FAFAF6}'
+    +'#tgx-cw .tgx-input-inner:focus-within{border-color:'+C.accentColor+';background:#fff;box-shadow:0 0 0 3px '+C.accentColor+'1F}'
+    +'#tgx-cw .tgx-input{font-size:16px;padding:10px 0}' /* 16px stops iOS zoom on focus */
+    +'#tgx-cw .tgx-send{min-width:42px;min-height:42px;width:42px;height:42px}'
+    +'#tgx-cw .tgx-send svg{width:18px;height:18px}'
     /* Chat view tightening */
     +'#tgx-cw .tgx-msgs{padding:14px 12px;gap:10px}'
     +'#tgx-cw .tgx-bar{padding:10px 12px 12px;gap:8px}'
