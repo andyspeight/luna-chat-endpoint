@@ -2059,8 +2059,10 @@ function injectCSS() {
   +'#tgx-cw .tgx-typing span{display:inline-block;width:6px;height:6px;border-radius:50%;background:#8A92A0;animation:tgxDot 1.4s infinite}'
   +'#tgx-cw .tgx-typing span:nth-child(2){animation-delay:.18s}'
   +'#tgx-cw .tgx-typing span:nth-child(3){animation-delay:.36s}'
-  +'#tgx-cw .tgx-typing-status{font-size:12px;color:#8A92A0;font-style:italic;align-self:center;line-height:1.3;transition:opacity .25s ease;opacity:0;max-width:160px}'
-  +'#tgx-cw .tgx-typing-status.visible{opacity:0.85}'
+  +'#tgx-cw .tgx-typing-status{position:relative;font-size:13px;font-weight:500;color:'+C.accentColor+';align-self:center;line-height:1.4;transition:opacity .25s ease;opacity:0;max-width:220px;padding-left:18px}'
+  +'#tgx-cw .tgx-typing-status::before{content:"";position:absolute;left:0;top:50%;transform:translateY(-50%);width:8px;height:8px;border-radius:50%;background:'+C.accentColor+';box-shadow:0 0 0 0 '+C.accentColor+'80;animation:tgxStatusPulse 1.6s cubic-bezier(0.4,0,0.6,1) infinite}'
+  +'#tgx-cw .tgx-typing-status.visible{opacity:0.95}'
+  +'@keyframes tgxStatusPulse{0%,100%{box-shadow:0 0 0 0 '+C.accentColor+'80}50%{box-shadow:0 0 0 6px '+C.accentColor+'00}}'
 
   // Pills (quick replies)
   +'#tgx-cw .tgx-pills{display:flex;flex-wrap:wrap;gap:8px;padding:4px 16px 8px}'
@@ -3760,6 +3762,14 @@ async function streamFromLuna(userText) {
       try { data = JSON.parse(dataJson); } catch (e) { return; }
       if (eventName === 'meta') {
         if (data.convId) convIdFromMeta = data.convId;
+      } else if (eventName === 'status') {
+        // Phase 3.5: server-supplied real-time status text.
+        // Cancel any pending client-side timers so they don't overwrite the
+        // server's more accurate status with a generic one.
+        stopTypingStatus();
+        if (typeof data.text === 'string' && data.text) {
+          setTypingStatus(data.text);
+        }
       } else if (eventName === 'text') {
         if (typeof data.delta === 'string') appendVisible(data.delta);
       } else if (eventName === 'done') {
@@ -3898,7 +3908,7 @@ function startTypingStatus(visitorText) {
   $status.classList.remove("visible");
   var stage1 = "Thinking…";
   var stage2 = pickStage2Status(visitorText);
-  var stage3 = "Almost there…";
+  var stage3 = "Still working…";
   /* Stage 1 — show after 400ms (avoid flashing on fast responses) */
   _typingStatusTimers.push(setTimeout(function() {
     $status.textContent = stage1;
@@ -3929,6 +3939,21 @@ function stopTypingStatus() {
     $status.classList.remove("visible");
     $status.textContent = "";
   }
+}
+
+// Phase 3.5: set a status text directly with smooth fade transition.
+// Used by SSE status events from the server.
+function setTypingStatus(text) {
+  var $status = document.getElementById("tgxTypingStatus");
+  if (!$status) return;
+  // If text matches what's already shown, do nothing (no flicker)
+  if ($status.textContent === text && $status.classList.contains("visible")) return;
+  // Fade out, swap, fade in
+  $status.classList.remove("visible");
+  setTimeout(function() {
+    $status.textContent = text;
+    $status.classList.add("visible");
+  }, 200);
 }
 
 async function sendToAI(text) {
