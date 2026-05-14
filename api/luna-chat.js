@@ -1,5 +1,6 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const ratelimit = require('../lib/ratelimit');
+const knowledge = require('../lib/knowledge');
 
 // ─── LUNA BRAIN KNOWLEDGE BASE ───
 const LB_BASE = 'appPKx77relfeiqmq';
@@ -2140,6 +2141,24 @@ module.exports = async function handler(req, res) {
             systemPrompt += '\n\n## Contact details\n' + contactParts.join('\n');
           }
 
+          // ── Knowledge fetch — per-client approved Q/A items ──
+          // We have the client record in scope; pull top matching items and inject.
+          var __clientRecordId = pData.records[0].id;
+          var __usedKnowledgeIds = []; // Populated when we strip markers from the reply
+          try {
+            var __items = await knowledge.fetchKnowledgeItems(profileAtKey, __clientRecordId, message, 5);
+            if (__items && __items.length) {
+              systemPrompt += knowledge.formatKnowledgeForPrompt(__items);
+              // Stash on the request scope so post-processing can verify ids if needed
+              req.__lunaKnowledgeContext = { clientRecordId: __clientRecordId, candidates: __items.map(function(i){return i.id;}) };
+            } else {
+              req.__lunaKnowledgeContext = { clientRecordId: __clientRecordId, candidates: [] };
+            }
+          } catch (kErr) {
+            console.warn('[luna-chat] knowledge fetch failed:', kErr.message);
+            req.__lunaKnowledgeContext = { clientRecordId: __clientRecordId, candidates: [] };
+          }
+
           // v2: Emergency phone — used by emergency_card block
           if (f.EmergencyPhone) {
             systemPrompt += '\n\n## Emergency phone\nThe configured emergency phone for this client is: ' + f.EmergencyPhone + '\nUse this exact value as the "phone" and "phoneDisplay" property when rendering emergency_card blocks.';
@@ -2560,6 +2579,27 @@ No problem, drop your email and departure date in below and I'll find it.
           cleanReply = cleanReply.replace(/^\[LANG:[^\]]+\]\s*/, '');
         }
 
+        // Strip [KNOWLEDGE:recXXX] markers and track which items were used.
+        // Fire-and-forget — never block the response on usage tracking.
+        try {
+          var __km = knowledge.extractKnowledgeMarkers(cleanReply);
+          if (__km.ids.length > 0) {
+            cleanReply = __km.cleaned;
+            var __kKey = isTravelgenix ? process.env.AIRTABLE_KEY : atKey;
+            var __kCtx = req.__lunaKnowledgeContext || {};
+            // Only track ids that we actually offered as candidates (defence against hallucinated IDs)
+            var __validIds = (__kCtx.candidates || []).filter(function(id){ return __km.ids.indexOf(id) !== -1; });
+            if (__kKey && __validIds.length) {
+              setImmediate(function(){
+                knowledge.trackKnowledgeUsage(__kKey, __validIds).catch(function(){});
+              });
+              req.__lunaUsedKnowledgeIds = __validIds; // surfaced for conversation logging
+            }
+          }
+        } catch (kmErr) {
+          console.warn('[luna-chat] knowledge marker handling failed:', kmErr.message);
+        }
+
         try {
           var enrichKey = isTravelgenix ? process.env.AIRTABLE_KEY : atKey;
           if (enrichKey) {
@@ -2625,6 +2665,25 @@ No problem, drop your email and departure date in below and I'll find it.
     if (langMatch) {
       detectedLang = langMatch[1].trim();
       cleanReply = replyText.replace(/^\[LANG:[^\]]+\]\s*/, '').trim();
+    }
+
+    // Strip [KNOWLEDGE:recXXX] markers and track which items were used (fire-and-forget).
+    try {
+      var __km2 = knowledge.extractKnowledgeMarkers(cleanReply);
+      if (__km2.ids.length > 0) {
+        cleanReply = __km2.cleaned;
+        var __kKey2 = isTravelgenix ? process.env.AIRTABLE_KEY : atKey;
+        var __kCtx2 = req.__lunaKnowledgeContext || {};
+        var __validIds2 = (__kCtx2.candidates || []).filter(function(id){ return __km2.ids.indexOf(id) !== -1; });
+        if (__kKey2 && __validIds2.length) {
+          setImmediate(function(){
+            knowledge.trackKnowledgeUsage(__kKey2, __validIds2).catch(function(){});
+          });
+          req.__lunaUsedKnowledgeIds = __validIds2;
+        }
+      }
+    } catch (kmErr2) {
+      console.warn('[luna-chat] knowledge marker handling failed:', kmErr2.message);
     }
 
     // Inject curated images into destination_card blocks (server-side enrichment)
