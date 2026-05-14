@@ -612,23 +612,24 @@
     top: 8px;
     right: 8px;
     appearance: none;
-    border: 1px solid var(--border);
-    background: rgba(255,255,255,0.06);
-    color: var(--text);
+    border: none;
+    background: var(--teal);
+    color: #FFFFFF;
     font-family: var(--font);
     font-size: 12px;
     font-weight: 600;
-    padding: 6px 12px;
+    padding: 7px 14px;
     border-radius: 6px;
     cursor: pointer;
-    transition: background 150ms ease, transform 100ms ease, border-color 150ms ease;
+    transition: background 150ms ease, transform 100ms ease, box-shadow 150ms ease;
+    box-shadow: 0 1px 2px rgba(0, 180, 216, 0.3);
   }
-  .embed-copy:hover { background: rgba(255,255,255,0.12); border-color: var(--teal); }
+  .embed-copy:hover { background: var(--teal-dark, #0096B7); box-shadow: 0 2px 6px rgba(0, 180, 216, 0.4); }
   .embed-copy:active { transform: scale(0.97); }
   .embed-copy.copied {
     background: var(--green, #10B981);
-    border-color: var(--green, #10B981);
     color: #fff;
+    box-shadow: 0 1px 2px rgba(16, 185, 129, 0.3);
   }
   /* Sub-tabs */
   .wst-tab {
@@ -6129,11 +6130,40 @@ setTimeout(function () {
   var panel = document.getElementById('settingsPanel');
   if (panel && window.MutationObserver) {
     var obs = new MutationObserver(function() {
-      // Cheap check: if the panel is visible, render the snippet
-      var visible = panel.classList.contains('open') || panel.style.display === 'block' || panel.style.display === 'flex';
-      if (visible) renderInlineSnippet();
+      // Settings panel becomes visible when .active class is added
+      if (panel.classList.contains('active')) renderInlineSnippet();
     });
     obs.observe(panel, { attributes: true, attributeFilter: ['class', 'style'] });
+  }
+  // Also re-render immediately when _toggleSettings is called (in case the class
+  // mutation observer fires before CONFIG.CLIENT_NAME is populated).
+  if (typeof window._toggleSettings === 'function') {
+    var _origToggle = window._toggleSettings;
+    window._toggleSettings = function() {
+      var r = _origToggle.apply(this, arguments);
+      // After toggle, schedule a render to catch late-arriving CONFIG values
+      setTimeout(renderInlineSnippet, 50);
+      setTimeout(renderInlineSnippet, 400);
+      return r;
+    };
+  } else {
+    // _toggleSettings may not be defined yet at this point — wrap it once it appears.
+    var _wrapAttempts = 0;
+    var _wrapIv = setInterval(function() {
+      _wrapAttempts++;
+      if (typeof window._toggleSettings === 'function') {
+        var _orig = window._toggleSettings;
+        window._toggleSettings = function() {
+          var r = _orig.apply(this, arguments);
+          setTimeout(renderInlineSnippet, 50);
+          setTimeout(renderInlineSnippet, 400);
+          return r;
+        };
+        clearInterval(_wrapIv);
+      } else if (_wrapAttempts > 100) {
+        clearInterval(_wrapIv);
+      }
+    }, 100);
   }
   // Copy handler for the inline section
   window._copyEmbedSnippetInline = function(btn) {
