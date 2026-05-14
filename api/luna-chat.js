@@ -2584,7 +2584,7 @@ No problem, drop your email and departure date in below and I'll find it.
 
         // Strip [KNOWLEDGE:recXXX] markers and track which items were used.
         // Detection strategy: prefer markers if emitted, fall back to substance similarity.
-        // Fire-and-forget — never block the response on usage tracking.
+        // NOTE: must await — Vercel kills fire-and-forget work when the function returns.
         try {
           var __km = knowledge.extractKnowledgeMarkers(cleanReply);
           var __kCtx = req.__lunaKnowledgeContext || {};
@@ -2595,8 +2595,9 @@ No problem, drop your email and departure date in below and I'll find it.
           if (__usedIds.length) {
             var __kKey = isTravelgenix ? process.env.AIRTABLE_KEY : atKey;
             if (__kKey) {
-              setImmediate(function(){
-                knowledge.trackKnowledgeUsage(__kKey, __usedIds).catch(function(){});
+              // Await — Vercel terminates unawaited promises on function return
+              await knowledge.trackKnowledgeUsage(__kKey, __usedIds).catch(function(e){
+                console.warn('[luna-chat] track usage failed:', e.message);
               });
               req.__lunaUsedKnowledgeIds = __usedIds; // surfaced for conversation logging
             }
@@ -2672,7 +2673,8 @@ No problem, drop your email and departure date in below and I'll find it.
       cleanReply = replyText.replace(/^\[LANG:[^\]]+\]\s*/, '').trim();
     }
 
-    // Strip [KNOWLEDGE:recXXX] markers and infer which items were used (fire-and-forget).
+    // Strip [KNOWLEDGE:recXXX] markers and infer which items were used.
+    // NOTE: must await — Vercel kills fire-and-forget work when the function returns.
     try {
       var __km2 = knowledge.extractKnowledgeMarkers(cleanReply);
       var __kCtx2 = req.__lunaKnowledgeContext || {};
@@ -2683,8 +2685,8 @@ No problem, drop your email and departure date in below and I'll find it.
       if (__usedIds2.length) {
         var __kKey2 = isTravelgenix ? process.env.AIRTABLE_KEY : atKey;
         if (__kKey2) {
-          setImmediate(function(){
-            knowledge.trackKnowledgeUsage(__kKey2, __usedIds2).catch(function(){});
+          await knowledge.trackKnowledgeUsage(__kKey2, __usedIds2).catch(function(e){
+            console.warn('[luna-chat] track usage failed:', e.message);
           });
           req.__lunaUsedKnowledgeIds = __usedIds2;
         }
