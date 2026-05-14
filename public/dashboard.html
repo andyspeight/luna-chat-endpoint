@@ -3263,7 +3263,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     { label:'Lime', value:'#84CC16' }, { label:'Orange', value:'#F97316' },
     { label:'Sky', value:'#38BDF8' }, { label:'Fuchsia', value:'#D946EF' }
   ];
-  const WIDGET_SIZES = { small: 'Small', medium: 'Medium', large: 'Large' };
+  const WIDGET_SIZES = { small: 'Small', medium: 'Medium', large: 'Large', xlarge: 'X-Large' };
   const FAB_POSITIONS = {
     'bottom-right': 'Bottom Right', 'bottom-left': 'Bottom Left',
     'mid-right': 'Side Right', 'mid-left': 'Side Left'
@@ -3374,7 +3374,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
 
   function renderSizeGrid() {
     var el = document.getElementById('sizeGrid');
-    var dims = { small: { w: 22, h: 28, pw: '340', ph: '480' }, medium: { w: 26, h: 34, pw: '380', ph: '560' }, large: { w: 30, h: 40, pw: '420', ph: '640' } };
+    var dims = { small: { w: 22, h: 28, pw: '340', ph: '480' }, medium: { w: 26, h: 34, pw: '380', ph: '560' }, large: { w: 30, h: 40, pw: '420', ph: '640' }, xlarge: { w: 34, h: 48, pw: '546', ph: '832' } };
     el.innerHTML = Object.entries(WIDGET_SIZES).map(([k, label]) => {
       var active = selectedSize === k;
       var d = dims[k];
