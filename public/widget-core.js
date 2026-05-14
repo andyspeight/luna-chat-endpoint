@@ -1397,6 +1397,47 @@ var SIZES = {
 };
 function getSize() { return SIZES[C.widgetSize] || SIZES.medium; }
 
+/* ─── PAGE CONTEXT GATHERING (Phase 3) ────────────────────
+   Returns rich context about the page the visitor is on, sent to the backend
+   on each /api/luna-chat call so Luna can craft contextual opening messages
+   and stay aware of where the visitor is. Trimmed to ~1.5KB to keep tokens
+   under control. */
+function gatherPageContext() {
+  try {
+    var title = (document.title || '').slice(0, 200);
+    var path = window.location.pathname || '/';
+    // Prefer page author hint if provided
+    var metaTag = document.querySelector('meta[name="luna-context"]');
+    var primary = metaTag ? (metaTag.getAttribute('content') || '').trim() : '';
+    if (!primary) {
+      // Extract from likely content containers
+      var roots = ['main', 'article', '[role=main]', '#main', '#content', '.content', 'body'];
+      for (var i = 0; i < roots.length; i++) {
+        var el = document.querySelector(roots[i]);
+        if (!el) continue;
+        // Clone, strip nav/footer/aside/script/style/luna's own UI
+        var clone = el.cloneNode(true);
+        var killSel = 'nav,header,footer,aside,script,style,noscript,#tgx-cw,.tgx-cw,form,iframe';
+        var kills = clone.querySelectorAll(killSel);
+        for (var k = 0; k < kills.length; k++) kills[k].parentNode && kills[k].parentNode.removeChild(kills[k]);
+        var text = (clone.textContent || '').replace(/\s+/g, ' ').trim();
+        if (text.length > 80) {
+          primary = text.slice(0, 1200);
+          break;
+        }
+      }
+    }
+    return { title: title, path: path, url: window.location.href, primaryContent: primary };
+  } catch(e) {
+    return { title: document.title || '', path: window.location.pathname || '/', url: window.location.href, primaryContent: '' };
+  }
+}
+
+/* Cache the gathered context per session — we recompute on each open in case
+   the visitor has navigated, but within a single open use the cached snapshot. */
+var _currentPageContext = null;
+
+
 /* ─── BOOKING LOOKUP INTEGRATION (tg-widgets bridge) ─────── */
 /* Loads widget-mybooking.js cross-origin on demand and instantiates a compact
    booking widget inside a chat bubble when Luna outputs the marker. */
@@ -1832,6 +1873,12 @@ function injectCSS() {
   // Panel — cream, soft shadow
   +'#tgx-cw .tgx-panel{position:fixed;bottom:'+((isMid?'50%':'96px'))+';'+panelSide+';width:'+sz.w+'px;height:'+sz.h+'px;max-width:calc(100vw - 32px);max-height:calc(100vh - 120px);background:#FAFAF6;border-radius:'+C.radius+';border:1px solid rgba(15,26,61,0.08);box-shadow:0 32px 80px rgba(15,26,61,0.25),0 12px 24px rgba(15,26,61,0.12);display:flex;flex-direction:column;overflow:hidden;z-index:999999;opacity:0;visibility:hidden;transform:translateY(16px) scale(0.96);transition:opacity .3s cubic-bezier(.22,1,.36,1),transform .3s cubic-bezier(.22,1,.36,1),visibility .3s}'
   +(isMid?'#tgx-cw .tgx-panel{transform:translateY(calc(-50% + 16px)) scale(0.96)}#tgx-cw .tgx-panel.open{transform:translateY(-50%) scale(1)}':'')
+  +'#tgx-cw .tgx-panel{transition:opacity .3s cubic-bezier(.22,1,.36,1),transform .3s cubic-bezier(.22,1,.36,1),visibility .3s,width .35s cubic-bezier(.22,1,.36,1),height .35s cubic-bezier(.22,1,.36,1)}'
+  +'#tgx-cw .tgx-panel.expanded{width:min(720px,calc(100vw - 48px));height:min(900px,calc(100vh - 120px))}'
+  +'#tgx-cw .tgx-expand-btn{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:transparent;border:none;color:rgba(255,255,255,0.85);cursor:pointer;transition:background .15s ease,color .15s ease}'
+  +'#tgx-cw .tgx-expand-btn:hover{background:rgba(255,255,255,0.12);color:#fff}'
+  +'#tgx-cw .tgx-expand-btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}'
+  +'@media(max-width:480px){#tgx-cw .tgx-expand-btn{display:none}#tgx-cw .tgx-panel.expanded{width:100vw;width:100dvw;height:100vh;height:100dvh}}'
   +'#tgx-cw .tgx-panel.open{opacity:1;visibility:visible;transform:translateY(0) scale(1)}'
 
   // Header — compact, gradient with inset highlight + corner glow
@@ -2503,6 +2550,7 @@ function buildDOM() {
         +'<div id="tgxChatAvatar"></div>'
         +'<div style="flex:1;min-width:0"><div class="tgx-hdr-name" id="tgxChatName" style="font-size:14px"></div><div class="tgx-hdr-sub"><div class="tgx-status"></div>Online</div></div>'
         +'<button class="tgx-hdr-btn" id="tgxClearChat" title="Start a new conversation" aria-label="Start a new conversation"></button>'
+        +'<button class="tgx-expand-btn tgx-hdr-btn" id="tgxExpandBtn" title="Expand window" aria-label="Expand window"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>'
         +'<button class="tgx-hdr-btn" id="tgxChatClose"></button>'
       +'</div>'
       +'<div class="tgx-date" id="tgxDateDiv">Today</div>'
@@ -3612,6 +3660,9 @@ async function streamFromLuna(userText) {
     clientName: C.clientName, history: history.slice(-16), page: window.location.pathname,
     stream: true
   };
+  if (_currentPageContext && typeof _currentPageContext === "object") {
+    requestBody.pageContext = _currentPageContext;
+  }
   if (_currentBookingContext && typeof _currentBookingContext === "object") {
     requestBody.bookingContext = _currentBookingContext;
   }
@@ -4532,15 +4583,33 @@ async function boot() {
   initVoiceInput();
 
   /* Open/close */
-  function openChat() {
+  // Track whether the widget is currently in expanded mode.
+  var expandedMode = false;
+  // Track whether we've already greeted with a contextual opener this session.
+  var contextualOpenerSent = false;
+
+  function openChat(opts) {
+    opts = opts || {};
     cancelAutoTrigger();
     panelOpen = true;
+    // Always refresh page context on open — visitor may have navigated.
+    _currentPageContext = gatherPageContext();
+    if (opts.expanded) {
+      expandedMode = true;
+      $panel.classList.add("expanded");
+    }
     $panel.classList.add("open");
     $fab.classList.add("open");
     unread = 0;
     $badge.style.display = "none";
     if (!nameCollected && C.collectName) {
       showNameOverlay();
+    }
+    // If expanded mode AND no prior chat AND no contextual opener fired yet,
+    // request a contextual opener from the backend (fire and forget — startChat
+    // already fired the generic welcome; we replace it once context lands).
+    if (opts.expanded && !contextualOpenerSent && msgs.length <= 1) {
+      requestContextualOpener();
     }
   }
   function closeChat() {
@@ -4549,8 +4618,67 @@ async function boot() {
     $fab.classList.remove("open");
   }
 
+  function toggleExpanded() {
+    expandedMode = !expandedMode;
+    $panel.classList.toggle("expanded", expandedMode);
+    // Update icon
+    var btn = document.getElementById("tgxExpandBtn");
+    if (btn) {
+      btn.title = expandedMode ? "Shrink window" : "Expand window";
+      btn.setAttribute("aria-label", expandedMode ? "Shrink window" : "Expand window");
+    }
+  }
+
+  /* Request a contextual opener from the backend by sending the page context
+     with a special flag. We send it via the regular fetch (not streaming)
+     since we want one short greeting line, not a full response. */
+  function requestContextualOpener() {
+    if (contextualOpenerSent) return;
+    if (!_currentPageContext || !_currentPageContext.title) return;
+    contextualOpenerSent = true;
+    fetch(C.endpoint, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        clientName: C.clientName,
+        convId: convId,
+        history: [],
+        pageContext: _currentPageContext,
+        page: _currentPageContext.path,
+        openerRequest: true,
+        stream: false
+      })
+    }).then(function(r) {
+      if (!r.ok) return null;
+      return r.json();
+    }).then(function(data) {
+      if (!data || !data.reply) return;
+      // Replace the generic welcome bubble with the contextual one. We do this
+      // gently — if the visitor has already interacted, we just add the
+      // contextual opener as an additional message.
+      if (msgs.length === 1 && msgs[0].role === "assistant") {
+        // Update the existing welcome bubble
+        var bubbles = $msgs.querySelectorAll('.tgx-msg.bot');
+        if (bubbles.length === 1) {
+          bubbles[0].textContent = '';
+          renderSafeMarkdown(bubbles[0], data.reply);
+          msgs[0].content = data.reply;
+          return;
+        }
+      }
+      // Visitor has interacted already, or DOM structure unexpected — append
+      // as an additional bot message rather than overwriting.
+      addMsg("bot", data.reply);
+    }).catch(function(e) {
+      console.warn("Luna contextual opener failed:", e && e.message);
+    });
+  }
+
   document.getElementById("tgxHomeClose").addEventListener("click", closeChat);
   document.getElementById("tgxChatClose").addEventListener("click", closeChat);
+  // Expand toggle button — present in chat header only (hidden on mobile)
+  var _expBtn = document.getElementById("tgxExpandBtn");
+  if (_expBtn) _expBtn.addEventListener("click", toggleExpanded);
 
   $fab.addEventListener("click", function(){
     if (panelOpen) closeChat(); else openChat();
@@ -4558,6 +4686,32 @@ async function boot() {
 
   window.openLunaChat = openChat;
   window.closeLunaChat = closeChat;
+  window.expandLunaChat = function() {
+    openChat({ expanded: true });
+  };
+
+  // Phase 3 trigger — clicking any element with data-luna-expanded="true"
+  // opens the widget in expanded mode with a contextual opener.
+  document.addEventListener('click', function(e) {
+    var el = e.target;
+    while (el && el !== document.body) {
+      if (el.getAttribute && el.getAttribute('data-luna-expanded') === 'true') {
+        e.preventDefault();
+        e.stopPropagation();
+        window.expandLunaChat();
+        return;
+      }
+      el = el.parentElement;
+    }
+  });
+
+  // ?luna=expanded URL param — opens expanded mode on page load
+  try {
+    var _params = new URLSearchParams(window.location.search);
+    if (_params.get('luna') === 'expanded') {
+      setTimeout(function() { window.expandLunaChat(); }, 800);
+    }
+  } catch(e) { /* no URLSearchParams in very old browsers — ignore */ }
 
   loadAbly(function(){ initAbly(); });
 
