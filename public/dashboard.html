@@ -587,6 +587,49 @@
   .settings-hint {
     font-size:var(--text-xs); color:var(--text-muted); margin-top:var(--space-1); line-height:1.4;
   }
+  /* Embed code section in Settings */
+  .embed-codewrap {
+    position: relative;
+    background: var(--navy);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+  .embed-code {
+    margin: 0;
+    padding: 14px 16px;
+    padding-right: 92px;
+    font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', Menlo, monospace;
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-all;
+    overflow-x: auto;
+  }
+  .embed-copy {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    appearance: none;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.06);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 150ms ease, transform 100ms ease, border-color 150ms ease;
+  }
+  .embed-copy:hover { background: rgba(255,255,255,0.12); border-color: var(--teal); }
+  .embed-copy:active { transform: scale(0.97); }
+  .embed-copy.copied {
+    background: var(--green, #10B981);
+    border-color: var(--green, #10B981);
+    color: #fff;
+  }
   /* Sub-tabs */
   .wst-tab {
     flex:1; padding:8px 0; border-radius:8px; font-size:12px; font-weight:600;
@@ -1595,6 +1638,17 @@
   <div class="settings-overlay" id="settingsPanel">
     <div class="settings-title">Business Profile</div>
     <div class="settings-sub">Tell Luna about your business. The more she knows, the better she can help your website visitors. Just write naturally — Luna reads everything and uses it to answer questions.</div>
+
+    <!-- Embed code — top of Settings, first thing the user sees -->
+    <div class="settings-section" id="embedCodeSection">
+      <h4>Embed Luna on your website</h4>
+      <div class="settings-hint" style="margin-top:-4px;margin-bottom:12px">Copy this one line and paste it into your website, just before the closing &lt;/body&gt; tag. Luna will start working on every page automatically.</div>
+      <div class="embed-codewrap">
+        <pre class="embed-code" id="embedCodeSnippet"></pre>
+        <button type="button" class="embed-copy" id="embedCopyBtn" onclick="window._copyEmbedSnippetInline(this)">Copy</button>
+      </div>
+      <div class="settings-hint" style="margin-top:10px">Need to test it first? Add <code style="background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:4px;font-size:11px">?lunaTest=1</code> to any page on your site to verify Luna loads before going live.</div>
+    </div>
 
     <div class="settings-section">
       <h4>About Your Business</h4>
@@ -6051,6 +6105,68 @@ setTimeout(function () {
   </div>
 </div>
 
+
+<!-- Inline embed code section in Settings — render snippet on panel open -->
+<script>
+(function() {
+  'use strict';
+  function buildInlineSnippet() {
+    var name = (window.CONFIG && window.CONFIG.CLIENT_NAME) || 'YOUR_CLIENT_NAME';
+    var src = 'https://widgets.travelify.io/widget-core.js';
+    return '<script src="' + src + '" data-client-name="' + name + '" defer><\/script>';
+  }
+  function renderInlineSnippet() {
+    var el = document.getElementById('embedCodeSnippet');
+    if (el) el.textContent = buildInlineSnippet();
+  }
+  // Render once at boot (in case Settings is opened immediately)
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', renderInlineSnippet);
+  } else {
+    renderInlineSnippet();
+  }
+  // Re-render every time the settings panel opens (CONFIG.CLIENT_NAME may load later)
+  var panel = document.getElementById('settingsPanel');
+  if (panel && window.MutationObserver) {
+    var obs = new MutationObserver(function() {
+      // Cheap check: if the panel is visible, render the snippet
+      var visible = panel.classList.contains('open') || panel.style.display === 'block' || panel.style.display === 'flex';
+      if (visible) renderInlineSnippet();
+    });
+    obs.observe(panel, { attributes: true, attributeFilter: ['class', 'style'] });
+  }
+  // Copy handler for the inline section
+  window._copyEmbedSnippetInline = function(btn) {
+    var el = document.getElementById('embedCodeSnippet');
+    var text = el ? el.textContent : '';
+    if (!text) return;
+    var done = function(ok) {
+      if (!ok) { btn.textContent = 'Press Ctrl+C'; return; }
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(function() {
+        btn.classList.remove('copied');
+        btn.textContent = 'Copy';
+      }, 1600);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function(){done(true);}, function(){done(false);});
+    } else {
+      try {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        var ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        done(ok);
+      } catch (e) { done(false); }
+    }
+  };
+})();
+</script>
 
 <!-- ═══════════════════════════════════════════════════════════
      GET CODE MODAL  (added by splice-getcode-modal.js)
