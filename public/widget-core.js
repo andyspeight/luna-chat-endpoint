@@ -4597,6 +4597,9 @@ async function boot() {
     if (opts.expanded) {
       expandedMode = true;
       $panel.classList.add("expanded");
+      // Expanded mode skips the home screen — drop visitor straight into chat.
+      // switchToChat() handles startChat() if msgs is empty.
+      switchToChat();
     }
     $panel.classList.add("open");
     $fab.classList.add("open");
@@ -4606,8 +4609,9 @@ async function boot() {
       showNameOverlay();
     }
     // If expanded mode AND no prior chat AND no contextual opener fired yet,
-    // request a contextual opener from the backend (fire and forget — startChat
-    // already fired the generic welcome; we replace it once context lands).
+    // request a contextual opener from the backend. By now startChat() has
+    // run (via switchToChat above) so there's exactly one welcome bubble
+    // in the DOM that we can replace once the contextual reply arrives.
     if (opts.expanded && !contextualOpenerSent && msgs.length <= 1) {
       requestContextualOpener();
     }
@@ -4626,6 +4630,17 @@ async function boot() {
     if (btn) {
       btn.title = expandedMode ? "Shrink window" : "Expand window";
       btn.setAttribute("aria-label", expandedMode ? "Shrink window" : "Expand window");
+    }
+    // If user manually expanded BEFORE any chat happened, fire contextual opener.
+    // Treat this the same as opening in expanded mode — user is signalling they
+    // want a richer conversation.
+    if (expandedMode && !contextualOpenerSent && msgs.length <= 1) {
+      // Make sure we're on chat screen — manual expand from home screen should
+      // jump to chat too.
+      if (currentScreen !== "chat") switchToChat();
+      // Refresh page context in case visitor has navigated.
+      _currentPageContext = gatherPageContext();
+      requestContextualOpener();
     }
   }
 
@@ -4656,12 +4671,14 @@ async function boot() {
       // Replace the generic welcome bubble with the contextual one. We do this
       // gently — if the visitor has already interacted, we just add the
       // contextual opener as an additional message.
-      if (msgs.length === 1 && msgs[0].role === "assistant") {
+      if (msgs.length === 1 && msgs[0].role === "bot") {
         // Update the existing welcome bubble
         var bubbles = $msgs.querySelectorAll('.tgx-msg.bot');
-        if (bubbles.length === 1) {
-          bubbles[0].textContent = '';
-          renderSafeMarkdown(bubbles[0], data.reply);
+        if (bubbles.length >= 1) {
+          // Use the LAST .tgx-msg.bot (in case there are non-message bot-styled elements)
+          var bubble = bubbles[bubbles.length - 1];
+          bubble.textContent = '';
+          renderSafeMarkdown(bubble, data.reply);
           msgs[0].content = data.reply;
           return;
         }
