@@ -185,8 +185,9 @@ async function actionFeed(atKey, clientRecordId, clientName) {
     return {
       id: rec.id,
       question: f.Question || '',
-      answer: (f.Answer || '').slice(0, 300),
+      answer: f.Answer || '',
       type: valueOf(f.Type) || '',
+      status: valueOf(f.Status) || 'Active',
       confidence: valueOf(f.Confidence) || '',
       source: valueOf(f.Source) || '',
       timesUsed: f.TimesUsed || 0,
