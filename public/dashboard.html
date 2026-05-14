@@ -4842,8 +4842,7 @@ function renderWelcomePanel() {
       } else if (action === 'settings') {
         if (typeof window._toggleSettings === 'function') window._toggleSettings();
       } else if (action === 'embed') {
-        // Embed code lives in settings → advanced tab. Open settings for now.
-        if (typeof window._toggleSettings === 'function') window._toggleSettings();
+        if (typeof window._openGetCodeModal === 'function') window._openGetCodeModal();
       }
     });
   });
@@ -6051,6 +6050,242 @@ setTimeout(function () {
     </div>
   </div>
 </div>
+
+
+<!-- ═══════════════════════════════════════════════════════════
+     GET CODE MODAL  (added by splice-getcode-modal.js)
+     Lets the user copy the one-line embed snippet for their site.
+     ═══════════════════════════════════════════════════════════ -->
+<style>
+  #lunaGetCodeModal {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    background: rgba(15, 23, 42, 0.55);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+    animation: lunaGcFade 180ms ease-out;
+  }
+  #lunaGetCodeModal[data-open="true"] { display: flex; }
+  @keyframes lunaGcFade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes lunaGcSlide {
+    from { opacity: 0; transform: translateY(8px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .luna-gc-panel {
+    background: #FAFAF6;
+    color: #0F1A3D;
+    max-width: 560px;
+    width: 100%;
+    border-radius: 16px;
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.30), 0 4px 12px rgba(15, 23, 42, 0.10);
+    overflow: hidden;
+    animation: lunaGcSlide 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  .luna-gc-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid #E5E2D9;
+  }
+  .luna-gc-title {
+    margin: 0;
+    font-family: 'Fraunces', Georgia, serif;
+    font-weight: 500;
+    font-size: 22px;
+    letter-spacing: -0.015em;
+    color: #0F1A3D;
+    line-height: 1.2;
+  }
+  .luna-gc-close {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    cursor: pointer;
+    color: #64748B;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 150ms ease, color 150ms ease;
+  }
+  .luna-gc-close:hover { background: #EFE8DD; color: #0F1A3D; }
+  .luna-gc-close svg { display: block; }
+  .luna-gc-body { padding: 20px 24px 24px; }
+  .luna-gc-intro {
+    margin: 0 0 16px;
+    font-size: 14px;
+    color: #475569;
+    line-height: 1.55;
+  }
+  .luna-gc-intro strong { color: #0F1A3D; font-weight: 600; }
+  .luna-gc-codewrap {
+    position: relative;
+    background: #0F1A3D;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 14px;
+  }
+  .luna-gc-code {
+    margin: 0;
+    padding: 16px 18px;
+    padding-right: 100px;
+    font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', Menlo, monospace;
+    font-size: 12px;
+    line-height: 1.55;
+    color: #F8FAFC;
+    white-space: pre-wrap;
+    word-break: break-all;
+    overflow-x: auto;
+  }
+  .luna-gc-copy {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    appearance: none;
+    border: 1px solid rgba(255,255,255,0.18);
+    background: rgba(255,255,255,0.10);
+    color: #F8FAFC;
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 7px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 150ms ease, transform 100ms ease;
+  }
+  .luna-gc-copy:hover { background: rgba(255,255,255,0.18); }
+  .luna-gc-copy:active { transform: scale(0.97); }
+  .luna-gc-copy.copied {
+    background: #10B981;
+    border-color: #10B981;
+    color: white;
+  }
+  .luna-gc-tip {
+    margin: 0;
+    font-size: 13px;
+    color: #64748B;
+    line-height: 1.55;
+  }
+  .luna-gc-tip code {
+    background: #EFE8DD;
+    color: #0F1A3D;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', 'SF Mono', monospace;
+    font-size: 11px;
+  }
+  @media (max-width: 480px) {
+    .luna-gc-panel { border-radius: 14px; }
+    .luna-gc-head { padding: 16px 18px 12px; }
+    .luna-gc-title { font-size: 20px; }
+    .luna-gc-body { padding: 16px 18px 20px; }
+    .luna-gc-code { font-size: 11px; padding: 14px 14px; padding-right: 86px; }
+  }
+</style>
+
+<div id="lunaGetCodeModal" role="dialog" aria-modal="true" aria-labelledby="lunaGcTitle">
+  <div class="luna-gc-panel" role="document">
+    <div class="luna-gc-head">
+      <h2 class="luna-gc-title" id="lunaGcTitle">Your embed code</h2>
+      <button type="button" class="luna-gc-close" aria-label="Close" onclick="window._closeGetCodeModal()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18"></path><path d="M6 6L18 18"></path></svg>
+      </button>
+    </div>
+    <div class="luna-gc-body">
+      <p class="luna-gc-intro">Paste this one line into your website, just before the closing <strong>&lt;/body&gt;</strong> tag. Luna will start working on every page automatically.</p>
+      <div class="luna-gc-codewrap">
+        <pre class="luna-gc-code" id="lunaGcCode"></pre>
+        <button type="button" class="luna-gc-copy" id="lunaGcCopy" onclick="window._copyGetCodeSnippet(this)">Copy</button>
+      </div>
+      <p class="luna-gc-tip">Need to test it first? Add <code>?lunaTest=1</code> to any page on your site to verify Luna loads before going live.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  var modal = document.getElementById('lunaGetCodeModal');
+  var codeEl = document.getElementById('lunaGcCode');
+
+  function buildSnippet() {
+    var name = (window.CONFIG && window.CONFIG.CLIENT_NAME) || 'YOUR_CLIENT_NAME';
+    var src = 'https://widgets.travelify.io/widget-core.js';
+    return '<script src="' + src + '" data-client-name="' + name + '" defer><\/script>';
+  }
+
+  window._openGetCodeModal = function() {
+    if (!modal || !codeEl) return;
+    codeEl.textContent = buildSnippet();
+    modal.setAttribute('data-open', 'true');
+    document.body.style.overflow = 'hidden';
+    // Reset copy button state
+    var btn = document.getElementById('lunaGcCopy');
+    if (btn) { btn.classList.remove('copied'); btn.textContent = 'Copy'; }
+  };
+
+  window._closeGetCodeModal = function() {
+    if (!modal) return;
+    modal.removeAttribute('data-open');
+    document.body.style.overflow = '';
+  };
+
+  window._copyGetCodeSnippet = function(btn) {
+    var text = codeEl ? codeEl.textContent : '';
+    if (!text) return;
+    var done = function(ok) {
+      if (!ok) { btn.textContent = 'Press Ctrl+C'; return; }
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(function() {
+        btn.classList.remove('copied');
+        btn.textContent = 'Copy';
+      }, 1600);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function() { done(true); }, function() { done(false); });
+    } else {
+      // Legacy fallback
+      try {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        var ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        done(ok);
+      } catch (e) { done(false); }
+    }
+  };
+
+  // Click-outside-to-close
+  if (modal) {
+    modal.addEventListener('click', function(e) {
+      if (e.target === modal) window._closeGetCodeModal();
+    });
+  }
+
+  // Escape key to close
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && modal && modal.getAttribute('data-open') === 'true') {
+      window._closeGetCodeModal();
+    }
+  });
+})();
+</script>
 
 </body>
 </html>
