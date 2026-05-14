@@ -2051,6 +2051,18 @@ module.exports = async function handler(req, res) {
   const visitorName = sanitizeInput(body.visitorName);
   const message = sanitizeInput(body.message);
   const page = sanitizeInput(body.page);
+  // Phase 3: page context (title + primary content) for richer awareness.
+  // All fields go through sanitizeInput (HTML-strip + 2KB cap).
+  const pageContext = (body.pageContext && typeof body.pageContext === 'object') ? {
+    title: sanitizeInput(body.pageContext.title || ''),
+    path: sanitizeInput(body.pageContext.path || ''),
+    url: sanitizeInput(body.pageContext.url || ''),
+    primaryContent: sanitizeInput(body.pageContext.primaryContent || '')
+  } : null;
+  // Phase 3: opener request — widget asks Luna to greet the visitor based on
+  // the page they're on. We synthesize a user message so the existing flow
+  // handles it the same way as any other turn.
+  const openerRequest = body.openerRequest === true;
   const clientName = sanitizeInput(body.clientName);
   const bookingContext = sanitizeBookingContext(body.bookingContext);
   const history = Array.isArray(body.history) ? body.history.map(h => ({
@@ -2062,7 +2074,14 @@ module.exports = async function handler(req, res) {
   // We respond with text/event-stream instead of JSON.
   const wantStream = body.stream === true || (req.query && req.query.stream === '1');
 
-  if (!message) {
+  // Phase 3: synthesize a user message when this is an opener request.
+  // We DON'T mutate the input `message` (it's const) — instead, set a separate
+  // variable used downstream. The guard below is then bypassed by openerRequest.
+  let effectiveMessage = message;
+  if (openerRequest && !effectiveMessage) {
+    effectiveMessage = '[OPENER]'; // marker — handled in the system prompt below
+  }
+  if (!effectiveMessage) {
     return res.status(400).json({ error: 'Missing or invalid message' });
   }
 
@@ -2094,17 +2113,20 @@ module.exports = async function handler(req, res) {
     });
   }
 
-  const modResult = moderateContent(message, convId);
-  if (!modResult.allowed) {
-    return res.status(200).json({
-      reply: modResult.message,
-      escalate: false,
-      moderated: true,
-      blocked: modResult.blocked || false
-    });
+  // Phase 3: skip moderation for opener requests (no user content to moderate)
+  if (!openerRequest) {
+    const modResult = moderateContent(message, convId);
+    if (!modResult.allowed) {
+      return res.status(200).json({
+        reply: modResult.message,
+        escalate: false,
+        moderated: true,
+        blocked: modResult.blocked || false
+      });
+    }
   }
 
-  const claudeMessages = buildMessages(history, message);
+  const claudeMessages = buildMessages(history, effectiveMessage);
 
   const isTravelgenix = (clientName || '').toLowerCase().includes('travelgenix');
   let systemPrompt = isTravelgenix ? LUNA_TRAVELGENIX : LUNA_CLIENT;
@@ -2436,7 +2458,31 @@ No problem, drop your email and departure date in below and I'll find it.
     systemPrompt += ctxLines.join('\n');
   }
 
-  if (page) systemPrompt += `\nThe visitor is currently viewing: ${page}`;
+  // Phase 3: richer page context if provided by the widget
+  if (pageContext && pageContext.title) {
+    systemPrompt += '\n\n=== PAGE CONTEXT ===\n';
+    systemPrompt += 'The visitor is currently on this page:\n';
+    systemPrompt += '  Title: ' + pageContext.title + '\n';
+    if (pageContext.path) systemPrompt += '  Path:  ' + pageContext.path + '\n';
+    if (pageContext.primaryContent) {
+      systemPrompt += '\nMain content visible to the visitor (first ~200 words):\n';
+      systemPrompt += pageContext.primaryContent.slice(0, 1200) + '\n';
+    }
+    systemPrompt += '\nUse this awareness to make your responses feel grounded in what the visitor is actually looking at. Reference the page topic when it helps. Do not list everything you "see" on the page — that\'s creepy; just be subtly informed.\n';
+  } else if (page) {
+    systemPrompt += '\nThe visitor is currently viewing: ' + page;
+  }
+  if (openerRequest) {
+    systemPrompt += '\n\n=== CONTEXTUAL OPENER REQUEST ===\n';
+    systemPrompt += 'This is the visitor\'s FIRST interaction. They have just opened the chat window in expanded mode. Compose a SHORT, warm opening greeting (1-2 sentences max) that:\n';
+    systemPrompt += '- References the page they\'re on (subtly, naturally)\n';
+    systemPrompt += '- Offers a concrete next step or question relevant to that page\n';
+    systemPrompt += '- Does NOT include "[OPENER]" or any meta markers in your reply\n';
+    systemPrompt += '- Does NOT say "Hi there" or generic openers — be specific to the page\n';
+    systemPrompt += 'Example for a Greek Islands page: "I see you\'re looking at our Greek islands — Mykonos and Santorini get most of the attention, but tell me what kind of trip you\'re after and I can narrow it down."\n';
+    systemPrompt += 'Example for a transfers page: "Airport transfers can be the difference between a great holiday and a stressful arrival. Where are you flying into?"\n';
+    systemPrompt += 'Keep it conversational, never markdowny, never bullet-pointed.';
+  }
   if (visitorName) systemPrompt += `\nThe visitor's name is ${visitorName}.`;
 
   var useHaiku = false;
