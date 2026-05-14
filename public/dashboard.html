@@ -544,6 +544,264 @@
     overflow-y:auto; padding:var(--space-8); z-index:10;
   }
   .settings-overlay.active { display:block; }
+  /* ── BRAIN PANEL (Knowledge & Quality) ── */
+  .brain-overlay {
+    display:none; grid-column:2/4; grid-row:2; background:var(--navy);
+    overflow-y:auto; padding:var(--space-8); z-index:10;
+  }
+  .brain-overlay.active { display:block; }
+  .brain-head { margin-bottom:var(--space-6); padding-bottom:var(--space-4); border-bottom:1px solid var(--border); }
+  .brain-title {
+    font-size:var(--text-xl); font-weight:700; color:var(--text);
+    letter-spacing:-0.01em; line-height:1.2;
+  }
+  .brain-title em { font-style:italic; color:var(--teal); font-weight:600; }
+  .brain-sub { font-size:var(--text-sm); color:var(--text-dim); margin-top:var(--space-1); }
+
+  /* Summary cards */
+  .brain-summary {
+    display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));
+    gap:var(--space-3); margin-bottom:var(--space-8);
+  }
+  .brain-stat {
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg);
+    padding:var(--space-4) var(--space-5);
+    transition:border-color .2s ease, transform .2s ease;
+  }
+  .brain-stat:hover { border-color:var(--navy-mid); transform:translateY(-1px); }
+  .brain-stat-label {
+    font-size:var(--text-xs); font-weight:600; color:var(--text-muted);
+    text-transform:uppercase; letter-spacing:1.2px; margin-bottom:var(--space-2);
+  }
+  .brain-stat-value {
+    font-size:32px; font-weight:700; color:var(--text); letter-spacing:-0.02em; line-height:1;
+  }
+  .brain-stat-suffix {
+    font-size:var(--text-base); color:var(--text-muted); font-weight:400; margin-left:var(--space-1);
+  }
+  .brain-stat-sub { margin-top:var(--space-1); font-size:var(--text-xs); color:var(--text-dim); }
+
+  /* Sections */
+  .brain-section { margin-bottom:var(--space-10); }
+  .brain-section-head {
+    display:flex; align-items:baseline; justify-content:space-between; gap:var(--space-4);
+    margin-bottom:var(--space-4);
+  }
+  .brain-section-head h3 {
+    font-size:var(--text-lg); font-weight:700; color:var(--text); letter-spacing:-0.01em;
+  }
+  .brain-section-head p {
+    font-size:var(--text-xs); color:var(--text-dim); max-width:480px; text-align:right; line-height:1.5;
+  }
+  .brain-count-pill {
+    display:inline-flex; align-items:center; justify-content:center;
+    font-size:var(--text-xs); font-weight:700; color:var(--text-dim);
+    background:var(--navy-light); border:1px solid var(--border); border-radius:var(--radius-full);
+    padding:2px 10px; margin-left:var(--space-2);
+  }
+
+  /* Cards */
+  .brain-card {
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg);
+    padding:var(--space-5); margin-bottom:var(--space-3);
+    transition:border-color .2s ease;
+  }
+  .brain-card:hover { border-color:var(--navy-mid); }
+  .brain-card-question {
+    font-size:var(--text-md); font-weight:600; color:var(--text);
+    line-height:1.35; margin-bottom:var(--space-2);
+  }
+  .brain-card-meta {
+    display:flex; gap:var(--space-3); flex-wrap:wrap;
+    font-size:var(--text-xs); color:var(--text-dim); margin-bottom:var(--space-3);
+  }
+  .brain-card-meta span { display:inline-flex; align-items:center; gap:4px; }
+  .brain-card-meta strong { color:var(--text-muted); font-weight:500; }
+
+  .brain-tag {
+    display:inline-flex; align-items:center; font-size:11px; font-weight:600;
+    padding:3px 9px; border-radius:var(--radius-full); letter-spacing:0.01em;
+    border:1px solid;
+  }
+  .brain-tag-occurrences { background:rgba(239,68,68,0.12); color:#FCA5A5; border-color:rgba(239,68,68,0.3); }
+  .brain-tag-topic { background:rgba(59,130,246,0.12); color:#93C5FD; border-color:rgba(59,130,246,0.3); }
+  .brain-tag-type { background:rgba(139,92,246,0.12); color:#C4B5FD; border-color:rgba(139,92,246,0.3); }
+  .brain-tag-verified { background:rgba(16,185,129,0.12); color:#6EE7B7; border-color:rgba(16,185,129,0.3); }
+  .brain-tag-needs-review { background:rgba(245,158,11,0.12); color:#FCD34D; border-color:rgba(245,158,11,0.3); }
+  .brain-tag-score-bad { background:rgba(239,68,68,0.12); color:#FCA5A5; border-color:rgba(239,68,68,0.3); }
+  .brain-tag-score-good { background:rgba(16,185,129,0.12); color:#6EE7B7; border-color:rgba(16,185,129,0.3); }
+
+  .brain-suggested {
+    background:var(--navy-light); border:1px solid var(--border); border-radius:var(--radius-md);
+    padding:var(--space-3) var(--space-4); margin-top:var(--space-3);
+  }
+  .brain-suggested-label {
+    font-size:var(--text-xs); font-weight:700; color:var(--text-muted);
+    text-transform:uppercase; letter-spacing:1px; margin-bottom:var(--space-2);
+  }
+  .brain-suggested-text {
+    font-size:var(--text-sm); color:var(--text); line-height:1.55; white-space:pre-wrap;
+  }
+  .brain-suggested-textarea {
+    width:100%; min-height:100px;
+    background:var(--navy); border:1px solid var(--border); border-radius:var(--radius-md);
+    padding:var(--space-3); font-family:var(--font); font-size:var(--text-sm);
+    line-height:1.55; color:var(--text); resize:vertical;
+  }
+  .brain-suggested-textarea:focus {
+    outline:none; border-color:var(--teal); box-shadow:0 0 0 3px var(--teal-glow);
+  }
+
+  .brain-actions {
+    display:flex; gap:var(--space-2); margin-top:var(--space-3); flex-wrap:wrap;
+  }
+  .brain-btn {
+    appearance:none; border:1px solid transparent; border-radius:var(--radius-md);
+    padding:9px 16px; font-family:var(--font); font-size:var(--text-sm); font-weight:600;
+    cursor:pointer; transition:all .15s ease; white-space:nowrap;
+  }
+  .brain-btn:disabled { opacity:0.5; cursor:not-allowed; }
+  .brain-btn-primary { background:var(--teal); color:#FFFFFF; }
+  .brain-btn-primary:hover:not(:disabled) { background:var(--teal-dark); transform:translateY(-1px); }
+  .brain-btn-secondary {
+    background:transparent; color:var(--text); border-color:var(--border);
+  }
+  .brain-btn-secondary:hover:not(:disabled) { background:var(--navy-light); border-color:var(--navy-mid); }
+  .brain-btn-ghost { background:transparent; color:var(--text-muted); }
+  .brain-btn-ghost:hover:not(:disabled) { color:var(--text); background:var(--navy-light); }
+  .brain-btn-danger-ghost { background:transparent; color:var(--red); }
+  .brain-btn-danger-ghost:hover:not(:disabled) { background:rgba(239,68,68,0.1); }
+
+  /* Top knowledge table */
+  .brain-know-table {
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg);
+    overflow:hidden;
+  }
+  .brain-know-row-wrap { border-bottom:1px solid var(--border); }
+  .brain-know-row-wrap:last-child { border-bottom:none; }
+  .brain-know-row {
+    display:grid; grid-template-columns:1fr 120px 110px 130px 70px 40px;
+    gap:var(--space-3); padding:var(--space-3) var(--space-5);
+    align-items:center; font-size:var(--text-sm);
+    transition:background .15s ease;
+  }
+  .brain-know-row.editing { background:var(--navy-light); }
+  .brain-know-row.head {
+    background:var(--navy-light); font-size:var(--text-xs); font-weight:700;
+    color:var(--text-dim); text-transform:uppercase; letter-spacing:1px;
+    border-bottom:1px solid var(--border);
+  }
+  .brain-know-row .brain-know-q {
+    font-weight:500; color:var(--text);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .brain-know-uses {
+    font-size:var(--text-lg); font-weight:700; color:var(--text); text-align:right;
+  }
+  .brain-know-last { font-size:var(--text-xs); color:var(--text-dim); }
+  .brain-know-edit { display:flex; align-items:center; justify-content:flex-end; }
+  .brain-know-edit-btn {
+    appearance:none; background:transparent; border:1px solid transparent;
+    width:30px; height:30px; border-radius:var(--radius-sm); cursor:pointer;
+    color:var(--text-muted); display:flex; align-items:center; justify-content:center;
+    transition:all .15s ease;
+  }
+  .brain-know-edit-btn:hover {
+    background:var(--navy); color:var(--teal); border-color:var(--border);
+  }
+  .brain-know-row.editing .brain-know-edit-btn {
+    background:var(--navy); color:var(--text); border-color:var(--border);
+  }
+  .brain-know-editor {
+    padding:var(--space-4) var(--space-5);
+    background:var(--navy-light); border-bottom:1px solid var(--border);
+    animation:brainEditorOpen 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  @keyframes brainEditorOpen {
+    from { opacity:0; transform:translateY(-4px); }
+    to { opacity:1; transform:translateY(0); }
+  }
+  .brain-know-editor-label {
+    font-size:var(--text-xs); font-weight:700; color:var(--text-muted);
+    text-transform:uppercase; letter-spacing:1px; margin-bottom:var(--space-2);
+  }
+  .brain-know-editor-controls {
+    display:flex; align-items:center; justify-content:space-between;
+    gap:var(--space-4); margin-top:var(--space-3); flex-wrap:wrap;
+  }
+  .brain-know-editor-status { display:flex; align-items:center; gap:var(--space-2); }
+  .brain-know-editor-status-label {
+    font-size:var(--text-xs); font-weight:700; color:var(--text-muted);
+    text-transform:uppercase; letter-spacing:1px;
+  }
+  .brain-know-editor-status-select {
+    appearance:none; background:var(--navy); border:1px solid var(--border);
+    border-radius:var(--radius-md); padding:7px 32px 7px var(--space-3);
+    font-family:var(--font); font-size:var(--text-sm); font-weight:500;
+    color:var(--text); cursor:pointer;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+    background-repeat:no-repeat; background-position:right 10px center;
+  }
+  .brain-know-editor-actions {
+    display:flex; gap:var(--space-2); margin-left:auto;
+  }
+
+  /* Conversation snippet */
+  .brain-transcript {
+    background:var(--navy-light); border-left:3px solid var(--text-muted);
+    padding:var(--space-2) var(--space-3); border-radius:var(--radius-sm);
+    font-size:var(--text-xs); line-height:1.5; color:var(--text-dim);
+    white-space:pre-wrap; max-height:140px; overflow:hidden;
+    position:relative; margin-top:var(--space-2);
+  }
+  .brain-transcript.expanded { max-height:none; }
+  .brain-transcript-toggle {
+    background:none; border:none; color:var(--teal); font-size:var(--text-xs); font-weight:600;
+    cursor:pointer; padding:var(--space-1) 0 0;
+  }
+
+  /* Empty state */
+  .brain-empty {
+    background:var(--surface); border:1px dashed var(--border); border-radius:var(--radius-lg);
+    padding:var(--space-10) var(--space-5); text-align:center; color:var(--text-dim);
+  }
+  .brain-empty-emoji { font-size:32px; margin-bottom:var(--space-2); }
+  .brain-empty h4 {
+    font-size:var(--text-md); font-weight:600; color:var(--text);
+    margin-bottom:var(--space-1); text-transform:none; letter-spacing:0;
+  }
+  .brain-empty p { font-size:var(--text-xs); color:var(--text-dim); }
+
+  /* Loading state */
+  .brain-loading {
+    padding:var(--space-10) var(--space-4); text-align:center; color:var(--text-dim);
+  }
+  .brain-spinner {
+    display:inline-block; width:20px; height:20px;
+    border:2px solid var(--border); border-top-color:var(--teal);
+    border-radius:50%; animation:brainSpin 0.8s linear infinite;
+    vertical-align:-4px; margin-right:var(--space-2);
+  }
+  @keyframes brainSpin { to { transform:rotate(360deg); } }
+
+  /* Toast (success messages) */
+  .brain-toast-host {
+    position:fixed; bottom:24px; right:24px; z-index:1000;
+    display:flex; flex-direction:column; gap:var(--space-2);
+  }
+  .brain-toast {
+    background:var(--text); color:var(--navy);
+    padding:var(--space-3) var(--space-4); border-radius:var(--radius-md);
+    box-shadow:var(--shadow-lg, 0 12px 32px rgba(0,0,0,.3));
+    font-size:var(--text-sm); font-weight:600;
+    opacity:0; transform:translateY(10px);
+    transition:opacity .2s ease, transform .2s ease;
+    max-width:360px;
+  }
+  .brain-toast.show { opacity:1; transform:translateY(0); }
+  .brain-toast.success { background:var(--green); color:#FFFFFF; }
+  .brain-toast.error { background:var(--red); color:#FFFFFF; }
+
   .settings-title { font-size:var(--text-xl); font-weight:700; margin-bottom:var(--space-1); }
   .settings-sub { font-size:var(--text-sm); color:var(--text-dim); margin-bottom:var(--space-6); }
   .settings-section { margin-bottom:var(--space-6); }
@@ -1480,6 +1738,7 @@
     <button class="topbar-stats-btn" id="welcomeBtn" onclick="window._openShowcase('topbar')" title="See what Luna can do"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg> Tour</button>
     <button class="topbar-stats-btn" id="customizeBtn" onclick="window._openWidgetEditor()" title="Customise widget appearance"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg> Customise</button>
     <button class="topbar-stats-btn" id="statsToggle" onclick="window._toggleStats()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg> Stats</button>
+    <button class="topbar-stats-btn" id="brainToggle" onclick="window._toggleBrain()" title="Knowledge & Quality — review what Luna's learning"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2a2.5 2.5 0 0 1 0 5"/><path d="M14.5 2a2.5 2.5 0 0 0 0 5"/><path d="M3 12a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v0a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4z"/><path d="M9 16v3a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-3"/></svg> Knowledge</button>
     <button class="topbar-stats-btn" id="switchCompanyBtn" onclick="window._switchCompany()" title="Switch to another Luna Chat client" style="display:none"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg> Switch</button>
     <button class="topbar-stats-btn" id="settingsToggle" onclick="window._toggleSettings()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> Settings</button>
     <button class="topbar-stats-btn" id="themeToggle" onclick="window._toggleTheme()" title="Toggle light/dark mode" aria-label="Toggle light/dark mode"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>
@@ -1634,6 +1893,43 @@
 
   <!-- ANALYTICS OVERLAY -->
   <div class="analytics-overlay" id="analyticsPanel"></div>
+  <!-- LUNA BRAIN OVERLAY — Knowledge & Quality -->
+  <div class="brain-overlay" id="brainPanel">
+    <div class="brain-head">
+      <div>
+        <div class="brain-title">Knowledge <em>&amp; Quality</em></div>
+        <div class="brain-sub">The things your AI couldn't quite handle — fix them in one click.</div>
+      </div>
+    </div>
+
+    <div id="brainErrorHost"></div>
+    <div id="brainSummary" class="brain-summary"></div>
+
+    <div class="brain-section">
+      <div class="brain-section-head">
+        <h3>Knowledge gaps <span class="brain-count-pill" id="brainGapsCount">0</span></h3>
+        <p>Visitors asked these; Luna didn't have a confident answer. Approve to add to her knowledge base.</p>
+      </div>
+      <div id="brainGapsHost"></div>
+    </div>
+
+    <div class="brain-section">
+      <div class="brain-section-head">
+        <h3>Low-quality conversations <span class="brain-count-pill" id="brainLowQualCount">0</span></h3>
+        <p>Where Luna's answer scored 1 or 2 out of 5. Review and decide what to do.</p>
+      </div>
+      <div id="brainLowQualHost"></div>
+    </div>
+
+    <div class="brain-section">
+      <div class="brain-section-head">
+        <h3>Top knowledge items <span class="brain-count-pill" id="brainTopKnowCount">0</span></h3>
+        <p>The items Luna uses most. Edit any answer inline.</p>
+      </div>
+      <div id="brainTopKnowHost"></div>
+    </div>
+  </div>
+
 
   <!-- SETTINGS OVERLAY -->
   <div class="settings-overlay" id="settingsPanel">
@@ -3280,6 +3576,8 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
 
     // Close settings if open
     if (statsOpen && settingsOpen) window._toggleSettings();
+    // Close brain if open
+    if (statsOpen && brainOpen) window._toggleBrain();
 
     btn.classList.toggle('active', statsOpen);
     panel.classList.toggle('active', statsOpen);
@@ -3302,6 +3600,8 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
 
     // Close stats if open
     if (settingsOpen && statsOpen) window._toggleStats();
+    // Close brain if open
+    if (settingsOpen && brainOpen) window._toggleBrain();
 
     btn.classList.toggle('active', settingsOpen);
     panel.classList.toggle('active', settingsOpen);
@@ -3310,6 +3610,435 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
 
     if (settingsOpen && !profileLoaded) loadProfile();
   };
+
+  // ─── LUNA BRAIN (Knowledge & Quality) ───
+  // Embedded panel — mutual exclusion with Stats and Settings.
+  // Fetches from /api/luna-brain on open, caches the feed, and renders three
+  // sections: gaps with approval, low-quality conversations, top knowledge with inline edit.
+
+  let brainOpen = false;
+  let brainState = {
+    feed: null,
+    editingGap: null,           // gap id when textarea is open
+    editingKnowledge: null,     // knowledge item id when inline editor is open
+    expandedTranscripts: {}     // conv id → true
+  };
+
+  window._toggleBrain = function() {
+    brainOpen = !brainOpen;
+    const panel = document.getElementById('brainPanel');
+    const btn = document.getElementById('brainToggle');
+    const chatPanel = document.getElementById('chatPanel');
+    const infoPanel = document.querySelector('.info-panel');
+
+    // Close stats / settings if open (mutual exclusion)
+    if (brainOpen && statsOpen) window._toggleStats();
+    if (brainOpen && settingsOpen) window._toggleSettings();
+
+    btn.classList.toggle('active', brainOpen);
+    panel.classList.toggle('active', brainOpen);
+    chatPanel.style.display = brainOpen ? 'none' : '';
+    infoPanel.style.display = brainOpen ? 'none' : '';
+
+    if (brainOpen) loadBrainFeed();
+  };
+
+  function brainApi(action, opts) {
+    opts = opts || {};
+    var url = 'https://luna-chat-endpoint.vercel.app/api/luna-brain?action=' + encodeURIComponent(action);
+    return fetch(url, {
+      method: opts.method || 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Client-Name': CONFIG.CLIENT_NAME
+      },
+      body: opts.body ? JSON.stringify(opts.body) : undefined
+    }).then(function(r) {
+      return r.json().then(function(d){
+        if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+        return d;
+      });
+    });
+  }
+
+  function loadBrainFeed() {
+    var panel = document.getElementById('brainPanel');
+    if (!panel) return;
+    // Show loading state on first load
+    if (!brainState.feed) {
+      document.getElementById('brainSummary').innerHTML =
+        '<div class="brain-loading"><div class="brain-spinner"></div>Loading knowledge &amp; quality data&hellip;</div>';
+      document.getElementById('brainGapsHost').innerHTML = '';
+      document.getElementById('brainLowQualHost').innerHTML = '';
+      document.getElementById('brainTopKnowHost').innerHTML = '';
+    }
+    brainApi('feed').then(function(data) {
+      brainState.feed = data;
+      renderBrainAll();
+    }).catch(function(err) {
+      document.getElementById('brainErrorHost').innerHTML =
+        '<div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:var(--red);padding:var(--space-3) var(--space-4);border-radius:var(--radius-md);font-size:var(--text-sm);margin-bottom:var(--space-4)">Could not load: ' + brainEsc(err.message) + '</div>';
+    });
+  }
+
+  function renderBrainAll() {
+    document.getElementById('brainErrorHost').innerHTML = '';
+    renderBrainSummary();
+    renderBrainGaps();
+    renderBrainLowQual();
+    renderBrainTopKnow();
+  }
+
+  // ── Helpers ──
+  function brainEsc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+  function brainEl(tag, attrs, kids) {
+    var e = document.createElement(tag);
+    if (attrs) {
+      Object.keys(attrs).forEach(function(k) {
+        if (k === 'class') e.className = attrs[k];
+        else if (k === 'text') e.textContent = attrs[k];
+        else if (k === 'html') e.innerHTML = attrs[k];
+        else if (k.indexOf('on') === 0) e.addEventListener(k.slice(2), attrs[k]);
+        else e.setAttribute(k, attrs[k]);
+      });
+    }
+    if (kids) {
+      (Array.isArray(kids) ? kids : [kids]).forEach(function(k) {
+        if (k != null) e.appendChild(typeof k === 'string' ? document.createTextNode(k) : k);
+      });
+    }
+    return e;
+  }
+
+  function brainRelTime(iso) {
+    if (!iso) return '';
+    var then = new Date(iso).getTime();
+    var diff = Date.now() - then;
+    if (isNaN(diff)) return '';
+    if (diff < 60000) return 'just now';
+    if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
+    if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+    if (diff < 7 * 86400000) return Math.floor(diff / 86400000) + 'd ago';
+    return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  }
+
+  function brainToast(message, type) {
+    var host = document.getElementById('brainToastHost');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'brainToastHost';
+      host.className = 'brain-toast-host';
+      document.body.appendChild(host);
+    }
+    var t = brainEl('div', { class: 'brain-toast ' + (type || ''), text: message });
+    host.appendChild(t);
+    requestAnimationFrame(function() { t.classList.add('show'); });
+    setTimeout(function() {
+      t.classList.remove('show');
+      setTimeout(function() { t.remove(); }, 250);
+    }, 3500);
+  }
+
+  // ── Renderers ──
+  function renderBrainSummary() {
+    var s = brainState.feed.summary || {};
+    var host = document.getElementById('brainSummary');
+    host.innerHTML = '';
+    function stat(label, value, suffix, sub) {
+      return brainEl('div', { class: 'brain-stat' }, [
+        brainEl('div', { class: 'brain-stat-label', text: label }),
+        brainEl('div', { class: 'brain-stat-value' }, [
+          document.createTextNode(String(value)),
+          suffix ? brainEl('span', { class: 'brain-stat-suffix', text: suffix }) : null
+        ]),
+        sub ? brainEl('div', { class: 'brain-stat-sub', text: sub }) : null
+      ]);
+    }
+    host.appendChild(stat('Conversations', s.conversations7d || 0, '', 'last 7 days'));
+    host.appendChild(stat('Avg quality', s.avgQualityScore || 0, ' / 5', 'last 7 days'));
+    host.appendChild(stat('Answer rate', s.answerRate || 0, '%', 'last 7 days'));
+    host.appendChild(stat('Open gaps', s.openGaps || 0, '', 'awaiting your review'));
+  }
+
+  function renderBrainGaps() {
+    var gaps = brainState.feed.gaps || [];
+    document.getElementById('brainGapsCount').textContent = String(gaps.length);
+    var host = document.getElementById('brainGapsHost');
+    host.innerHTML = '';
+    if (gaps.length === 0) {
+      host.appendChild(brainEl('div', { class: 'brain-empty' }, [
+        brainEl('div', { class: 'brain-empty-emoji', text: '✨' }),
+        brainEl('h4', { text: 'No open gaps — Luna is handling everything' }),
+        brainEl('p', { text: 'Anything she misses next will appear here.' })
+      ]));
+      return;
+    }
+    gaps.forEach(function(gap) { host.appendChild(renderBrainGapCard(gap)); });
+  }
+
+  function renderBrainGapCard(gap) {
+    var isEditing = brainState.editingGap === gap.id;
+    var card = brainEl('div', { class: 'brain-card' });
+    card.appendChild(brainEl('div', { class: 'brain-card-question', text: gap.question || '(no question)' }));
+    var meta = brainEl('div', { class: 'brain-card-meta' });
+    if (gap.topic) meta.appendChild(brainEl('span', { class: 'brain-tag brain-tag-topic', text: gap.topic }));
+    if (gap.occurrences > 1) meta.appendChild(brainEl('span', { class: 'brain-tag brain-tag-occurrences', text: 'Asked ' + gap.occurrences + 'x' }));
+    if (gap.lastSeenAt) meta.appendChild(brainEl('span', {}, [
+      brainEl('strong', { text: 'Last seen: ' }),
+      document.createTextNode(brainRelTime(gap.lastSeenAt))
+    ]));
+    card.appendChild(meta);
+
+    if (gap.suggestedAnswer) {
+      var box = brainEl('div', { class: 'brain-suggested' });
+      box.appendChild(brainEl('div', { class: 'brain-suggested-label', text: 'Suggested answer (from Luna)' }));
+      if (isEditing) {
+        var ta = brainEl('textarea', { class: 'brain-suggested-textarea', id: 'brain-gap-answer-' + gap.id });
+        ta.value = gap.suggestedAnswer;
+        box.appendChild(ta);
+      } else {
+        box.appendChild(brainEl('div', { class: 'brain-suggested-text', text: gap.suggestedAnswer }));
+      }
+      card.appendChild(box);
+    }
+
+    var actions = brainEl('div', { class: 'brain-actions' });
+    if (isEditing) {
+      actions.appendChild(brainEl('button', {
+        class: 'brain-btn brain-btn-primary', text: 'Save & approve',
+        onclick: function(e) { brainApproveGap(gap, true, e.currentTarget); }
+      }));
+      actions.appendChild(brainEl('button', {
+        class: 'brain-btn brain-btn-ghost', text: 'Cancel',
+        onclick: function() { brainState.editingGap = null; renderBrainGaps(); }
+      }));
+    } else {
+      actions.appendChild(brainEl('button', {
+        class: 'brain-btn brain-btn-primary', text: 'Approve & add',
+        onclick: function(e) { brainApproveGap(gap, false, e.currentTarget); }
+      }));
+      actions.appendChild(brainEl('button', {
+        class: 'brain-btn brain-btn-secondary', text: 'Edit first',
+        onclick: function() { brainState.editingGap = gap.id; renderBrainGaps(); }
+      }));
+      actions.appendChild(brainEl('button', {
+        class: 'brain-btn brain-btn-danger-ghost', text: 'Dismiss',
+        onclick: function() { brainDismissGap(gap); }
+      }));
+    }
+    card.appendChild(actions);
+    return card;
+  }
+
+  function renderBrainLowQual() {
+    var convs = brainState.feed.lowQualityConversations || [];
+    document.getElementById('brainLowQualCount').textContent = String(convs.length);
+    var host = document.getElementById('brainLowQualHost');
+    host.innerHTML = '';
+    if (convs.length === 0) {
+      host.appendChild(brainEl('div', { class: 'brain-empty' }, [
+        brainEl('div', { class: 'brain-empty-emoji', text: '👍' }),
+        brainEl('h4', { text: 'No weak answers this week' }),
+        brainEl('p', { text: 'Anything Luna gets wrong will surface here for review.' })
+      ]));
+      return;
+    }
+    convs.forEach(function(c) { host.appendChild(renderBrainLowQualCard(c)); });
+  }
+
+  function renderBrainLowQualCard(c) {
+    var card = brainEl('div', { class: 'brain-card' });
+    var scoreClass = c.score <= 1 ? 'brain-tag-score-bad' : (c.score <= 2 ? 'brain-tag-occurrences' : 'brain-tag-score-good');
+    var head = brainEl('div', { class: 'brain-card-meta' });
+    head.appendChild(brainEl('span', { class: 'brain-tag ' + scoreClass, text: 'Score ' + c.score + '/5' }));
+    if (c.wasAnswered === false) {
+      head.appendChild(brainEl('span', { class: 'brain-tag brain-tag-occurrences', text: 'Unanswered' }));
+    }
+    (c.topicTags || []).slice(0, 3).forEach(function(t) {
+      head.appendChild(brainEl('span', { class: 'brain-tag brain-tag-topic', text: t }));
+    });
+    if (c.startedAt) {
+      head.appendChild(brainEl('span', {}, [
+        brainEl('strong', { text: 'When: ' }),
+        document.createTextNode(brainRelTime(c.startedAt))
+      ]));
+    }
+    card.appendChild(head);
+
+    if (c.reason) {
+      card.appendChild(brainEl('div', { class: 'brain-card-question', text: c.reason }));
+    }
+
+    if (c.knowledgeGap) {
+      var gapBox = brainEl('div', { class: 'brain-suggested' });
+      gapBox.appendChild(brainEl('div', { class: 'brain-suggested-label', text: 'What was missing' }));
+      gapBox.appendChild(brainEl('div', { class: 'brain-suggested-text', text: c.knowledgeGap }));
+      card.appendChild(gapBox);
+    }
+
+    if (c.transcript) {
+      var expanded = !!brainState.expandedTranscripts[c.id];
+      var tp = brainEl('div', { class: 'brain-transcript' + (expanded ? ' expanded' : ''), text: c.transcript });
+      card.appendChild(tp);
+      var toggle = brainEl('button', {
+        class: 'brain-transcript-toggle',
+        text: expanded ? '↑ Collapse' : '↓ Show full transcript',
+        onclick: function() {
+          brainState.expandedTranscripts[c.id] = !expanded;
+          renderBrainLowQual();
+        }
+      });
+      card.appendChild(toggle);
+    }
+    return card;
+  }
+
+  function renderBrainTopKnow() {
+    var items = brainState.feed.topKnowledge || [];
+    document.getElementById('brainTopKnowCount').textContent = String(items.length);
+    var host = document.getElementById('brainTopKnowHost');
+    host.innerHTML = '';
+    if (items.length === 0) {
+      host.appendChild(brainEl('div', { class: 'brain-empty' }, [
+        brainEl('div', { class: 'brain-empty-emoji', text: '📘' }),
+        brainEl('h4', { text: 'No knowledge items yet' }),
+        brainEl('p', { text: 'Approve gaps above to build up Luna’s knowledge.' })
+      ]));
+      return;
+    }
+    var table = brainEl('div', { class: 'brain-know-table' });
+    table.appendChild(brainEl('div', { class: 'brain-know-row head' }, [
+      brainEl('div', { class: 'brain-know-q', text: 'Question' }),
+      brainEl('div', { text: 'Type' }),
+      brainEl('div', { text: 'Confidence' }),
+      brainEl('div', { text: 'Last used' }),
+      brainEl('div', { style: 'text-align:right', text: 'Uses' }),
+      brainEl('div', {})
+    ]));
+    items.forEach(function(item) {
+      var isEditing = brainState.editingKnowledge === item.id;
+      var wrap = brainEl('div', { class: 'brain-know-row-wrap' });
+      var row = brainEl('div', { class: 'brain-know-row' + (isEditing ? ' editing' : '') });
+      row.appendChild(brainEl('div', { class: 'brain-know-q', text: item.question, title: item.question }));
+      row.appendChild(brainEl('div', {}, item.type ? brainEl('span', { class: 'brain-tag brain-tag-type', text: item.type }) : null));
+      var confClass = (item.confidence || '').toLowerCase().indexOf('verified') !== -1
+        ? 'brain-tag-verified' : 'brain-tag-needs-review';
+      row.appendChild(brainEl('div', {}, item.confidence ? brainEl('span', { class: 'brain-tag ' + confClass, text: item.confidence }) : null));
+      row.appendChild(brainEl('div', { class: 'brain-know-last', text: brainRelTime(item.lastUsedAt) }));
+      row.appendChild(brainEl('div', { class: 'brain-know-uses', text: String(item.timesUsed) }));
+      var editBtn = brainEl('button', {
+        class: 'brain-know-edit-btn',
+        'aria-label': isEditing ? 'Close editor' : 'Edit',
+        title: isEditing ? 'Close editor' : 'Edit',
+        onclick: function() {
+          brainState.editingKnowledge = isEditing ? null : item.id;
+          renderBrainTopKnow();
+        }
+      });
+      editBtn.innerHTML = isEditing
+        ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18"></path><path d="M6 6L18 18"></path></svg>'
+        : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>';
+      row.appendChild(brainEl('div', { class: 'brain-know-edit' }, editBtn));
+      wrap.appendChild(row);
+
+      if (isEditing) {
+        var editor = brainEl('div', { class: 'brain-know-editor' });
+        editor.appendChild(brainEl('div', { class: 'brain-know-editor-label', text: 'Answer' }));
+        var ta = brainEl('textarea', {
+          class: 'brain-suggested-textarea',
+          id: 'brain-know-answer-' + item.id,
+          rows: '6',
+          placeholder: 'The answer Luna gives when this question is asked…'
+        });
+        ta.value = item.answer || '';
+        editor.appendChild(ta);
+        var controls = brainEl('div', { class: 'brain-know-editor-controls' });
+        var statusWrap = brainEl('label', { class: 'brain-know-editor-status' });
+        statusWrap.appendChild(brainEl('span', { class: 'brain-know-editor-status-label', text: 'Status' }));
+        var statusSelect = brainEl('select', {
+          class: 'brain-know-editor-status-select',
+          id: 'brain-know-status-' + item.id
+        });
+        ['Active', 'Draft', 'Archived'].forEach(function(stat) {
+          var opt = brainEl('option', { value: stat, text: stat });
+          if ((item.status || 'Active') === stat) opt.selected = true;
+          statusSelect.appendChild(opt);
+        });
+        statusWrap.appendChild(statusSelect);
+        controls.appendChild(statusWrap);
+        var actions = brainEl('div', { class: 'brain-know-editor-actions' });
+        actions.appendChild(brainEl('button', {
+          class: 'brain-btn brain-btn-ghost', text: 'Cancel',
+          onclick: function() { brainState.editingKnowledge = null; renderBrainTopKnow(); }
+        }));
+        actions.appendChild(brainEl('button', {
+          class: 'brain-btn brain-btn-primary', text: 'Save changes',
+          onclick: function(e) { brainSaveKnowledge(item, e.currentTarget); }
+        }));
+        controls.appendChild(actions);
+        editor.appendChild(controls);
+        wrap.appendChild(editor);
+      }
+      table.appendChild(wrap);
+    });
+    host.appendChild(table);
+  }
+
+  // ── Actions ──
+  function brainApproveGap(gap, fromEdit, btn) {
+    var body = { gapId: gap.id, question: gap.question };
+    if (fromEdit) {
+      var ta = document.getElementById('brain-gap-answer-' + gap.id);
+      if (ta && ta.value.trim()) body.answer = ta.value.trim();
+    }
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+    brainApi('approve-gap', { method: 'POST', body: body }).then(function() {
+      brainToast('Added to knowledge — Luna will use this from now on.', 'success');
+      brainState.editingGap = null;
+      return brainApi('feed').then(function(data) { brainState.feed = data; renderBrainAll(); });
+    }).catch(function(err) {
+      if (btn) { btn.disabled = false; btn.textContent = fromEdit ? 'Save & approve' : 'Approve & add'; }
+      brainToast('Could not approve: ' + err.message, 'error');
+    });
+  }
+
+  function brainDismissGap(gap) {
+    if (!confirm('Dismiss this gap? It will be marked WontFix and removed from the list.')) return;
+    brainApi('update-gap', { method: 'POST', body: { gapId: gap.id, status: 'WontFix' } }).then(function() {
+      brainToast('Gap dismissed.', '');
+      return brainApi('feed').then(function(data) { brainState.feed = data; renderBrainAll(); });
+    }).catch(function(err) {
+      brainToast('Could not dismiss: ' + err.message, 'error');
+    });
+  }
+
+  function brainSaveKnowledge(item, btn) {
+    var taEl = document.getElementById('brain-know-answer-' + item.id);
+    var statusEl = document.getElementById('brain-know-status-' + item.id);
+    var newAnswer = taEl ? taEl.value.trim() : '';
+    var newStatus = statusEl ? statusEl.value : 'Active';
+    if (!newAnswer) { brainToast('Answer can’t be empty.', 'error'); return; }
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+    brainApi('update-knowledge', {
+      method: 'POST',
+      body: { knowledgeId: item.id, answer: newAnswer, status: newStatus }
+    }).then(function() {
+      if (brainState.feed && brainState.feed.topKnowledge) {
+        brainState.feed.topKnowledge = brainState.feed.topKnowledge.map(function(k) {
+          if (k.id !== item.id) return k;
+          var updated = Object.assign({}, k, { answer: newAnswer, status: newStatus });
+          return newStatus === 'Archived' ? null : updated;
+        }).filter(Boolean);
+      }
+      brainState.editingKnowledge = null;
+      brainToast('Saved — Luna will use the updated answer.', 'success');
+      renderBrainTopKnow();
+    }).catch(function(err) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Save changes'; }
+      brainToast('Could not save: ' + err.message, 'error');
+    });
+  }
 
   // Widget colour presets
   const BRAND_PRESETS = [
