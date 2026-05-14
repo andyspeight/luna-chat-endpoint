@@ -104,9 +104,12 @@ function valueOf(field) {
   return field;
 }
 
-async function actionFeed(atKey, clientRecordId) {
-  // Three queries in parallel
-  var clientLinkFilter = "FIND('" + clientRecordId + "', ARRAYJOIN({Client})) > 0";
+async function actionFeed(atKey, clientRecordId, clientName) {
+  // Filter conversations / gaps / knowledge by the linked-client name.
+  // Airtable's ARRAYJOIN() on a linked record field returns the linked records'
+  // display names, not their IDs. So we match by name (which is unique per client).
+  var safeName = (clientName || '').replace(/'/g, "\\'");
+  var clientLinkFilter = "FIND('" + safeName + "', ARRAYJOIN({Client})) > 0";
 
   var gapsP = atFetch(atKey,
     '/' + GAPS_TABLE
@@ -334,7 +337,7 @@ module.exports = async function handler(req, res) {
     if (!clientRecordId) return res.status(404).json({ error: 'Client not found' });
 
     if (req.method === 'GET' && (action === 'feed' || action === '')) {
-      var data = await actionFeed(atKey, clientRecordId);
+      var data = await actionFeed(atKey, clientRecordId, clientName);
       return res.status(200).json(data);
     }
 
