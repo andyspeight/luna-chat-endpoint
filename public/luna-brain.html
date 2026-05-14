@@ -358,16 +358,21 @@ a:hover { text-decoration: underline; }
   border-radius: var(--radius-lg);
   overflow: hidden;
 }
+.know-row-wrap { border-bottom: 1px solid var(--line-light); }
+.know-row-wrap:last-child { border-bottom: none; }
 .know-row {
   display: grid;
-  grid-template-columns: 1fr 120px 100px 130px 80px;
+  grid-template-columns: 1fr 120px 100px 130px 80px 40px;
   gap: 16px;
   padding: 14px 20px;
-  border-bottom: 1px solid var(--line-light);
   align-items: center;
   font-size: 14px;
+  transition: background 150ms ease;
 }
-.know-row:last-child { border-bottom: none; }
+.know-row.editing {
+  background: var(--bg-tint);
+  border-bottom: 1px solid var(--line);
+}
 .know-row.head {
   background: var(--bg-tint);
   font-size: 11px;
@@ -395,13 +400,126 @@ a:hover { text-decoration: underline; }
   font-size: 12px;
   color: var(--ink-3);
 }
+.know-edit {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+.know-edit-btn {
+  appearance: none;
+  background: transparent;
+  border: 1px solid transparent;
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--ink-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+}
+.know-edit-btn:hover {
+  background: var(--paper);
+  color: var(--accent);
+  border-color: var(--line);
+}
+.know-row.editing .know-edit-btn {
+  background: var(--paper);
+  color: var(--ink-2);
+  border-color: var(--line);
+}
+.know-editor {
+  padding: 16px 20px 20px;
+  background: var(--bg-tint);
+  border-bottom: 1px solid var(--line);
+  animation: knowEditorOpen 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes knowEditorOpen {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.know-editor-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
+}
+.know-editor-textarea {
+  width: 100%;
+  min-height: 140px;
+  padding: 12px 14px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  resize: vertical;
+}
+.know-editor-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(242,106,79,0.12);
+}
+.know-editor-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+.know-editor-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.know-editor-status-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.know-editor-status-select {
+  appearance: none;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 7px 32px 7px 12px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--navy);
+  cursor: pointer;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+.know-editor-status-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(242,106,79,0.12);
+}
+.know-editor-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
 @media (max-width: 768px) {
   .know-row {
     grid-template-columns: 1fr auto;
     gap: 6px;
   }
-  .know-row .know-type, .know-row .know-conf, .know-row .know-last { display: none; }
+  .know-row .know-type, .know-row .know-conf, .know-row .know-last, .know-row .know-uses { display: none; }
   .know-row.head { display: none; }
+  .know-editor { padding: 14px 16px 18px; }
+  .know-editor-controls { flex-direction: column; align-items: stretch; }
+  .know-editor-actions { margin-left: 0; justify-content: flex-end; }
 }
 
 /* ── Conversation snippet ─────────────────────────────────── */
@@ -674,6 +792,7 @@ a:hover { text-decoration: underline; }
   var state = {
     feed: null,
     editingGap: null,        // gap id when in edit-and-approve mode
+    editingKnowledge: null,  // knowledge item id when inline editor is open
     expandedTranscripts: {}  // convId -> true when expanded
   };
 
@@ -887,18 +1006,88 @@ a:hover { text-decoration: underline; }
       el('div', { class: 'know-type', text: 'Type' }),
       el('div', { class: 'know-conf', text: 'Confidence' }),
       el('div', { class: 'know-last', text: 'Last used' }),
-      el('div', { class: 'know-uses', style: 'text-align:right', text: 'Uses' })
+      el('div', { class: 'know-uses', style: 'text-align:right', text: 'Uses' }),
+      el('div', { class: 'know-edit', text: '' })
     ]));
     items.forEach(function(item) {
-      var row = el('div', { class: 'know-row' });
-      row.appendChild(el('div', { class: 'know-q', text: item.question, title: item.answer }));
+      var isEditing = state.editingKnowledge === item.id;
+      var rowWrap = el('div', { class: 'know-row-wrap' });
+
+      var row = el('div', { class: 'know-row' + (isEditing ? ' editing' : '') });
+      row.appendChild(el('div', { class: 'know-q', text: item.question, title: item.question }));
       row.appendChild(el('div', { class: 'know-type' }, item.type ? el('span', { class: 'tag tag-type', text: item.type }) : null));
       var confClass = (item.confidence || '').toLowerCase().indexOf('verified') !== -1
         ? 'tag-confidence-verified' : 'tag-confidence-needs-review';
       row.appendChild(el('div', { class: 'know-conf' }, item.confidence ? el('span', { class: 'tag ' + confClass, text: item.confidence }) : null));
       row.appendChild(el('div', { class: 'know-last', text: formatRelativeTime(item.lastUsedAt) }));
       row.appendChild(el('div', { class: 'know-uses', style: 'text-align:right', text: String(item.timesUsed) }));
-      table.appendChild(row);
+      // Edit button — pencil icon
+      var editBtn = el('button', {
+        class: 'know-edit-btn',
+        'aria-label': isEditing ? 'Close editor' : 'Edit this item',
+        title: isEditing ? 'Close editor' : 'Edit',
+        onclick: function() {
+          state.editingKnowledge = isEditing ? null : item.id;
+          renderTopKnow();
+        }
+      });
+      // Pencil SVG (closed) / X SVG (open)
+      editBtn.innerHTML = isEditing
+        ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18"></path><path d="M6 6L18 18"></path></svg>'
+        : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>';
+      row.appendChild(el('div', { class: 'know-edit' }, editBtn));
+
+      rowWrap.appendChild(row);
+
+      // Inline editor expanded below the row
+      if (isEditing) {
+        var editor = el('div', { class: 'know-editor' });
+        editor.appendChild(el('div', { class: 'know-editor-label', text: 'Answer' }));
+        var ta = el('textarea', {
+          class: 'know-editor-textarea',
+          id: 'know-answer-' + item.id,
+          rows: '6',
+          placeholder: 'The answer Luna gives when this question is asked…'
+        });
+        ta.value = item.answer || '';
+        editor.appendChild(ta);
+
+        var controlsRow = el('div', { class: 'know-editor-controls' });
+        // Status dropdown
+        var statusWrap = el('label', { class: 'know-editor-status' });
+        statusWrap.appendChild(el('span', { class: 'know-editor-status-label', text: 'Status' }));
+        var statusSelect = el('select', {
+          class: 'know-editor-status-select',
+          id: 'know-status-' + item.id
+        });
+        ['Active', 'Draft', 'Archived'].forEach(function(s) {
+          var opt = el('option', { value: s, text: s });
+          if ((item.status || 'Active') === s) opt.selected = true;
+          statusSelect.appendChild(opt);
+        });
+        statusWrap.appendChild(statusSelect);
+        controlsRow.appendChild(statusWrap);
+
+        // Action buttons (right-aligned)
+        var actions = el('div', { class: 'know-editor-actions' });
+        actions.appendChild(el('button', {
+          class: 'btn btn-ghost',
+          text: 'Cancel',
+          onclick: function() { state.editingKnowledge = null; renderTopKnow(); }
+        }));
+        actions.appendChild(el('button', {
+          class: 'btn btn-primary',
+          text: 'Save changes',
+          id: 'know-save-' + item.id,
+          onclick: function(e) { saveKnowledge(item, e.currentTarget); }
+        }));
+        controlsRow.appendChild(actions);
+        editor.appendChild(controlsRow);
+
+        rowWrap.appendChild(editor);
+      }
+
+      table.appendChild(rowWrap);
     });
     host.appendChild(table);
   }
@@ -932,6 +1121,42 @@ a:hover { text-decoration: underline; }
       .catch(function(err) {
         toast('Could not dismiss: ' + err.message, 'error');
       });
+  }
+
+  function saveKnowledge(item, btn) {
+    var taEl = document.getElementById('know-answer-' + item.id);
+    var statusEl = document.getElementById('know-status-' + item.id);
+    var newAnswer = taEl ? taEl.value.trim() : '';
+    var newStatus = statusEl ? statusEl.value : 'Active';
+
+    if (!newAnswer) {
+      toast('Answer can\u2019t be empty.', 'error');
+      return;
+    }
+
+    // Optimistic UI: lock the button, update state immediately
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving\u2026'; }
+
+    api('update-knowledge', {
+      method: 'POST',
+      body: { knowledgeId: item.id, answer: newAnswer, status: newStatus }
+    }).then(function() {
+      // Update the cached feed so the UI reflects the new state without a full reload
+      if (state.feed && state.feed.topKnowledge) {
+        state.feed.topKnowledge = state.feed.topKnowledge.map(function(k) {
+          if (k.id !== item.id) return k;
+          var updated = Object.assign({}, k, { answer: newAnswer, status: newStatus });
+          // If item is archived, hide it from the top knowledge view
+          return newStatus === 'Archived' ? null : updated;
+        }).filter(Boolean);
+      }
+      state.editingKnowledge = null;
+      toast('Saved \u2014 Luna will use the updated answer.', 'success');
+      renderTopKnow();
+    }).catch(function(err) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Save changes'; }
+      toast('Could not save: ' + err.message, 'error');
+    });
   }
 
   // ── Boot ──
