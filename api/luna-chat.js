@@ -2125,12 +2125,32 @@ module.exports = async function handler(req, res) {
           if (f.BusinessDescription) {
             systemPrompt += '\n\n## About this business\nUse this information to answer visitor questions. It was written by the business owner:\n\n' + f.BusinessDescription;
           }
-          // Website knowledge from scanned pages
+
+          // ── Knowledge fetch — per-client approved Q/A items ──
+          // Injected BEFORE website knowledge so it lands earlier in the prompt
+          // and clearly takes precedence on overlapping topics.
+          var __clientRecordId = pData.records[0].id;
+          var __usedKnowledgeIds = []; // Populated when we strip markers from the reply
+          try {
+            var __items = await knowledge.fetchKnowledgeItems(profileAtKey, __clientRecordId, message, 5);
+            console.log('[luna-chat] knowledge fetch: client=' + __clientRecordId + ' message="' + message.slice(0, 80) + '" matched=' + (__items ? __items.length : 0));
+            if (__items && __items.length) {
+              systemPrompt += knowledge.formatKnowledgeForPrompt(__items);
+              req.__lunaKnowledgeContext = { clientRecordId: __clientRecordId, candidates: __items.map(function(i){return i.id;}) };
+            } else {
+              req.__lunaKnowledgeContext = { clientRecordId: __clientRecordId, candidates: [] };
+            }
+          } catch (kErr) {
+            console.warn('[luna-chat] knowledge fetch failed:', kErr.message);
+            req.__lunaKnowledgeContext = { clientRecordId: __clientRecordId, candidates: [] };
+          }
+
+          // Website knowledge from scanned pages — secondary to Approved Answers above.
           if (f.scannedKnowledge) {
             // Trim to ~12000 chars to stay within token budget
-            var knowledge = f.scannedKnowledge;
-            if (knowledge.length > 12000) knowledge = knowledge.slice(0, 12000) + '\n\n[Content truncated — more detail available on the website]';
-            systemPrompt += '\n\n## Website knowledge\nThe following was extracted from the business\'s own website. Use it to answer visitor questions accurately and specifically. If a visitor asks about destinations, policies, pricing, protection, or anything covered below, use this information. Never say "according to the website" — just state the facts naturally as if you know them.\n\n' + knowledge;
+            var knowledge_text = f.scannedKnowledge;
+            if (knowledge_text.length > 12000) knowledge_text = knowledge_text.slice(0, 12000) + '\n\n[Content truncated — more detail available on the website]';
+            systemPrompt += '\n\n## Website knowledge (secondary)\nThe following was extracted from the business\'s own website. Use it to answer visitor questions when no Approved Answer covers the topic. If an Approved Answer above contradicts this content, the Approved Answer wins. Never say "according to the website" — just state the facts naturally as if you know them.\n\n' + knowledge_text;
           }
           const contactParts = [];
           if (f.BusinessPhone) contactParts.push('Phone: ' + f.BusinessPhone);
@@ -2139,24 +2159,6 @@ module.exports = async function handler(req, res) {
           if (f.OpeningHours) contactParts.push('Opening hours: ' + f.OpeningHours);
           if (contactParts.length > 0) {
             systemPrompt += '\n\n## Contact details\n' + contactParts.join('\n');
-          }
-
-          // ── Knowledge fetch — per-client approved Q/A items ──
-          // We have the client record in scope; pull top matching items and inject.
-          var __clientRecordId = pData.records[0].id;
-          var __usedKnowledgeIds = []; // Populated when we strip markers from the reply
-          try {
-            var __items = await knowledge.fetchKnowledgeItems(profileAtKey, __clientRecordId, message, 5);
-            if (__items && __items.length) {
-              systemPrompt += knowledge.formatKnowledgeForPrompt(__items);
-              // Stash on the request scope so post-processing can verify ids if needed
-              req.__lunaKnowledgeContext = { clientRecordId: __clientRecordId, candidates: __items.map(function(i){return i.id;}) };
-            } else {
-              req.__lunaKnowledgeContext = { clientRecordId: __clientRecordId, candidates: [] };
-            }
-          } catch (kErr) {
-            console.warn('[luna-chat] knowledge fetch failed:', kErr.message);
-            req.__lunaKnowledgeContext = { clientRecordId: __clientRecordId, candidates: [] };
           }
 
           // v2: Emergency phone — used by emergency_card block
@@ -2583,18 +2585,22 @@ No problem, drop your email and departure date in below and I'll find it.
         // Fire-and-forget — never block the response on usage tracking.
         try {
           var __km = knowledge.extractKnowledgeMarkers(cleanReply);
+          var __kCtx = req.__lunaKnowledgeContext || {};
           if (__km.ids.length > 0) {
             cleanReply = __km.cleaned;
             var __kKey = isTravelgenix ? process.env.AIRTABLE_KEY : atKey;
-            var __kCtx = req.__lunaKnowledgeContext || {};
             // Only track ids that we actually offered as candidates (defence against hallucinated IDs)
             var __validIds = (__kCtx.candidates || []).filter(function(id){ return __km.ids.indexOf(id) !== -1; });
+            console.log('[luna-chat] knowledge: offered=' + (__kCtx.candidates || []).length + ' used=' + __km.ids.length + ' valid=' + __validIds.length);
             if (__kKey && __validIds.length) {
               setImmediate(function(){
                 knowledge.trackKnowledgeUsage(__kKey, __validIds).catch(function(){});
               });
               req.__lunaUsedKnowledgeIds = __validIds; // surfaced for conversation logging
             }
+          } else if ((__kCtx.candidates || []).length > 0) {
+            // We offered Knowledge but Luna didn't use it — diagnostic signal
+            console.log('[luna-chat] knowledge: offered=' + __kCtx.candidates.length + ' used=0 (Luna chose not to use approved answers)');
           }
         } catch (kmErr) {
           console.warn('[luna-chat] knowledge marker handling failed:', kmErr.message);
@@ -2670,17 +2676,20 @@ No problem, drop your email and departure date in below and I'll find it.
     // Strip [KNOWLEDGE:recXXX] markers and track which items were used (fire-and-forget).
     try {
       var __km2 = knowledge.extractKnowledgeMarkers(cleanReply);
+      var __kCtx2 = req.__lunaKnowledgeContext || {};
       if (__km2.ids.length > 0) {
         cleanReply = __km2.cleaned;
         var __kKey2 = isTravelgenix ? process.env.AIRTABLE_KEY : atKey;
-        var __kCtx2 = req.__lunaKnowledgeContext || {};
         var __validIds2 = (__kCtx2.candidates || []).filter(function(id){ return __km2.ids.indexOf(id) !== -1; });
+        console.log('[luna-chat] knowledge: offered=' + (__kCtx2.candidates || []).length + ' used=' + __km2.ids.length + ' valid=' + __validIds2.length);
         if (__kKey2 && __validIds2.length) {
           setImmediate(function(){
             knowledge.trackKnowledgeUsage(__kKey2, __validIds2).catch(function(){});
           });
           req.__lunaUsedKnowledgeIds = __validIds2;
         }
+      } else if ((__kCtx2.candidates || []).length > 0) {
+        console.log('[luna-chat] knowledge: offered=' + __kCtx2.candidates.length + ' used=0 (Luna chose not to use approved answers)');
       }
     } catch (kmErr2) {
       console.warn('[luna-chat] knowledge marker handling failed:', kmErr2.message);
