@@ -86,6 +86,7 @@ module.exports = async function handler(req, res) {
           widgetHints: fields.WidgetHints || '',
           widgetBotName: fields.WidgetBotName || 'Luna AI',
           widgetSize: fields.WidgetSize || 'standard',
+          widgetSizeV2: fields.WidgetSize || '',
           widgetPosition: fields.WidgetPosition ? (typeof fields.WidgetPosition === 'object' ? fields.WidgetPosition.name : fields.WidgetPosition) : 'right',
           mobileBubble: fields.MobileBubble ? (typeof fields.MobileBubble === 'object' ? fields.MobileBubble.name : fields.MobileBubble) : 'normal',
           /* v2 widget fields */
@@ -143,6 +144,9 @@ module.exports = async function handler(req, res) {
       if (body.widgetHints !== undefined) updateFields.WidgetHints = body.widgetHints;
       if (body.widgetBotName !== undefined) updateFields.WidgetBotName = body.widgetBotName;
       if (body.widgetSize !== undefined) updateFields.WidgetSize = body.widgetSize;
+      // Dashboard sends widgetSizeV2 (new field name) — map it to the existing
+      // Airtable WidgetSize column. Takes priority over the legacy widgetSize key.
+      if (body.widgetSizeV2 !== undefined) updateFields.WidgetSize = body.widgetSizeV2;
       if (body.widgetPosition !== undefined) updateFields.WidgetPosition = body.widgetPosition;
       if (body.mobileBubble !== undefined) updateFields.MobileBubble = body.mobileBubble;
       /* v2 widget fields */
