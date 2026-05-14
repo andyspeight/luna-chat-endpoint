@@ -3898,227 +3898,222 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     }
   } catch(e) {}
 
+  // luna-stats: API-driven render — replaces the old localStorage-based version.
+  // Fetches /api/luna-stats which reads Conversations from Airtable, so the panel
+  // sees every conversation across all browsers/sessions, not just this one's.
+  var _statsCache = null;
+  var _statsFetching = false;
+
   function renderAnalytics() {
-    const history = getHistory();
+    const el = document.getElementById('analyticsPanel');
+    if (!el) return;
+
+    // Always show Live Now from in-memory state (it's the only real-time tile)
     const liveCount = Object.keys(conversations).length;
-    const total = history.length;
 
-    // Handler split
-    const aiOnly = history.filter(h => h.handler === 'ai').length;
-    const escalated = total - aiOnly;
-    const aiPct = total > 0 ? Math.round((aiOnly/total)*100) : 0;
-
-    // Average messages
-    const avgMsgs = total > 0 ? (history.reduce((s,h) => s + (h.messageCount || (h.messages||[]).length), 0) / total).toFixed(1) : '0';
-
-    // Average duration (minutes)
-    const durations = history.filter(h => h.startedAt && h.resolvedAt).map(h =>
-      (new Date(h.resolvedAt) - new Date(h.startedAt)) / 60000
-    );
-    const avgDuration = durations.length > 0 ? (durations.reduce((s,d) => s+d, 0) / durations.length).toFixed(0) : '0';
-
-    // Ratings
-    const rated = history.filter(h => h.rating && h.rating > 0);
-    const avgRating = rated.length > 0 ? (rated.reduce((s,h) => s + h.rating, 0) / rated.length).toFixed(1) : '—';
-    const ratingDist = [0,0,0,0,0];
-    rated.forEach(h => { if (h.rating >= 1 && h.rating <= 5) ratingDist[h.rating-1]++; });
-    const maxRating = Math.max(...ratingDist, 1);
-
-    // Agent response times (time between visitor msg and next agent msg during agent mode)
-    const responseTimes = [];
-    history.forEach(h => {
-      const msgs = h.messages || [];
-      for (var i = 0; i < msgs.length - 1; i++) {
-        if (msgs[i].from === 'visitor' && msgs[i+1].from === 'agent' && msgs[i].timestamp && msgs[i+1].timestamp) {
-          var diff = (new Date(msgs[i+1].timestamp) - new Date(msgs[i].timestamp)) / 1000;
-          if (diff > 0 && diff < 3600) responseTimes.push(diff);
-        }
-      }
-    });
-    const avgResponseSecs = responseTimes.length > 0 ? Math.round(responseTimes.reduce((s,d) => s+d, 0) / responseTimes.length) : 0;
-    const avgResponseStr = avgResponseSecs < 60 ? avgResponseSecs + 's' : Math.round(avgResponseSecs/60) + 'm ' + (avgResponseSecs%60) + 's';
-
-    // First contact resolution (resolved by AI without escalation)
-    const fcrPct = total > 0 ? Math.round((aiOnly/total)*100) : 0;
-
-    // Agent leaderboard
-    const agentStats = {};
-    history.forEach(h => {
-      (h.messages || []).forEach(m => {
-        if (m.from === 'agent' && m.agentName) {
-          if (!agentStats[m.agentName]) agentStats[m.agentName] = { msgs: 0, convs: new Set() };
-          agentStats[m.agentName].msgs++;
-          agentStats[m.agentName].convs.add(h.id);
-        }
+    // If we already have a cache from this session, render immediately.
+    if (_statsCache) {
+      renderAnalyticsWithData(el, _statsCache, liveCount);
+      // Refresh in background so the panel stays current if it's been open a while
+      fetchStatsThen(function(data) {
+        _statsCache = data;
+        renderAnalyticsWithData(el, data, Object.keys(conversations).length);
       });
-    });
-    const leaderboard = Object.entries(agentStats)
-      .map(([name, s]) => ({ name, msgs: s.msgs, convs: s.convs.size }))
-      .sort((a,b) => b.convs - a.convs);
-
-    // Peak hours
-    const hourCounts = new Array(24).fill(0);
-    history.forEach(h => {
-      if (h.startedAt) { var hr = new Date(h.startedAt).getHours(); hourCounts[hr]++; }
-    });
-    const maxHour = Math.max(...hourCounts, 1);
-    const peakHour = hourCounts.indexOf(Math.max(...hourCounts));
-    const peakStr = peakHour.toString().padStart(2,'0') + ':00–' + ((peakHour+1)%24).toString().padStart(2,'0') + ':00';
-
-    // Top pages
-    const pageCounts = {};
-    history.forEach(h => {
-      const p = (h.visitor?.page || 'Unknown').replace(/^https?:\/\/[^/]+/, '') || '/';
-      pageCounts[p] = (pageCounts[p]||0) + 1;
-    });
-    const topPages = Object.entries(pageCounts).sort((a,b) => b[1]-a[1]).slice(0,6);
-
-    // Conversations by day (last 14 days)
-    const dayLabels = [];
-    const dayCounts = [];
-    for (let i=13; i>=0; i--) {
-      const d = new Date(); d.setDate(d.getDate()-i);
-      const label = d.toLocaleDateString('en-GB', { day:'numeric', month:'short' });
-      const dateStr = d.toDateString();
-      const count = history.filter(h => new Date(h.resolvedAt || h.startedAt).toDateString() === dateStr).length;
-      dayLabels.push(label);
-      dayCounts.push(count);
+      return;
     }
-    const maxDay = Math.max(...dayCounts, 1);
 
-    // Donut gradient
+    // No cache — show loading state then fetch
+    el.innerHTML = renderStatsLoading(liveCount);
+    fetchStatsThen(function(data, err) {
+      if (err) {
+        el.innerHTML = renderStatsError(err, liveCount);
+        return;
+      }
+      _statsCache = data;
+      renderAnalyticsWithData(el, data, Object.keys(conversations).length);
+    });
+  }
+
+  function fetchStatsThen(cb) {
+    if (_statsFetching) return; // dedupe concurrent fetches
+    _statsFetching = true;
+    fetch('https://luna-chat-endpoint.vercel.app/api/luna-stats', {
+      method: 'GET',
+      headers: {
+        'X-Client-Name': CONFIG.CLIENT_NAME
+      }
+    })
+      .then(function(r) { return r.json().then(function(d){ return { ok: r.ok, data: d }; }); })
+      .then(function(out) {
+        _statsFetching = false;
+        if (!out.ok) { cb(null, (out.data && out.data.error) || 'HTTP error'); return; }
+        if (!out.data || !out.data.success) { cb(null, (out.data && out.data.error) || 'Unknown error'); return; }
+        cb(out.data.metrics, null);
+      })
+      .catch(function(e) {
+        _statsFetching = false;
+        cb(null, e.message || 'Network error');
+      });
+  }
+
+  function renderStatsLoading(liveCount) {
+    return '<div class="analytics-title">Performance</div>'
+      + '<div class="analytics-sub">Loading conversation history…</div>'
+      + '<div class="stats-grid">'
+      +   '<div class="stat-card">'
+      +     '<span class="stat-label">Live Now</span>'
+      +     '<span class="stat-value teal">' + liveCount + '</span>'
+      +     '<span class="stat-detail">Active conversations</span>'
+      +   '</div>'
+      + '</div>'
+      + '<div style="padding:var(--space-8) 0;text-align:center;color:var(--text-muted);font-size:var(--text-sm)">Loading…</div>';
+  }
+
+  function renderStatsError(err, liveCount) {
+    return '<div class="analytics-title">Performance</div>'
+      + '<div class="analytics-sub" style="color:var(--red)">Could not load stats: ' + esc(err) + '</div>'
+      + '<div class="stats-grid">'
+      +   '<div class="stat-card">'
+      +     '<span class="stat-label">Live Now</span>'
+      +     '<span class="stat-value teal">' + liveCount + '</span>'
+      +     '<span class="stat-detail">Active conversations</span>'
+      +   '</div>'
+      + '</div>';
+  }
+
+  function renderAnalyticsWithData(el, m, liveCount) {
+    // m is the metrics object from /api/luna-stats
+    const total = m.total || 0;
+    const aiOnly = m.aiOnly || 0;
+    const escalated = m.escalated || 0;
+    const aiPct = m.aiPct || 0;
+    const avgDuration = (m.avgDurationMins != null ? m.avgDurationMins : 0);
+    const avgMessages = (m.avgMessages != null ? m.avgMessages : 0);
+    const avgRating = m.avgRating != null ? m.avgRating.toFixed(1) : '—';
+    const ratedCount = m.ratedCount || 0;
+    const ratingDist = m.ratingDist || [0,0,0,0,0];
+    const maxRating = Math.max.apply(null, ratingDist.concat([1]));
+    const dayLabels = (m.dayLabels || []).map(function(iso) {
+      var d = new Date(iso + 'T00:00:00');
+      return d.toLocaleDateString('en-GB', { day:'numeric', month:'short' });
+    });
+    const dayCounts = m.dayCounts || [];
+    const maxDay = Math.max.apply(null, dayCounts.concat([1]));
+    const hourCounts = m.hourCounts || new Array(24).fill(0);
+    const maxHour = Math.max.apply(null, hourCounts.concat([1]));
+    const peakStr = m.peakHourStr || '—';
+    const peakCount = (m.peakHourIdx != null) ? hourCounts[m.peakHourIdx] : 0;
+    const topPages = m.topPages || [];
+    const topTopics = m.topTopics || [];
+
     const donutGradient = 'conic-gradient(var(--teal) 0% ' + aiPct + '%, var(--green) ' + aiPct + '% 100%)';
 
-    const el = document.getElementById('analyticsPanel');
-    el.innerHTML = `
-      <div class="analytics-title">Agent Performance Dashboard</div>
-      <div class="analytics-sub">Based on ${total} resolved conversation${total!==1?'s':''} in history</div>
+    el.innerHTML = ''
+      + '<div class="analytics-title">Performance</div>'
+      + '<div class="analytics-sub">Based on ' + total + ' conversation' + (total!==1?'s':'') + ' for ' + esc(CONFIG.CLIENT_NAME) + '</div>'
 
-      <div class="stats-grid">
-        <div class="stat-card">
-          <span class="stat-label">Live Now</span>
-          <span class="stat-value teal">${liveCount}</span>
-          <span class="stat-detail">Active conversations</span>
-        </div>
-        <div class="stat-card">
-          <span class="stat-label">Total Resolved</span>
-          <span class="stat-value">${total}</span>
-          <span class="stat-detail">In history</span>
-        </div>
-        <div class="stat-card">
-          <span class="stat-label">Avg Response Time</span>
-          <span class="stat-value amber">${avgResponseStr || '—'}</span>
-          <span class="stat-detail">${responseTimes.length} agent responses</span>
-        </div>
-        <div class="stat-card">
-          <span class="stat-label">Avg Duration</span>
-          <span class="stat-value green">${avgDuration}m</span>
-          <span class="stat-detail">To resolution</span>
-        </div>
-        <div class="stat-card">
-          <span class="stat-label">Customer Rating</span>
-          <span class="stat-value" style="color:var(--amber)">${avgRating}${avgRating !== '—' ? '/5' : ''}</span>
-          <span class="stat-detail">${rated.length} rated conversation${rated.length!==1?'s':''}</span>
-        </div>
-        <div class="stat-card">
-          <span class="stat-label">AI Resolution</span>
-          <span class="stat-value teal">${fcrPct}%</span>
-          <span class="stat-detail">${aiOnly} resolved without agent</span>
-        </div>
-        <div class="stat-card">
-          <span class="stat-label">Avg Messages</span>
-          <span class="stat-value">${avgMsgs}</span>
-          <span class="stat-detail">Per conversation</span>
-        </div>
-        <div class="stat-card">
-          <span class="stat-label">Peak Hour</span>
-          <span class="stat-value" style="font-size:var(--text-xl)">${total > 0 ? peakStr : '—'}</span>
-          <span class="stat-detail">${total > 0 ? hourCounts[peakHour] + ' conversations' : 'No data'}</span>
-        </div>
-      </div>
+      + '<div class="stats-grid">'
+      +   '<div class="stat-card"><span class="stat-label">Live Now</span><span class="stat-value teal">' + liveCount + '</span><span class="stat-detail">Active conversations</span></div>'
+      +   '<div class="stat-card"><span class="stat-label">Total Conversations</span><span class="stat-value">' + total + '</span><span class="stat-detail">All time</span></div>'
+      +   '<div class="stat-card"><span class="stat-label">AI Resolution</span><span class="stat-value teal">' + aiPct + '%</span><span class="stat-detail">' + aiOnly + ' without escalation</span></div>'
+      +   '<div class="stat-card"><span class="stat-label">Avg Duration</span><span class="stat-value green">' + avgDuration + 'm</span><span class="stat-detail">' + (total > 0 ? 'Per conversation' : 'No data') + '</span></div>'
+      +   '<div class="stat-card"><span class="stat-label">Avg Messages</span><span class="stat-value">' + avgMessages + '</span><span class="stat-detail">' + (total > 0 ? 'Per conversation' : 'No data') + '</span></div>'
+      +   '<div class="stat-card"><span class="stat-label">Quality Score</span><span class="stat-value" style="color:var(--amber)">' + avgRating + (avgRating !== '—' ? '/5' : '') + '</span><span class="stat-detail">' + ratedCount + ' scored' + (ratedCount===1?'':'') + '</span></div>'
+      +   '<div class="stat-card"><span class="stat-label">Escalated</span><span class="stat-value" style="color:var(--amber)">' + escalated + '</span><span class="stat-detail">' + (total > 0 ? 'To a human agent' : 'No data') + '</span></div>'
+      +   '<div class="stat-card"><span class="stat-label">Peak Hour</span><span class="stat-value" style="font-size:var(--text-xl)">' + peakStr + '</span><span class="stat-detail">' + (peakCount > 0 ? peakCount + ' conversation' + (peakCount!==1?'s':'') : 'No data') + '</span></div>'
+      + '</div>'
 
-      <div class="analytics-section">
-        <h3>Last 14 Days</h3>
-        <div class="bar-chart">
-          ${dayLabels.map((label, i) => `
-            <div class="bar-row">
-              <span class="bar-label">${label}</span>
-              <div class="bar-track">
-                <div class="bar-fill teal" style="width:${Math.max((dayCounts[i]/maxDay)*100, dayCounts[i]>0?8:0)}%">
-                  ${dayCounts[i] > 0 ? '<span>' + dayCounts[i] + '</span>' : ''}
-                </div>
-              </div>
-            </div>
-          `).join('')}
-        </div>
-      </div>
+      + (total > 0
+        ? ('<div class="analytics-section">'
+          +   '<h3>Last 14 Days</h3>'
+          +   '<div class="bar-chart">'
+          +     dayLabels.map(function(label, i) {
+                  return '<div class="bar-row">'
+                    + '<span class="bar-label">' + label + '</span>'
+                    + '<div class="bar-track">'
+                    +   '<div class="bar-fill teal" style="width:' + Math.max((dayCounts[i]/maxDay)*100, dayCounts[i]>0?8:0) + '%">'
+                    +     (dayCounts[i] > 0 ? '<span>' + dayCounts[i] + '</span>' : '')
+                    +   '</div>'
+                    + '</div>'
+                    + '</div>';
+                }).join('')
+          +   '</div>'
+          + '</div>')
+        : '')
 
-      <div class="split-row">
-        <div class="split-card">
-          <h4>Handling Split</h4>
-          <div class="donut-row">
-            <div class="donut-ring" style="background:${donutGradient}">
-              <div class="donut-center" style="width:52px;height:52px;border-radius:50%;background:var(--surface);display:flex;align-items:center;justify-content:center;">${aiPct}%</div>
-            </div>
-            <div class="donut-legend">
-              <div class="donut-legend-item"><div class="donut-swatch" style="background:var(--teal)"></div>Luna AI only — ${aiOnly}</div>
-              <div class="donut-legend-item"><div class="donut-swatch" style="background:var(--green)"></div>Agent escalated — ${escalated}</div>
-            </div>
-          </div>
-        </div>
-        <div class="split-card">
-          <h4>Customer Ratings</h4>
-          ${rated.length > 0 ? `<div style="display:flex;align-items:flex-end;gap:var(--space-2);height:80px;margin-top:var(--space-2)">
-            ${ratingDist.map((count, i) => `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:var(--space-1)">
-              <div style="font-size:var(--text-xs);color:var(--text-muted)">${count}</div>
-              <div style="width:100%;height:${Math.max((count/maxRating)*60, count>0?4:0)}px;background:var(--amber);border-radius:var(--radius-sm);transition:height .3s ease-out"></div>
-              <div style="font-size:var(--text-xs);color:var(--text-dim)">${i+1}★</div>
-            </div>`).join('')}
-          </div>` : '<div style="font-size:var(--text-sm);color:var(--text-muted);padding:var(--space-5) 0">No ratings yet</div>'}
-        </div>
-      </div>
+      + (total > 0
+        ? ('<div class="split-row">'
+          +   '<div class="split-card">'
+          +     '<h4>Handling Split</h4>'
+          +     '<div class="donut-row">'
+          +       '<div class="donut-ring" style="background:' + donutGradient + '"><div class="donut-center" style="width:52px;height:52px;border-radius:50%;background:var(--surface);display:flex;align-items:center;justify-content:center;">' + aiPct + '%</div></div>'
+          +       '<div class="donut-legend">'
+          +         '<div class="donut-legend-item"><div class="donut-swatch" style="background:var(--teal)"></div>Luna AI only — ' + aiOnly + '</div>'
+          +         '<div class="donut-legend-item"><div class="donut-swatch" style="background:var(--green)"></div>Agent escalated — ' + escalated + '</div>'
+          +       '</div>'
+          +     '</div>'
+          +   '</div>'
+          +   '<div class="split-card">'
+          +     '<h4>Quality Distribution</h4>'
+          +     (ratedCount > 0
+                ? ('<div style="display:flex;align-items:flex-end;gap:var(--space-2);height:80px;margin-top:var(--space-2)">'
+                  + ratingDist.map(function(count, i) {
+                      return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:var(--space-1)">'
+                        + '<div style="font-size:var(--text-xs);color:var(--text-muted)">' + count + '</div>'
+                        + '<div style="width:100%;height:' + Math.max((count/maxRating)*60, count>0?4:0) + 'px;background:var(--amber);border-radius:var(--radius-sm);transition:height .3s ease-out"></div>'
+                        + '<div style="font-size:var(--text-xs);color:var(--text-dim)">' + (i+1) + '★</div>'
+                        + '</div>';
+                    }).join('')
+                  + '</div>')
+                : '<div style="font-size:var(--text-sm);color:var(--text-muted);padding:var(--space-5) 0">Quality scoring runs when conversations close — scores will appear here.</div>')
+          +   '</div>'
+          + '</div>')
+        : '')
 
-      ${leaderboard.length > 0 ? `<div class="analytics-section">
-        <h3>Agent Leaderboard</h3>
-        <div style="display:flex;flex-direction:column;gap:var(--space-2)">
-          ${leaderboard.map((a, i) => `<div style="display:flex;align-items:center;gap:var(--space-3);padding:var(--space-3);border-radius:var(--radius-md);background:var(--navy-light)">
-            <div style="width:32px;height:32px;border-radius:var(--radius-full);background:${i===0?'var(--teal-glow)':'var(--surface-raised)'};display:flex;align-items:center;justify-content:center;font-size:var(--text-sm);font-weight:700;color:${i===0?'var(--teal)':'var(--text-dim)'}">${i+1}</div>
-            <div style="flex:1">
-              <div style="font-size:var(--text-sm);font-weight:600">${esc(a.name)}</div>
-              <div style="font-size:var(--text-xs);color:var(--text-muted)">${a.convs} conversation${a.convs!==1?'s':''} · ${a.msgs} messages</div>
-            </div>
-          </div>`).join('')}
-        </div>
-      </div>` : ''}
+      + (total > 0
+        ? ('<div class="split-row">'
+          +   '<div class="split-card">'
+          +     '<h4>Top Pages</h4>'
+          +     '<div class="page-list">'
+          +       (topPages.length > 0
+                  ? topPages.map(function(p){
+                      return '<div class="page-row"><span class="page-path">' + esc(p.path) + '</span><span class="page-count">' + p.count + '</span></div>';
+                    }).join('')
+                  : '<div style="font-size:var(--text-sm);color:var(--text-muted);">No data yet</div>')
+          +     '</div>'
+          +   '</div>'
+          +   '<div class="split-card">'
+          +     '<h4>Hourly Activity</h4>'
+          +     '<div style="display:flex;align-items:flex-end;gap:1px;height:60px">'
+          +       hourCounts.map(function(count, hr) {
+                    return '<div title="' + String(hr).padStart(2,'0') + ':00 — ' + count + ' chats" style="flex:1;height:' + Math.max((count/maxHour)*56, count>0?3:1) + 'px;background:' + (count>0?'var(--teal)':'var(--border)') + ';border-radius:1px;opacity:' + (count>0?1:0.3) + ';transition:height .3s"></div>';
+                  }).join('')
+          +     '</div>'
+          +     '<div style="display:flex;justify-content:space-between;margin-top:var(--space-1)"><span style="font-size:var(--text-xs);color:var(--text-muted)">00</span><span style="font-size:var(--text-xs);color:var(--text-muted)">06</span><span style="font-size:var(--text-xs);color:var(--text-muted)">12</span><span style="font-size:var(--text-xs);color:var(--text-muted)">18</span><span style="font-size:var(--text-xs);color:var(--text-muted)">24</span></div>'
+          +   '</div>'
+          + '</div>')
+        : '')
 
-      <div class="split-row">
-        <div class="split-card">
-          <h4>Top Pages</h4>
-          <div class="page-list">
-            ${topPages.length > 0 ? topPages.map(([page, count]) => `
-              <div class="page-row">
-                <span class="page-path">${esc(page)}</span>
-                <span class="page-count">${count}</span>
-              </div>
-            `).join('') : '<div style="font-size:var(--text-sm);color:var(--text-muted);">No data yet</div>'}
-          </div>
-        </div>
-        <div class="split-card">
-          <h4>Hourly Activity</h4>
-          <div style="display:flex;align-items:flex-end;gap:1px;height:60px">
-            ${hourCounts.map((count, hr) => `<div title="${hr.toString().padStart(2,'0')}:00 — ${count} chats" style="flex:1;height:${Math.max((count/maxHour)*56, count>0?3:1)}px;background:${count>0?'var(--teal)':'var(--border)'};border-radius:1px;opacity:${count>0?1:0.3};transition:height .3s"></div>`).join('')}
-          </div>
-          <div style="display:flex;justify-content:space-between;margin-top:var(--space-1)">
-            <span style="font-size:var(--text-xs);color:var(--text-muted)">00</span>
-            <span style="font-size:var(--text-xs);color:var(--text-muted)">06</span>
-            <span style="font-size:var(--text-xs);color:var(--text-muted)">12</span>
-            <span style="font-size:var(--text-xs);color:var(--text-muted)">18</span>
-            <span style="font-size:var(--text-xs);color:var(--text-muted)">24</span>
-          </div>
-        </div>
-      </div>
-    `;
+      + (topTopics.length > 0
+        ? ('<div class="analytics-section">'
+          +   '<h3>Top Topics</h3>'
+          +   '<div style="display:flex;flex-wrap:wrap;gap:var(--space-2);margin-top:var(--space-3)">'
+          +     topTopics.map(function(t) {
+                  return '<div style="display:inline-flex;align-items:center;gap:var(--space-2);padding:6px 12px;border-radius:var(--radius-full);background:var(--surface-raised);border:1px solid var(--border)"><span style="font-size:var(--text-sm)">' + esc(t.topic) + '</span><span style="font-size:var(--text-xs);color:var(--text-muted);font-weight:600">' + t.count + '</span></div>';
+                }).join('')
+          +   '</div>'
+          + '</div>')
+        : '')
+
+      + (total === 0
+        ? ('<div style="padding:var(--space-12) var(--space-4);text-align:center">'
+          +   '<div style="font-size:32px;margin-bottom:var(--space-3)">📊</div>'
+          +   '<div style="font-size:var(--text-lg);font-weight:600;margin-bottom:var(--space-2);color:var(--text)">No conversations yet</div>'
+          +   '<div style="font-size:var(--text-sm);color:var(--text-muted);max-width:380px;margin:0 auto">Once visitors start chatting with Luna on your site, this panel will fill up with insights — peak hours, topics, quality scores, and more.</div>'
+          + '</div>')
+        : '');
   }
+
 
   // ─── HELPERS ───
   function esc(s) { const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
