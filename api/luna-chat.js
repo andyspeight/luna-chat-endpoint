@@ -2474,14 +2474,30 @@ No problem, drop your email and departure date in below and I'll find it.
   }
   if (openerRequest) {
     systemPrompt += '\n\n=== CONTEXTUAL OPENER REQUEST ===\n';
-    systemPrompt += 'This is the visitor\'s FIRST interaction. They have just opened the chat window in expanded mode. Compose a SHORT, warm opening greeting (1-2 sentences max) that:\n';
+    systemPrompt += 'This is the visitor\'s FIRST interaction. They have just opened the chat window in expanded mode. They are in DISCOVER / RESEARCH mode — they are NOT ready to book. Do NOT push toward booking, quotes, calls, or sales actions.\n\n';
+    systemPrompt += 'Output a JSON object (no markdown, no code fence, no commentary — JUST the raw JSON) with this exact shape:\n';
+    systemPrompt += '{\n';
+    systemPrompt += '  "reply": "<your 1-2 sentence greeting>",\n';
+    systemPrompt += '  "pills": ["<pill 1>", "<pill 2>", "<pill 3>", "<pill 4>"]\n';
+    systemPrompt += '}\n\n';
+    systemPrompt += 'GREETING rules:\n';
+    systemPrompt += '- 1-2 sentences max, warm and informed\n';
     systemPrompt += '- References the page they\'re on (subtly, naturally)\n';
-    systemPrompt += '- Offers a concrete next step or question relevant to that page\n';
-    systemPrompt += '- Does NOT include "[OPENER]" or any meta markers in your reply\n';
-    systemPrompt += '- Does NOT say "Hi there" or generic openers — be specific to the page\n';
-    systemPrompt += 'Example for a Greek Islands page: "I see you\'re looking at our Greek islands — Mykonos and Santorini get most of the attention, but tell me what kind of trip you\'re after and I can narrow it down."\n';
-    systemPrompt += 'Example for a transfers page: "Airport transfers can be the difference between a great holiday and a stressful arrival. Where are you flying into?"\n';
-    systemPrompt += 'Keep it conversational, never markdowny, never bullet-pointed.';
+    systemPrompt += '- Opens a research-mode question (NOT a sales push)\n';
+    systemPrompt += '- Does NOT say "Hi there" or generic openers\n';
+    systemPrompt += '- Conversational tone, never markdown, never bullet-pointed\n';
+    systemPrompt += 'Greeting example for a Greek Islands page: "Greek islands feel familiar but every one is wildly different — Mykonos parties, Santorini stuns, Naxos relaxes. What kind of trip are you picturing?"\n\n';
+    systemPrompt += 'PILLS rules — EXACTLY 4 pills, each one strictly DISCOVER MODE:\n';
+    systemPrompt += '- 2-5 words each, ALWAYS short\n';
+    systemPrompt += '- Question-shaped or noun-shaped (e.g. "Best time to visit", "Hidden gems", "What\'s it like?")\n';
+    systemPrompt += '- Different angles — do NOT repeat the same idea 4 ways\n';
+    systemPrompt += '- Specific to the PAGE TOPIC, not generic travel\n';
+    systemPrompt += '- NEVER booking-mode: NO "Book now", "Get a quote", "Speak to an expert", "Call us", "Check availability", "See prices"\n';
+    systemPrompt += '- Good categories: highlights, hidden spots, climate/timing, comparisons, what to expect, who it suits, things to know\n';
+    systemPrompt += 'Pills example for an Africa page: ["Safari highlights", "Best time to visit", "Family-friendly options", "Lesser-known countries"]\n';
+    systemPrompt += 'Pills example for a Greek Islands page: ["Island personalities", "Best time to visit", "Hidden islands", "What to expect"]\n';
+    systemPrompt += 'Pills example for a cruise page: ["What\'s included", "Cabin types explained", "Best lines for first-timers", "Shore excursions"]\n\n';
+    systemPrompt += 'OUTPUT FORMAT: respond with ONLY the JSON object. No surrounding text. No code fences. No "Here\'s..." preamble.';
   }
   if (visitorName) systemPrompt += `\nThe visitor's name is ${visitorName}.`;
 
@@ -2760,6 +2776,40 @@ No problem, drop your email and departure date in below and I'll find it.
 
     var escalate = detectEscalation(cleanReply, message);
 
+    // Phase 3: opener requests return JSON. Parse out reply + pills.
+    var openerPills = null;
+    if (openerRequest) {
+      try {
+        // Strip code fences if Luna added them despite instructions
+        var jsonText = cleanReply.trim();
+        if (jsonText.indexOf('```') !== -1) {
+          jsonText = jsonText.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+        }
+        // Find first { and last } to be defensive against any preamble Luna might add
+        var firstBrace = jsonText.indexOf('{');
+        var lastBrace = jsonText.lastIndexOf('}');
+        if (firstBrace !== -1 && lastBrace > firstBrace) {
+          jsonText = jsonText.slice(firstBrace, lastBrace + 1);
+        }
+        var parsed = JSON.parse(jsonText);
+        if (parsed && typeof parsed.reply === 'string' && parsed.reply.trim()) {
+          cleanReply = parsed.reply.trim();
+        }
+        if (parsed && Array.isArray(parsed.pills)) {
+          // Sanitise pills: strings only, 2-50 chars each, max 4 pills
+          openerPills = parsed.pills
+            .filter(function(p) { return typeof p === 'string'; })
+            .map(function(p) { return p.trim().slice(0, 50); })
+            .filter(function(p) { return p.length >= 2; })
+            .slice(0, 4);
+          if (openerPills.length === 0) openerPills = null;
+        }
+      } catch (parseErr) {
+        console.warn('[luna-chat] opener JSON parse failed:', parseErr.message, '— returning raw reply');
+        // Fall through — cleanReply stays as-is, no pills
+      }
+    }
+
     var responseJson = {
       reply: cleanReply,
       escalate: escalate,
@@ -2770,6 +2820,7 @@ No problem, drop your email and departure date in below and I'll find it.
       }
     };
     if (detectedLang) responseJson.detectedLanguage = detectedLang;
+    if (openerPills && openerPills.length > 0) responseJson.pills = openerPills;
 
     return res.status(200).json(responseJson);
 
