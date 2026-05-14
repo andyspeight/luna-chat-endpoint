@@ -3078,8 +3078,11 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       renderConvList();
       showChatEmpty();
     }
-    // Close analytics if open
-    if (statsOpen) window._toggleStats();
+    // Note: deliberately do NOT close the Stats panel here.
+    // Switching the conversation list (Live ↔ History) is a sidebar-only
+    // action — it shouldn't affect what's visible in the main panel area.
+    // (The auto-close in _selectConv / _selectHistory is kept on purpose,
+    // because those open something specific that needs the main panel.)
   };
 
   function updateHistoryCount() {
