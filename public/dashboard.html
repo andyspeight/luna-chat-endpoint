@@ -2111,6 +2111,9 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
   function bootSignedIn(data) {
     // Populate CONFIG from the session response
     CONFIG.CLIENT_NAME = data.config.clientName;
+    // Also expose the client name on window so standalone scripts (embed code
+    // section, Get Code modal) can read it — CONFIG itself is block-scoped.
+    window.LUNA_CLIENT_NAME = data.config.clientName;
     CONFIG.ABLY_KEY = data.config.ablyKey;
     CONFIG.PASSWORD = ''; // no longer used
     CONFIG.AGENT_NAME = (data.account && data.account.fullName) || (data.account && data.account.email) || 'Agent';
@@ -6112,7 +6115,7 @@ setTimeout(function () {
 (function() {
   'use strict';
   function buildInlineSnippet() {
-    var name = (window.CONFIG && window.CONFIG.CLIENT_NAME) || 'YOUR_CLIENT_NAME';
+    var name = window.LUNA_CLIENT_NAME || (window.CONFIG && window.CONFIG.CLIENT_NAME) || 'YOUR_CLIENT_NAME';
     var src = 'https://widgets.travelify.io/widget-core.js';
     return '<script src="' + src + '" data-client-name="' + name + '" defer><\/script>';
   }
@@ -6366,7 +6369,7 @@ setTimeout(function () {
   var codeEl = document.getElementById('lunaGcCode');
 
   function buildSnippet() {
-    var name = (window.CONFIG && window.CONFIG.CLIENT_NAME) || 'YOUR_CLIENT_NAME';
+    var name = window.LUNA_CLIENT_NAME || (window.CONFIG && window.CONFIG.CLIENT_NAME) || 'YOUR_CLIENT_NAME';
     var src = 'https://widgets.travelify.io/widget-core.js';
     return '<script src="' + src + '" data-client-name="' + name + '" defer><\/script>';
   }
