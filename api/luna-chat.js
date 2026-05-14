@@ -2136,7 +2136,8 @@ module.exports = async function handler(req, res) {
             console.log('[luna-chat] knowledge fetch: client=' + __clientRecordId + ' message="' + message.slice(0, 80) + '" matched=' + (__items ? __items.length : 0));
             if (__items && __items.length) {
               systemPrompt += knowledge.formatKnowledgeForPrompt(__items);
-              req.__lunaKnowledgeContext = { clientRecordId: __clientRecordId, candidates: __items.map(function(i){return i.id;}) };
+              // Stash full candidate objects so post-processing can do similarity matching when markers are absent
+              req.__lunaKnowledgeContext = { clientRecordId: __clientRecordId, candidates: __items };
             } else {
               req.__lunaKnowledgeContext = { clientRecordId: __clientRecordId, candidates: [] };
             }
@@ -2582,25 +2583,23 @@ No problem, drop your email and departure date in below and I'll find it.
         }
 
         // Strip [KNOWLEDGE:recXXX] markers and track which items were used.
+        // Detection strategy: prefer markers if emitted, fall back to substance similarity.
         // Fire-and-forget — never block the response on usage tracking.
         try {
           var __km = knowledge.extractKnowledgeMarkers(cleanReply);
           var __kCtx = req.__lunaKnowledgeContext || {};
-          if (__km.ids.length > 0) {
-            cleanReply = __km.cleaned;
+          var __cands = __kCtx.candidates || [];
+          if (__km.ids.length > 0) cleanReply = __km.cleaned;
+          var __usedIds = knowledge.inferUsedKnowledge(cleanReply, __cands, __km.ids);
+          console.log('[luna-chat] knowledge: offered=' + __cands.length + ' markers=' + __km.ids.length + ' inferred=' + __usedIds.length);
+          if (__usedIds.length) {
             var __kKey = isTravelgenix ? process.env.AIRTABLE_KEY : atKey;
-            // Only track ids that we actually offered as candidates (defence against hallucinated IDs)
-            var __validIds = (__kCtx.candidates || []).filter(function(id){ return __km.ids.indexOf(id) !== -1; });
-            console.log('[luna-chat] knowledge: offered=' + (__kCtx.candidates || []).length + ' used=' + __km.ids.length + ' valid=' + __validIds.length);
-            if (__kKey && __validIds.length) {
+            if (__kKey) {
               setImmediate(function(){
-                knowledge.trackKnowledgeUsage(__kKey, __validIds).catch(function(){});
+                knowledge.trackKnowledgeUsage(__kKey, __usedIds).catch(function(){});
               });
-              req.__lunaUsedKnowledgeIds = __validIds; // surfaced for conversation logging
+              req.__lunaUsedKnowledgeIds = __usedIds; // surfaced for conversation logging
             }
-          } else if ((__kCtx.candidates || []).length > 0) {
-            // We offered Knowledge but Luna didn't use it — diagnostic signal
-            console.log('[luna-chat] knowledge: offered=' + __kCtx.candidates.length + ' used=0 (Luna chose not to use approved answers)');
           }
         } catch (kmErr) {
           console.warn('[luna-chat] knowledge marker handling failed:', kmErr.message);
@@ -2673,23 +2672,22 @@ No problem, drop your email and departure date in below and I'll find it.
       cleanReply = replyText.replace(/^\[LANG:[^\]]+\]\s*/, '').trim();
     }
 
-    // Strip [KNOWLEDGE:recXXX] markers and track which items were used (fire-and-forget).
+    // Strip [KNOWLEDGE:recXXX] markers and infer which items were used (fire-and-forget).
     try {
       var __km2 = knowledge.extractKnowledgeMarkers(cleanReply);
       var __kCtx2 = req.__lunaKnowledgeContext || {};
-      if (__km2.ids.length > 0) {
-        cleanReply = __km2.cleaned;
+      var __cands2 = __kCtx2.candidates || [];
+      if (__km2.ids.length > 0) cleanReply = __km2.cleaned;
+      var __usedIds2 = knowledge.inferUsedKnowledge(cleanReply, __cands2, __km2.ids);
+      console.log('[luna-chat] knowledge: offered=' + __cands2.length + ' markers=' + __km2.ids.length + ' inferred=' + __usedIds2.length);
+      if (__usedIds2.length) {
         var __kKey2 = isTravelgenix ? process.env.AIRTABLE_KEY : atKey;
-        var __validIds2 = (__kCtx2.candidates || []).filter(function(id){ return __km2.ids.indexOf(id) !== -1; });
-        console.log('[luna-chat] knowledge: offered=' + (__kCtx2.candidates || []).length + ' used=' + __km2.ids.length + ' valid=' + __validIds2.length);
-        if (__kKey2 && __validIds2.length) {
+        if (__kKey2) {
           setImmediate(function(){
-            knowledge.trackKnowledgeUsage(__kKey2, __validIds2).catch(function(){});
+            knowledge.trackKnowledgeUsage(__kKey2, __usedIds2).catch(function(){});
           });
-          req.__lunaUsedKnowledgeIds = __validIds2;
+          req.__lunaUsedKnowledgeIds = __usedIds2;
         }
-      } else if ((__kCtx2.candidates || []).length > 0) {
-        console.log('[luna-chat] knowledge: offered=' + __kCtx2.candidates.length + ' used=0 (Luna chose not to use approved answers)');
       }
     } catch (kmErr2) {
       console.warn('[luna-chat] knowledge marker handling failed:', kmErr2.message);
