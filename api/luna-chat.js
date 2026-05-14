@@ -28,6 +28,22 @@ const DC_AIRPORT_CITY_FIELD = 'fldgrJ2uFjzPcAxUx';   // City Served
 const DC_THEMEPARK_NAME_FIELD = 'fldboK0kstNohXgqJ'; // Name
 const DC_THEMEPARK_LOCATION_FIELD = 'fldyoIhTvHu2NI3gn'; // Location
 
+// Country aliases — informal or alternative names mapped to the canonical
+// Country record name in the Countries table. Used when building the
+// destination index so "USA", "Czechia" etc resolve to the right record.
+const COUNTRY_ALIASES = {
+  'USA':                          ['United States', 'America'],
+  'UAE':                          ['United Arab Emirates'],
+  'Czech Republic':               ['Czechia'],
+  'St Lucia':                     ['Saint Lucia'],
+  'St Kitts & Nevis':             ['Saint Kitts', 'Nevis'],
+  'St Vincent & the Grenadines':  ['Saint Vincent'],
+  'Turks & Caicos':               ['Turks and Caicos'],
+  'Tobago':                       ['Trinidad and Tobago'],
+  'The Gambia':                   ['Gambia']
+  // Hong Kong: exact match only — no alias needed
+};
+
 // In-memory indexes — built once per cold start
 // Shape: { 'lower-case match string': { id, displayName, type } }
 let dcIndex = null;
@@ -253,7 +269,28 @@ async function buildDestinationIndex(atKey) {
   } catch (e) {
     console.warn('[luna-chat] resorts index failed:', e.message);
   }
-    console.log('[luna-chat] destination index built:', Object.keys(index).length, 'keys for', airports.length, 'airports +', parks.length, 'parks');
+  // Countries — index by name so visa, currency, health and practical questions
+  // can be answered. All 100 records indexed (no status filter).
+  var countriesCount = 0;
+  try {
+    var countries = await fetchAllRecords('tblsxbqbyhTDoWhbo', atKey,
+      ['Country', 'Climate Temps', 'Climate Rainfall', 'Climate Season']);
+    countriesCount = countries.length;
+    countries.forEach(function(rec) {
+      var name = rec.fields && rec.fields['Country'];
+      if (!name) return;
+      var payload = { id: rec.id, displayName: name, type: 'country', table: 'tblsxbqbyhTDoWhbo' };
+      addEntry(name, payload);
+      // Hard-coded aliases for informal or alternative country names
+      var aliases = COUNTRY_ALIASES[name];
+      if (aliases && aliases.length) {
+        aliases.forEach(function(alias) { addEntry(alias, payload); });
+      }
+    });
+  } catch (e) {
+    console.warn('[luna-chat] countries index failed:', e.message);
+  }
+    console.log('[luna-chat] destination index built:', Object.keys(index).length, 'keys for', airports.length, 'airports +', parks.length, 'parks +', countriesCount, 'countries');
   return index;
 }
 
@@ -391,6 +428,27 @@ function summariseDestinationRecord(record, payload) {
     if (f['Character and Vibe']) parts.push('Character: ' + f['Character and Vibe']);
     if (f['Best Time to Visit']) parts.push('Best time: ' + f['Best Time to Visit']);
     if (f['Beaches']) parts.push('Beaches: ' + f['Beaches']);
+    if (typeof f['Latitude'] === 'number' && typeof f['Longitude'] === 'number') {
+      parts.push('Coordinates: ' + f['Latitude'] + ', ' + f['Longitude']);
+    }
+  } else if (payload.type === 'country') {
+    parts.push('### Country: ' + (f['Country'] || payload.displayName));
+    if (f['Region']) parts.push('Region: ' + f['Region']);
+    if (f['Hero Intro']) parts.push('Intro: ' + f['Hero Intro']);
+    if (f['Overview']) parts.push('Overview: ' + f['Overview']);
+    if (f['Visa Advisory']) parts.push('Visa advisory: ' + f['Visa Advisory']);
+    if (f['Visa Status UK']) parts.push('Visa status (UK passport): ' + f['Visa Status UK']);
+    if (f['Health Notes UK']) parts.push('Health notes (UK): ' + f['Health Notes UK']);
+    if (f['Practical Info']) parts.push('Practical info: ' + f['Practical Info']);
+    if (f['Currency']) parts.push('Currency: ' + f['Currency']);
+    if (f['Language']) parts.push('Language: ' + f['Language']);
+    if (f['Time Zone']) parts.push('Time zone: ' + f['Time Zone']);
+    if (f['Voltage And Plug']) parts.push('Voltage and plug: ' + f['Voltage And Plug']);
+    if (f['Flight Time From UK']) parts.push('Flight time from UK: ' + f['Flight Time From UK']);
+    if (f['Best Time to Visit']) parts.push('Best time to visit: ' + f['Best Time to Visit']);
+    if (f['Top Things to Do']) parts.push('Top things to do: ' + f['Top Things to Do']);
+    if (f['Food and Drink']) parts.push('Food and drink: ' + f['Food and Drink']);
+    if (f['Getting There']) parts.push('Getting there: ' + f['Getting There']);
     if (typeof f['Latitude'] === 'number' && typeof f['Longitude'] === 'number') {
       parts.push('Coordinates: ' + f['Latitude'] + ', ' + f['Longitude']);
     }
