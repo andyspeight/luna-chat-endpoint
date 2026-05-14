@@ -1337,6 +1337,41 @@ function rebuildConfig(apiConfig) {
     if (A.size.widgetSize) C.widgetSize = A.size.widgetSize;
     if (A.size.radius) C.radius = A.size.radius;
   }
+  /* ─── Map dashboard config keys to widget-core internal names ───
+     The dashboard (and its /api/profile endpoint) saves these keys, but
+     widget-core reads slightly different names internally. Bind them here
+     so dashboard changes actually take effect on the widget. */
+  if (A.widgetSizeV2) C.widgetSize = A.widgetSizeV2;
+  else if (A.widgetSize) C.widgetSize = A.widgetSize;
+  if (A.widgetWelcome !== undefined) C.welcome = A.widgetWelcome;
+  if (A.widgetTagline !== undefined) C.tagline = A.widgetTagline;
+  if (A.widgetBotName !== undefined) C.name = A.widgetBotName;
+  if (A.widgetHints !== undefined) {
+    // hints may be a newline-separated string from Airtable
+    if (typeof A.widgetHints === "string") {
+      C.hints = A.widgetHints.split(/\r?\n/).map(function(h){ return h.trim(); }).filter(Boolean);
+    } else if (Array.isArray(A.widgetHints)) {
+      C.hints = A.widgetHints;
+    }
+  }
+  /* Theme mode — dashboard saves themeMode at top level */
+  if (A.themeMode !== undefined) C.theme = A.themeMode;
+  /* Logo text — dashboard saves logoText, widget-core reads logoText (same key but
+     defensively map). Profile image / bubble icon already correctly bound above. */
+  if (A.logoText !== undefined) C.logoText = A.logoText;
+  /* Auto-trigger — dashboard saves three flat fields, widget-core wants nested */
+  if (A.autoTriggerEnabled !== undefined || A.autoTriggerDelay !== undefined || A.autoTriggerMessage !== undefined) {
+    var triggerEnabled = !!A.autoTriggerEnabled;
+    if (triggerEnabled) {
+      C.autoTrigger = {
+        enabled: true,
+        delay: parseInt(A.autoTriggerDelay, 10) || 30,
+        message: A.autoTriggerMessage || ""
+      };
+    } else {
+      C.autoTrigger = null;
+    }
+  }
   if (A.position) C.position = A.position;
   if (A.fabPosition) C.fabPosition = A.fabPosition;
   if (A.mobileBubble) C.mobileBubble = A.mobileBubble;
@@ -1357,7 +1392,8 @@ rebuildConfig(null);
 var SIZES = {
   small:  { w: 340, h: 480, fab: 52 },
   medium: { w: 380, h: 560, fab: 56 },
-  large:  { w: 420, h: 640, fab: 62 }
+  large:  { w: 420, h: 640, fab: 62 },
+  xlarge: { w: 546, h: 832, fab: 80 }
 };
 function getSize() { return SIZES[C.widgetSize] || SIZES.medium; }
 
@@ -1791,7 +1827,7 @@ function injectCSS() {
   +'#tgx-cw .tgx-badge{position:absolute;top:-4px;right:-4px;min-width:20px;height:20px;border-radius:10px;background:#EF4444;color:#fff;font-size:11px;font-weight:700;display:none;align-items:center;justify-content:center;padding:0 5px;box-shadow:0 2px 6px rgba(239,68,68,0.4)}'
 
   // Panel — cream, soft shadow
-  +'#tgx-cw .tgx-panel{position:fixed;bottom:'+((isMid?'50%':'96px'))+';'+panelSide+';width:'+sz.w+'px;height:'+sz.h+'px;max-height:calc(100vh - 120px);background:#FAFAF6;border-radius:'+C.radius+';border:1px solid rgba(15,26,61,0.08);box-shadow:0 32px 80px rgba(15,26,61,0.25),0 12px 24px rgba(15,26,61,0.12);display:flex;flex-direction:column;overflow:hidden;z-index:999999;opacity:0;visibility:hidden;transform:translateY(16px) scale(0.96);transition:opacity .3s cubic-bezier(.22,1,.36,1),transform .3s cubic-bezier(.22,1,.36,1),visibility .3s}'
+  +'#tgx-cw .tgx-panel{position:fixed;bottom:'+((isMid?'50%':'96px'))+';'+panelSide+';width:'+sz.w+'px;height:'+sz.h+'px;max-width:calc(100vw - 32px);max-height:calc(100vh - 120px);background:#FAFAF6;border-radius:'+C.radius+';border:1px solid rgba(15,26,61,0.08);box-shadow:0 32px 80px rgba(15,26,61,0.25),0 12px 24px rgba(15,26,61,0.12);display:flex;flex-direction:column;overflow:hidden;z-index:999999;opacity:0;visibility:hidden;transform:translateY(16px) scale(0.96);transition:opacity .3s cubic-bezier(.22,1,.36,1),transform .3s cubic-bezier(.22,1,.36,1),visibility .3s}'
   +(isMid?'#tgx-cw .tgx-panel{transform:translateY(calc(-50% + 16px)) scale(0.96)}#tgx-cw .tgx-panel.open{transform:translateY(-50%) scale(1)}':'')
   +'#tgx-cw .tgx-panel.open{opacity:1;visibility:visible;transform:translateY(0) scale(1)}'
 
