@@ -82,16 +82,20 @@ async function findConversation(atKey, convId) {
 }
 
 async function triggerQualityScoring(convId, host) {
-  // Fire-and-forget call to our own quality endpoint. Don't await.
+  // Must await — Vercel terminates serverless functions on response, killing unawaited fetches.
+  // The widget calls log-conversation via sendBeacon, which doesn't wait for response anyway,
+  // so adding latency here is invisible to the user. Scoring takes ~1-2s with Haiku.
   try {
     var url = 'https://' + host + '/api/conversation-quality';
-    fetch(url, {
+    await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ convId: convId })
-    }).catch(function(){ /* fire-and-forget */ });
+    }).catch(function(e){
+      console.warn('[log-conversation] quality scoring trigger failed:', e.message);
+    });
   } catch (e) {
-    // Swallow
+    console.warn('[log-conversation] trigger threw:', e.message);
   }
 }
 
@@ -178,9 +182,11 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    // Fire-and-forget quality scoring. Use the request host (same domain) for the call.
+    // Trigger quality scoring inline. Must await — Vercel kills unawaited promises
+    // when the function returns. Adds ~1-2s of Haiku scoring time, but the widget
+    // uses sendBeacon which doesn't wait for a response, so the user never feels it.
     var host = req.headers.host || 'luna-chat-endpoint.vercel.app';
-    triggerQualityScoring(convId, host);
+    await triggerQualityScoring(convId, host);
 
     return res.status(200).json({ success: true, convId: convId });
 
