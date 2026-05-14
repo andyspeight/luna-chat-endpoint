@@ -2059,7 +2059,7 @@ function injectCSS() {
   +'#tgx-cw .tgx-typing span{display:inline-block;width:6px;height:6px;border-radius:50%;background:#8A92A0;animation:tgxDot 1.4s infinite}'
   +'#tgx-cw .tgx-typing span:nth-child(2){animation-delay:.18s}'
   +'#tgx-cw .tgx-typing span:nth-child(3){animation-delay:.36s}'
-  +'#tgx-cw .tgx-typing-status{position:relative;font-size:13px;font-weight:500;color:'+C.accentColor+';align-self:center;line-height:1.4;transition:opacity .25s ease;opacity:0;max-width:220px;padding-left:18px}'
+  +'#tgx-cw .tgx-typing-status{position:relative;font-size:13px;font-weight:500;color:'+C.accentColor+';align-self:center;line-height:1.4;transition:opacity .25s ease;opacity:0;max-width:320px;padding-left:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
   +'#tgx-cw .tgx-typing-status::before{content:"";position:absolute;left:0;top:50%;transform:translateY(-50%);width:8px;height:8px;border-radius:50%;background:'+C.accentColor+';box-shadow:0 0 0 0 '+C.accentColor+'80;animation:tgxStatusPulse 1.6s cubic-bezier(0.4,0,0.6,1) infinite}'
   +'#tgx-cw .tgx-typing-status.visible{opacity:0.95}'
   +'@keyframes tgxStatusPulse{0%,100%{box-shadow:0 0 0 0 '+C.accentColor+'80}50%{box-shadow:0 0 0 6px '+C.accentColor+'00}}'
