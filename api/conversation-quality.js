@@ -193,7 +193,10 @@ module.exports = async function handler(req, res) {
       }
       if (clientRecordId) {
         // Surface the original question — use the first visitor message in the transcript if possible
-        var visitorQ = (transcript.match(/Visitor:\s*([^\n]{5,200})/i) || [])[1] || gapTopic;
+        // Extract the first visitor question. Stop at the next role boundary
+        // (Luna:/Agent:) in case the transcript lacks proper newlines.
+        var visitorMatch = transcript.match(/Visitor:\s*([\s\S]+?)(?=\s*(?:Luna|Agent):|$)/i);
+        var visitorQ = (visitorMatch && visitorMatch[1] ? visitorMatch[1].trim() : '').slice(0, 200) || gapTopic;
         await knowledge.upsertKnowledgeGap(atKey, clientRecordId, visitorQ, gapTopic, convId, suggestedAnswer);
       }
     }
