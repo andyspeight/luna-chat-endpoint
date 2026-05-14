@@ -1,6 +1,11 @@
 // api/scan-page.js
 // Fetches a webpage URL and extracts clean text content for Luna's knowledge base
 // Called by the dashboard Settings > Train Luna feature
+//
+// Auth: X-Client-Name header. The dashboard is gated by tg-auth-gate, which
+// manages session cookies — so requests reaching this endpoint from the
+// dashboard are already authenticated at the gate. We require X-Client-Name
+// purely to scope the rate limiter and surface the client in logs.
 
 const dns = require('dns').promises;
 const net = require('net');
@@ -179,7 +184,8 @@ async function safeFetchWithRedirects(startUrl, fetchOptions, maxHops) {
 // Upstash-backed: per-IP + per-client, survives cold starts.
 
 module.exports = async function handler(req, res) {
-  // CORS
+  // CORS — X-Client-Pass kept in allowed headers list for back-compat,
+  // even though we no longer require it. Safe to remove in a future cleanup.
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Client-Name, X-Client-Pass');
@@ -188,12 +194,12 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
   var clientName = req.headers['x-client-name'];
-  var clientPass = req.headers['x-client-pass'];
   var body = req.body || {};
   var url = body.url;
 
-  if (!clientName || !clientPass) {
-    return res.status(401).json({ error: 'Missing authentication headers' });
+  // Auth: just X-Client-Name (tg-auth-gate session cookie handles real auth at the gate).
+  if (!clientName) {
+    return res.status(401).json({ error: 'Missing client identifier' });
   }
 
   // Rate limit: per-IP + per-client (fails open on Redis error)
