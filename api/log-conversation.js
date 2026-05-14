@@ -58,7 +58,9 @@ function applyCors(req, res) {
 
 function sanitiseStr(s, maxLen) {
   if (typeof s !== 'string') return '';
-  return s.replace(/[\u0000-\u001F\u007F]/g, '').slice(0, maxLen || 10000);
+  // Strip C0/C1 control chars EXCEPT tab (9), LF (10), and CR (13).
+  // The transcript needs newlines for downstream regex matching.
+  return s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').slice(0, maxLen || 10000);
 }
 
 async function findClientByName(atKey, clientName) {
