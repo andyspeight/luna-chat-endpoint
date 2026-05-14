@@ -1655,6 +1655,50 @@ const DAILY_CHAT_CAP = parseInt(process.env.LUNA_DAILY_CHAT_CAP || '10000', 10);
 const DAILY_CHAT_KEY = 'luna-chat';
 
 // --- INPUT SANITIZATION ---
+// Phase 3.5: server-side intent detection for real-time status events.
+// Returns a short, specific status string based on what the visitor is asking.
+function detectIntent(message, pageContext) {
+  var t = (message || '').toLowerCase();
+  var pageTitle = (pageContext && pageContext.title) ? pageContext.title.toLowerCase() : '';
+  var pagePath = (pageContext && pageContext.path) ? pageContext.path.toLowerCase() : '';
+
+  // Most specific intents first
+  if (/booking|reservation|reference|my trip|my holiday/.test(t) && /(my|our)/.test(t)) {
+    return 'Looking up your booking…';
+  }
+  if (/cancel|refund/.test(t)) return 'Checking our cancellation policy…';
+  if (/insurance|cover|protected/.test(t)) return 'Reading our insurance terms…';
+  if (/visa|passport|entry requirement/.test(t)) return 'Checking entry requirements…';
+  if (/baggage|luggage|hand luggage/.test(t)) return 'Looking up baggage rules…';
+  if (/atol|abta|protect|finan/.test(t)) return 'Checking our financial protection…';
+  if (/safety|safe to travel|fcdo|advice/.test(t)) return 'Checking travel advice…';
+  if (/weather|climate|temperature|hot|cold|rain|sun|season/.test(t)) {
+    // Pull destination from page context if possible
+    if (pageTitle) {
+      var match = pageTitle.match(/(greece|spain|portugal|turkey|cyprus|italy|france|maldives|thailand|africa|caribbean|dubai|egypt|morocco|mexico|usa|cuba)/i);
+      if (match) return 'Checking the weather in ' + match[1].charAt(0).toUpperCase() + match[1].slice(1) + '…';
+    }
+    return 'Checking the weather…';
+  }
+  if (/best time|when to visit|when should/.test(t)) return 'Looking up the best time to visit…';
+  if (/airport|terminal|transfer|arrival|departure/.test(t)) return 'Looking up airport info…';
+  if (/family|kids|child|teen/.test(t)) return 'Finding family-friendly options…';
+  if (/honeymoon|romantic|couple/.test(t)) return 'Finding ideas for couples…';
+  if (/budget|cheap|deal|offer|cost|price/.test(t)) return 'Checking what\'s available…';
+  if (/luxury|five star|premium|exclusive/.test(t)) return 'Looking up our luxury options…';
+  if (/all.?inclusive|board|meal/.test(t)) return 'Checking what\'s included…';
+  if (/speak|human|agent|person|expert|advisor/.test(t)) return 'Finding the right person…';
+  if (/safari|game drive|wildlife/.test(t)) return 'Looking up our safari options…';
+  if (/cruise|ship|sailing/.test(t)) return 'Checking our cruise options…';
+  if (/destination|country|where|inspire|ideas|suggest/.test(t)) return 'Looking up destinations…';
+  if (/recommend|suggest|advice|help me/.test(t)) return 'Putting some ideas together…';
+  // Page-aware fallback
+  if (pageContext && pageContext.title) {
+    return 'Reading the ' + pageContext.title.slice(0, 30).trim() + ' page…';
+  }
+  return 'Thinking about your question…';
+}
+
 function sanitizeInput(str) {
   if (typeof str !== 'string') return '';
   return str
@@ -2085,6 +2129,41 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: 'Missing or invalid message' });
   }
 
+  // ═══ Phase 3.5: early SSE setup for real-time status events ═══
+  // Set up headers and sendEvent EARLY so we can emit status messages while
+  // doing knowledge-base / destination lookups (each up to ~1s). Without this,
+  // the visitor stares at "Thinking…" until the first AI token arrives.
+  var _sseInitialised = false;
+  var sendEvent = null;
+  function emitStatus(text) {
+    if (!wantStream) return;
+    if (!_sseInitialised) {
+      try {
+        res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-cache, no-transform');
+        res.setHeader('Connection', 'keep-alive');
+        res.setHeader('X-Accel-Buffering', 'no');
+        if (typeof res.flushHeaders === 'function') res.flushHeaders();
+        sendEvent = function(eventName, data) {
+          try {
+            res.write('event: ' + eventName + '\n');
+            res.write('data: ' + JSON.stringify(data) + '\n\n');
+          } catch (writeErr) {
+            console.warn('[luna-chat] SSE write failed:', writeErr.message);
+          }
+        };
+        sendEvent('meta', { convId: convId });
+        _sseInitialised = true;
+      } catch (e) {
+        console.warn('[luna-chat] early SSE init failed:', e.message);
+        return;
+      }
+    }
+    try {
+      sendEvent('status', { text: text });
+    } catch (e) { /* swallowed */ }
+  }
+
   // Rate limiting: per-IP (stops convId rotation) and per-convId (stops session flooding)
   const rlResult = await ratelimit.checkIpAndKey(req, {
     ipKey: 'chat',
@@ -2111,6 +2190,12 @@ module.exports = async function handler(req, res) {
       escalate: true,
       rateLimited: true
     });
+  }
+
+  // Phase 3.5: emit first status event based on intent detection.
+  // Skip for opener requests — those have their own flow.
+  if (wantStream && !openerRequest) {
+    emitStatus(detectIntent(effectiveMessage, pageContext));
   }
 
   // Phase 3: skip moderation for opener requests (no user content to moderate)
@@ -2507,11 +2592,15 @@ No problem, drop your email and departure date in below and I'll find it.
     var kbContext = await searchLunaBrain(message, atKey);
     if (kbContext) {
       systemPrompt += kbContext;
+      // Phase 3.5: status update — we found something in the knowledge base
+      if (wantStream && !openerRequest) emitStatus('Found something in our knowledge…');
     }
     // Destination context (Airports + Theme Parks) — keyword-triggered
     var destCtx = await getDestinationContext(message, atKey);
     if (destCtx) {
       systemPrompt += destCtx;
+      // Phase 3.5: status update — destination data fetched
+      if (wantStream && !openerRequest) emitStatus('Looking up destination details…');
     }
     useHaiku = true;
   } else {
@@ -2524,6 +2613,9 @@ No problem, drop your email and departure date in below and I'll find it.
     }
   }
 
+  // Phase 3.5: final status before AI call — "Writing your answer…"
+  if (wantStream && !openerRequest) emitStatus('Writing your answer…');
+
   try {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -2535,26 +2627,28 @@ No problem, drop your email and departure date in below and I'll find it.
     // STREAMING PATH — SSE response, real-time token delivery
     // ═══════════════════════════════════════════════════════════
     if (wantStream) {
-      // Set SSE headers. CORS allow-origin was already set above.
-      res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
-      res.setHeader('Cache-Control', 'no-cache, no-transform');
-      res.setHeader('Connection', 'keep-alive');
-      // Prevent some proxies from buffering (Vercel uses Edge in some setups; helps belt-and-braces)
-      res.setHeader('X-Accel-Buffering', 'no');
-      // Flush headers if available so the client knows we're streaming
-      if (typeof res.flushHeaders === 'function') res.flushHeaders();
-
-      var sendEvent = function(eventName, data) {
-        try {
-          res.write('event: ' + eventName + '\n');
-          res.write('data: ' + JSON.stringify(data) + '\n\n');
-        } catch (writeErr) {
-          console.warn('[luna-chat] SSE write failed:', writeErr.message);
-        }
-      };
-
-      // Send initial meta event so the client knows the stream is alive
-      sendEvent('meta', { convId: convId });
+      // Phase 3.5: SSE may already be initialised by emitStatus() above.
+      // Only set headers / sendEvent if early init didn't happen (e.g. no
+      // status events fired). The _sseInitialised flag guards against
+      // double-setting headers (which would throw "Cannot set headers after they are sent").
+      if (!_sseInitialised) {
+        res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-cache, no-transform');
+        res.setHeader('Connection', 'keep-alive');
+        res.setHeader('X-Accel-Buffering', 'no');
+        if (typeof res.flushHeaders === 'function') res.flushHeaders();
+        sendEvent = function(eventName, data) {
+          try {
+            res.write('event: ' + eventName + '\n');
+            res.write('data: ' + JSON.stringify(data) + '\n\n');
+          } catch (writeErr) {
+            console.warn('[luna-chat] SSE write failed:', writeErr.message);
+          }
+        };
+        sendEvent('meta', { convId: convId });
+        _sseInitialised = true;
+      }
+      // sendEvent is guaranteed defined at this point (either via emitStatus init or via the block above).
 
       var accumulated = '';
       var firstTextChunkSeen = false;
