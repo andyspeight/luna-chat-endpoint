@@ -4671,6 +4671,7 @@ async function boot() {
       // Replace the generic welcome bubble with the contextual one. We do this
       // gently — if the visitor has already interacted, we just add the
       // contextual opener as an additional message.
+      var bubbleUpdated = false;
       if (msgs.length === 1 && msgs[0].role === "bot") {
         // Update the existing welcome bubble
         var bubbles = $msgs.querySelectorAll('.tgx-msg.bot');
@@ -4680,12 +4681,24 @@ async function boot() {
           bubble.textContent = '';
           renderSafeMarkdown(bubble, data.reply);
           msgs[0].content = data.reply;
-          return;
+          bubbleUpdated = true;
         }
       }
-      // Visitor has interacted already, or DOM structure unexpected — append
-      // as an additional bot message rather than overwriting.
-      addMsg("bot", data.reply);
+      if (!bubbleUpdated) {
+        // Visitor has interacted already, or DOM structure unexpected — append
+        // as an additional bot message rather than overwriting.
+        addMsg("bot", data.reply);
+      }
+      // Phase 3: contextual discover-mode pills under the greeting.
+      // One-shot — clicking removes all, sends as user message.
+      if (data.pills && Array.isArray(data.pills) && data.pills.length > 0) {
+        // Replace any existing welcome pills (C.hints) the widget might have
+        // shown alongside the generic greeting.
+        clearPills();
+        showPills(data.pills, function(pill) {
+          sendToAI(pill);
+        });
+      }
     }).catch(function(e) {
       console.warn("Luna contextual opener failed:", e && e.message);
     });
