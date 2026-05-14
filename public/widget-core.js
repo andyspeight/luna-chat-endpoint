@@ -1592,6 +1592,9 @@ function showClearConfirm() {
 }
 
 function clearConversation() {
+  // Log the conversation we're about to clear so the server captures it.
+  try { logConversationToServer({ force: true }); } catch(e) {}
+
   // Reset in-memory state
   msgs = [];
   history = [];
@@ -4315,9 +4318,108 @@ function ensureViewportMeta() {
   }
 }
 
+/* ─── CONVERSATION LOGGING ────────────────────────────────
+   Builds a transcript and POSTs it to /api/log-conversation when the
+   conversation ends. The server then scores it for quality and surfaces
+   any knowledge gaps in the agency owner's dashboard. */
+function buildTranscript() {
+  if (!msgs || !msgs.length) return "";
+  var lines = [];
+  msgs.forEach(function(m) {
+    if (!m || !m.content) return;
+    var role = m.role;
+    var who;
+    if (role === "user") who = "Visitor";
+    else if (role === "bot") who = "Luna";
+    else if (role === "agent") who = "Agent";
+    else if (role === "widget") return; // skip system/widget messages
+    else if (role === "system") return;
+    else who = "Other";
+    // Strip any leftover markers
+    var content = (m.content || "")
+      .replace(/\[BLOCK\][\s\S]*?\[\/BLOCK\]/g, "")
+      .replace(/\[BOOKING_LOOKUP[^\]]*\]/g, "")
+      .replace(/\[KNOWLEDGE:rec[A-Za-z0-9]{14}\]/g, "")
+      .trim();
+    if (content) lines.push(who + ": " + content);
+  });
+  return lines.join("\n\n");
+}
+
+function countVisitorMessages() {
+  if (!msgs) return 0;
+  return msgs.filter(function(m){ return m && m.role === "user"; }).length;
+}
+
+var _lastLoggedAt = 0;
+function logConversationToServer(opts) {
+  opts = opts || {};
+  // Throttle — don't beacon more than once per 5 seconds
+  var now = Date.now();
+  if (now - _lastLoggedAt < 5000 && !opts.force) return;
+  // Skip if no real conversation happened
+  if (countVisitorMessages() === 0) return;
+  _lastLoggedAt = now;
+
+  var transcript = buildTranscript();
+  if (!transcript) return;
+
+  var payload = {
+    convId: convId,
+    clientName: C.clientName || "",
+    transcript: transcript,
+    visitorName: userName || "",
+    visitorEmail: visitorEmail || "",
+    pageUrl: window.location.href,
+    wasEscalated: !!opts.escalated
+  };
+
+  var url = C.endpoint.replace(/\/api\/luna-chat\b.*$/, "/api/log-conversation");
+  var body = JSON.stringify(payload);
+
+  // Prefer sendBeacon for unload — it's the only reliable way during pagehide.
+  // Otherwise use fetch with keepalive so it survives navigation.
+  try {
+    if (opts.beacon && navigator.sendBeacon) {
+      var blob = new Blob([body], { type: "application/json" });
+      navigator.sendBeacon(url, blob);
+      return;
+    }
+  } catch (e) { /* fall through to fetch */ }
+
+  try {
+    fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: body,
+      keepalive: true
+    }).catch(function(){ /* ignore */ });
+  } catch (e) { /* ignore */ }
+}
+
+/* Hook into existing close events */
+function attachConversationEndListeners() {
+  // visibilitychange fires when tab becomes hidden — most reliable cross-browser signal
+  document.addEventListener("visibilitychange", function() {
+    if (document.visibilityState === "hidden") {
+      logConversationToServer({ beacon: true });
+    }
+  });
+  // pagehide is the canonical "user is leaving" event
+  window.addEventListener("pagehide", function() {
+    logConversationToServer({ beacon: true });
+  });
+  // beforeunload as a belt-and-braces fallback (less reliable on mobile)
+  window.addEventListener("beforeunload", function() {
+    logConversationToServer({ beacon: true });
+  });
+}
+
 async function boot() {
   /* Make sure mobile browsers don't fall back to legacy desktop emulation */
   ensureViewportMeta();
+  /* Attach unload listeners so we can log the conversation server-side */
+  try { attachConversationEndListeners(); } catch(e) {}
 
   /* Fetch remote config */
   var clientSlug = C.clientName || attr("clientName") || "default";
