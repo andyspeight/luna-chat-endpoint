@@ -21,7 +21,8 @@ const SIZE_MAP = {
   large:    "large",
   // Also accept new names directly
   small:    "small",
-  medium:   "medium"
+  medium:   "medium",
+  xlarge:   "xlarge"
 };
 
 module.exports = async function handler(req, res) {
@@ -29,7 +30,7 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('Cache-Control', 'public, max-age=60');
+  res.setHeader('Cache-Control', 'public, max-age=10');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
