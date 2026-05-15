@@ -4965,10 +4965,16 @@ async function boot() {
     }
   });
 
-  // ?luna=expanded URL param — opens expanded mode on page load
+  // luna=expanded trigger — opens expanded mode on page load.
+  // We check BOTH the query string (?luna=expanded) and the hash fragment
+  // (#luna=expanded). Hash fragments survive server-side redirects because
+  // they are never sent to the server, so they work on sites where the CMS
+  // strips query strings (e.g. via a 301/302 to a clean URL).
   try {
     var _params = new URLSearchParams(window.location.search);
-    if (_params.get('luna') === 'expanded') {
+    var _hashStr = (window.location.hash || '').replace(/^#/, '');
+    var _hashParams = new URLSearchParams(_hashStr);
+    if (_params.get('luna') === 'expanded' || _hashParams.get('luna') === 'expanded') {
       setTimeout(function() { window.expandLunaChat(); }, 800);
     }
   } catch(e) { /* no URLSearchParams in very old browsers — ignore */ }
