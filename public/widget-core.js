@@ -2063,6 +2063,31 @@ function injectCSS() {
   +'#tgx-cw .tgx-typing-status::before{content:"";position:absolute;left:0;top:50%;transform:translateY(-50%);width:8px;height:8px;border-radius:50%;background:'+C.accentColor+';box-shadow:0 0 0 0 '+C.accentColor+'80;animation:tgxStatusPulse 1.6s cubic-bezier(0.4,0,0.6,1) infinite}'
   +'#tgx-cw .tgx-typing-status.visible{opacity:0.95}'
   +'@keyframes tgxStatusPulse{0%,100%{box-shadow:0 0 0 0 '+C.accentColor+'80}50%{box-shadow:0 0 0 6px '+C.accentColor+'00}}'
+  /* PHASE_3_6_HIGHLIGHTS — storyboard card styles */
+  +'#tgx-cw .tgx-hl-card{margin:14px 0 8px 38px;max-width:380px;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 6px 20px -6px rgba(15,26,61,0.15);opacity:0;transform:translateY(12px) scale(0.98);transition:opacity 0.5s cubic-bezier(0.22,0.61,0.36,1),transform 0.5s cubic-bezier(0.22,0.61,0.36,1)}'
+  +'#tgx-cw .tgx-hl-card.tgx-hl-in{opacity:1;transform:translateY(0) scale(1)}'
+  +'#tgx-cw .tgx-hl-hero{height:120px;position:relative;overflow:hidden;background:linear-gradient(135deg,#2D5F8C 0%,#C68B5B 50%,#4FD1C5 100%)}'
+  +'#tgx-cw .tgx-hl-hero img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}'
+  +'#tgx-cw .tgx-hl-hero::after{content:"";position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,0.55) 0%,rgba(0,0,0,0.05) 60%,transparent 100%);pointer-events:none}'
+  +'#tgx-cw .tgx-hl-hero-text{position:absolute;bottom:12px;left:16px;right:16px;color:#fff;z-index:1}'
+  +'#tgx-cw .tgx-hl-eyebrow{font-size:9px;text-transform:uppercase;letter-spacing:0.16em;opacity:0.92;font-weight:600;margin-bottom:2px}'
+  +'#tgx-cw .tgx-hl-title{font-family:Georgia,"Times New Roman",serif;font-size:22px;line-height:1.1;font-weight:500;letter-spacing:-0.01em}'
+  +'#tgx-cw .tgx-hl-items{padding:4px 0}'
+  +'#tgx-cw .tgx-hl-item{display:flex;gap:14px;align-items:flex-start;padding:13px 18px;border-bottom:1px solid rgba(15,26,61,0.06);cursor:pointer;transition:background 0.18s ease;position:relative;opacity:0;transform:translateX(-8px);transition:opacity 0.4s cubic-bezier(0.22,0.61,0.36,1),transform 0.4s cubic-bezier(0.22,0.61,0.36,1),background 0.18s ease}'
+  +'#tgx-cw .tgx-hl-item.tgx-hl-in{opacity:1;transform:translateX(0)}'
+  +'#tgx-cw .tgx-hl-item:last-child{border-bottom:none}'
+  +'#tgx-cw .tgx-hl-item:hover{background:'+C.accentColor+'08}'
+  +'#tgx-cw .tgx-hl-icon{flex-shrink:0;width:34px;height:34px;border-radius:8px;background:'+C.accentColor+'15;display:grid;place-items:center;font-size:17px;margin-top:1px}'
+  +'#tgx-cw .tgx-hl-item-content{flex:1;min-width:0}'
+  +'#tgx-cw .tgx-hl-item-eyebrow{font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:'+C.accentColor+';font-weight:700;margin-bottom:2px}'
+  +'#tgx-cw .tgx-hl-item-h{font-size:13px;font-weight:600;color:#0F1A3D;margin-bottom:3px;line-height:1.25}'
+  +'#tgx-cw .tgx-hl-item-d{font-size:12px;color:#5B6478;line-height:1.45}'
+  +'#tgx-cw .tgx-hl-arrow{flex-shrink:0;color:#9BA3B5;font-size:13px;opacity:0;transform:translateX(-3px);transition:all 0.18s ease;margin-top:8px}'
+  +'#tgx-cw .tgx-hl-item:hover .tgx-hl-arrow{opacity:1;transform:translateX(0);color:'+C.accentColor+'}'
+  +'#tgx-cw .tgx-hl-footer{padding:11px 16px 13px;display:flex;gap:6px;flex-wrap:wrap;background:#FAFAF6}'
+  +'#tgx-cw .tgx-hl-footer .tgx-hl-pill{background:#fff;border:1px solid rgba(15,26,61,0.1);color:#0F1A3D;padding:6px 11px;border-radius:100px;font-size:11px;font-weight:500;cursor:pointer;transition:all 0.18s ease}'
+  +'#tgx-cw .tgx-hl-footer .tgx-hl-pill:hover{border-color:'+C.accentColor+';color:'+C.accentColor+';transform:translateY(-1px)}'
+  +'#tgx-cw .tgx-hl-credit{font-size:9px;color:rgba(255,255,255,0.7);position:absolute;bottom:4px;right:8px;z-index:1;letter-spacing:0.02em}'
 
   // Pills (quick replies)
   +'#tgx-cw .tgx-pills{display:flex;flex-wrap:wrap;gap:8px;padding:4px 16px 8px}'
@@ -4672,6 +4697,173 @@ async function boot() {
   /* Request a contextual opener from the backend by sending the page context
      with a special flag. We send it via the regular fetch (not streaming)
      since we want one short greeting line, not a full response. */
+  // PHASE_3_6_HIGHLIGHTS — fetch and render the storyboard card.
+  // Fires after the contextual opener has updated the greeting, but only
+  // when in expanded mode. Independent of the opener: if the card fails,
+  // the chat works normally.
+  var highlightsCardRequested = false;
+  function requestHighlightsCard(fallbackPills) {
+    if (highlightsCardRequested) return;
+    if (!_currentPageContext || !_currentPageContext.title) return;
+    if (!expandedMode) return; /* only in expanded mode */
+    highlightsCardRequested = true;
+
+    function applyFallback() {
+      if (fallbackPills && fallbackPills.length) {
+        clearPills();
+        showPills(fallbackPills, function(pill) { sendToAI(pill); });
+      }
+    }
+
+    var endpoint = C.endpoint.replace(/\/api\/luna-chat\b.*$/, '/api/highlights-card');
+    fetch(endpoint, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        clientName: C.clientName,
+        pageContext: _currentPageContext
+      })
+    }).then(function(r) {
+      if (!r.ok) return null;
+      return r.json();
+    }).then(function(data) {
+      if (!data || !data.items || !data.items.length) {
+        applyFallback();
+        return;
+      }
+      renderHighlightsCard(data);
+    }).catch(function(e) {
+      console.warn('Luna highlights card failed:', e && e.message);
+      applyFallback();
+    });
+  }
+
+  function renderHighlightsCard(data) {
+    if (!$msgs) return;
+    // Build the card DOM (no innerHTML for content — render as DOM nodes for XSS safety)
+    var card = document.createElement('div');
+    card.className = 'tgx-hl-card';
+
+    // Hero
+    var hero = document.createElement('div');
+    hero.className = 'tgx-hl-hero';
+    if (data.photo && data.photo.url) {
+      var img = document.createElement('img');
+      img.src = data.photo.url;
+      img.alt = (data.heroTitle || '') + (data.photo.photographer ? ' — photo by ' + data.photo.photographer : '');
+      img.loading = 'eager';
+      hero.appendChild(img);
+    }
+    var heroText = document.createElement('div');
+    heroText.className = 'tgx-hl-hero-text';
+    if (data.heroEyebrow) {
+      var hEyebrow = document.createElement('div');
+      hEyebrow.className = 'tgx-hl-eyebrow';
+      hEyebrow.textContent = data.heroEyebrow;
+      heroText.appendChild(hEyebrow);
+    }
+    if (data.heroTitle) {
+      var hTitle = document.createElement('div');
+      hTitle.className = 'tgx-hl-title';
+      hTitle.textContent = data.heroTitle;
+      heroText.appendChild(hTitle);
+    }
+    hero.appendChild(heroText);
+    if (data.photo && data.photo.photographer && data.photo.source) {
+      var credit = document.createElement('div');
+      credit.className = 'tgx-hl-credit';
+      credit.textContent = 'Photo: ' + data.photo.photographer + ' / ' + data.photo.source;
+      hero.appendChild(credit);
+    }
+    card.appendChild(hero);
+
+    // Items
+    var itemsWrap = document.createElement('div');
+    itemsWrap.className = 'tgx-hl-items';
+    var itemEls = [];
+    (data.items || []).slice(0, 4).forEach(function(it) {
+      var row = document.createElement('div');
+      row.className = 'tgx-hl-item';
+      row.setAttribute('role', 'button');
+      row.setAttribute('tabindex', '0');
+
+      var icon = document.createElement('div');
+      icon.className = 'tgx-hl-icon';
+      icon.textContent = it.icon || '✨';
+      row.appendChild(icon);
+
+      var content = document.createElement('div');
+      content.className = 'tgx-hl-item-content';
+      if (it.eyebrow) {
+        var iEyebrow = document.createElement('div');
+        iEyebrow.className = 'tgx-hl-item-eyebrow';
+        iEyebrow.textContent = it.eyebrow;
+        content.appendChild(iEyebrow);
+      }
+      if (it.headline) {
+        var iHead = document.createElement('div');
+        iHead.className = 'tgx-hl-item-h';
+        iHead.textContent = it.headline;
+        content.appendChild(iHead);
+      }
+      if (it.description) {
+        var iDesc = document.createElement('div');
+        iDesc.className = 'tgx-hl-item-d';
+        iDesc.textContent = it.description;
+        content.appendChild(iDesc);
+      }
+      row.appendChild(content);
+
+      var arrow = document.createElement('div');
+      arrow.className = 'tgx-hl-arrow';
+      arrow.textContent = '→';
+      row.appendChild(arrow);
+
+      // Click sends "Tell me more about [headline]" as a user message
+      var prompt = 'Tell me more about ' + (it.headline || it.eyebrow || 'this');
+      row.addEventListener('click', function() { sendToAI(prompt); });
+      row.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sendToAI(prompt); }
+      });
+
+      itemsWrap.appendChild(row);
+      itemEls.push(row);
+    });
+    card.appendChild(itemsWrap);
+
+    // Footer pills
+    if (Array.isArray(data.pills) && data.pills.length) {
+      var footer = document.createElement('div');
+      footer.className = 'tgx-hl-footer';
+      data.pills.slice(0, 4).forEach(function(p) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'tgx-hl-pill';
+        btn.textContent = p;
+        btn.addEventListener('click', function() { sendToAI(p); });
+        footer.appendChild(btn);
+      });
+      card.appendChild(footer);
+    }
+
+    $msgs.appendChild(card);
+    if ($msgs.scrollTo) {
+      $msgs.scrollTo({ top: $msgs.scrollHeight, behavior: 'smooth' });
+    } else {
+      $msgs.scrollTop = $msgs.scrollHeight;
+    }
+
+    // Trigger reveal animation. Card fades/rises in, then items stagger.
+    requestAnimationFrame(function() {
+      card.classList.add('tgx-hl-in');
+      itemEls.forEach(function(el, i) {
+        setTimeout(function() {
+          el.classList.add('tgx-hl-in');
+        }, 250 + (i * 150));
+      });
+    });
+  }
+
   function requestContextualOpener() {
     if (contextualOpenerSent) return;
     if (!_currentPageContext || !_currentPageContext.title) return;
@@ -4716,13 +4908,26 @@ async function boot() {
       }
       // Phase 3: contextual discover-mode pills under the greeting.
       // One-shot — clicking removes all, sends as user message.
-      if (data.pills && Array.isArray(data.pills) && data.pills.length > 0) {
-        // Replace any existing welcome pills (C.hints) the widget might have
-        // shown alongside the generic greeting.
+      // PHASE_3_6_HIGHLIGHTS: in expanded mode, the card has its own pills,
+      // so we defer pill display until we know whether the card loaded.
+      // If the card succeeds, its own footer pills cover the same ground.
+      // If the card fails, we fall back to showing the opener pills.
+      var openerPills = (data.pills && Array.isArray(data.pills) && data.pills.length > 0)
+        ? data.pills : null;
+
+      if (!expandedMode && openerPills) {
         clearPills();
-        showPills(data.pills, function(pill) {
+        showPills(openerPills, function(pill) {
           sendToAI(pill);
         });
+      }
+      // PHASE_3_6_HIGHLIGHTS: fire the highlights card request right after
+      // the opener completes (only in expanded mode). Pass the opener pills
+      // as a fallback in case the card fails.
+      if (expandedMode) {
+        setTimeout(function() {
+          requestHighlightsCard(openerPills);
+        }, 350);
       }
     }).catch(function(e) {
       console.warn("Luna contextual opener failed:", e && e.message);
