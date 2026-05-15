@@ -4573,6 +4573,23 @@ async function boot() {
 
   /* Replay stored messages if session was restored */
   if (sessionRestored && msgs.length > 0) {
+    // Sanitise the welcome bubble: if visitor hasn't interacted (just the
+    // welcome message exists), reset it to the default welcome rather than
+    // restoring whatever stale override greeting the previous page left.
+    // This eliminates the flash of "old text with em dashes" the visitor
+    // would otherwise see on initial page load before the new highlights
+    // check resolves.
+    if (msgs.length === 1 && (msgs[0].role === 'bot' || msgs[0].role === 'assistant')) {
+      var defaultWelcome = C.welcome || 'Hi there! How can I help today?';
+      if (userName) {
+        defaultWelcome = 'Hey ' + userName + '! ' + defaultWelcome.replace(/^Hey there! /, '').replace(/^Hey there\b/, '');
+      }
+      // Only swap if it's actually different — preserves any custom welcome
+      // that was set legitimately (not via an override).
+      if (msgs[0].content !== defaultWelcome) {
+        msgs[0].content = defaultWelcome;
+      }
+    }
     var storedMsgs = msgs.slice();
     msgs = []; /* clear so addMsg re-pushes them */
     storedMsgs.forEach(function(m) {
@@ -4880,6 +4897,8 @@ async function boot() {
               }
             }
             if (lastBot) lastBot.content = data.greeting;
+            // Persist immediately so a refresh/nav doesn't restore stale content
+            try { saveSession(); } catch(e) {}
           }
         }
       } catch(e) { /* bubble update is best-effort */ }
@@ -5073,14 +5092,31 @@ async function boot() {
     suppressContextualOpener = false;
     contextualOpenerSent = false;
 
-    // Restore the original welcome bubble text (if we captured it and the
-    // chat has only the welcome message — i.e. visitor hasn't interacted).
+    // Restore the canonical welcome content if visitor hadn't interacted.
+    // Restore BOTH the DOM bubble AND msgs[] so the next save doesn't persist
+    // a stale override greeting from the previous page.
     try {
-      if (originalWelcomeBubble !== null && msgs.length <= 1) {
-        var bubbles = $msgs.querySelectorAll('.tgx-msg.bot');
-        if (bubbles.length === 1) {
-          bubbles[0].innerHTML = originalWelcomeBubble;
+      if (msgs.length <= 1) {
+        // Reset msgs[0] back to the default welcome (matches what startChat
+        // would produce). This prevents stale override greetings being
+        // restored from sessionStorage on the next page load.
+        if (msgs.length === 1 && (msgs[0].role === 'bot' || msgs[0].role === 'assistant')) {
+          var defaultWelcome = C.welcome || 'Hi there! How can I help today?';
+          if (userName) {
+            defaultWelcome = 'Hey ' + userName + '! ' + defaultWelcome.replace(/^Hey there! /, '').replace(/^Hey there\b/, '');
+          }
+          msgs[0].content = defaultWelcome;
         }
+        // Restore the visible bubble too
+        if (originalWelcomeBubble !== null) {
+          var bubbles = $msgs.querySelectorAll('.tgx-msg.bot');
+          if (bubbles.length === 1) {
+            bubbles[0].innerHTML = originalWelcomeBubble;
+          }
+        }
+        // Persist the cleaned state immediately so a fast subsequent nav
+        // doesn't re-restore the stale override greeting from sessionStorage.
+        try { saveSession(); } catch(e) {}
       }
     } catch(e) { /* best-effort */ }
 
