@@ -4702,6 +4702,10 @@ async function boot() {
   // when in expanded mode. Independent of the opener: if the card fails,
   // the chat works normally.
   var highlightsCardRequested = false;
+  // Set to true once an override-driven greeting has been applied to the
+  // chat bubble. Prevents the racing AI contextual opener from overwriting
+  // a curated greeting if it arrives later.
+  var suppressContextualOpener = false;
   function requestHighlightsCard(fallbackPills) {
     if (highlightsCardRequested) return;
     if (!_currentPageContext || !_currentPageContext.title) return;
@@ -4853,6 +4857,41 @@ async function boot() {
       $msgs.scrollTop = $msgs.scrollHeight;
     }
 
+    // ─── Honour override greeting ──────────────────────────────────────
+    // If the card data includes a curated greeting (came from an Airtable
+    // override row), apply it to the welcome bubble. This OVERRIDES whatever
+    // the AI contextual opener generated — even if it arrives later, we'll
+    // ignore it because suppressContextualOpener is set.
+    if (data.greeting && typeof data.greeting === 'string' && data.greeting.trim()) {
+      suppressContextualOpener = true;
+      try {
+        var bubbles = $msgs.querySelectorAll('.tgx-msg.bot');
+        if (bubbles.length >= 1) {
+          var bubble = bubbles[bubbles.length - 1];
+          bubble.textContent = '';
+          renderSafeMarkdown(bubble, data.greeting);
+          if (msgs.length >= 1) {
+            // Update the canonical msg too so any re-render uses the override
+            var lastBot = null;
+            for (var bi = msgs.length - 1; bi >= 0; bi--) {
+              if (msgs[bi].role === 'bot' || msgs[bi].role === 'assistant') {
+                lastBot = msgs[bi];
+                break;
+              }
+            }
+            if (lastBot) lastBot.content = data.greeting;
+          }
+        }
+      } catch(e) { /* bubble update is best-effort */ }
+    }
+
+    // ─── Clear default widget pills ────────────────────────────────────
+    // When the highlights card is shown, the card's footer pills are the
+    // canonical action set. The default C.hints pills under the input would
+    // be redundant (and usually irrelevant to the destination), so remove
+    // them so only the card's pills are visible.
+    try { clearPills(); } catch(e) { /* best-effort */ }
+
     // Trigger reveal animation. Card fades/rises in, then items stagger.
     requestAnimationFrame(function() {
       card.classList.add('tgx-hl-in');
@@ -4885,6 +4924,10 @@ async function boot() {
       return r.json();
     }).then(function(data) {
       if (!data || !data.reply) return;
+      // If an override greeting has already been applied by the highlights
+      // card (which renders in parallel), DO NOT overwrite it with the AI
+      // opener. Curated content wins.
+      if (suppressContextualOpener) return;
       // Replace the generic welcome bubble with the contextual one. We do this
       // gently — if the visitor has already interacted, we just add the
       // contextual opener as an additional message.
@@ -4979,31 +5022,164 @@ async function boot() {
     }
   } catch(e) { /* no URLSearchParams in very old browsers — ignore */ }
 
-  // Highlights override auto-trigger — if this page has a curated override
-  // configured in the Highlights Overrides table, auto-open in expanded mode.
-  // This is what makes Luna "take over" automatically on key destination pages
-  // (e.g. /africa, /greece) — no URL trick, no button click required. The
-  // backend endpoint is cached aggressively (60s) so this is fast.
-  try {
-    var _checkUrl = C.endpoint.replace('/api/luna-chat', '/api/highlights-check') +
-                    '?path=' + encodeURIComponent(window.location.pathname || '/');
-    fetch(_checkUrl, { method: 'GET' })
-      .then(function(r) { return r.ok ? r.json() : null; })
-      .then(function(data) {
-        if (data && data.hasOverride === true) {
-          // Only trigger if the widget isn't already opening from another path
-          // (e.g. hash fragment) — expandLunaChat is idempotent but double-open
-          // is sloppy. The hash trigger fires at 800ms; we fire at 600ms so the
-          // override path wins cleanly.
-          if (!panelOpen) {
-            setTimeout(function() {
-              if (!panelOpen) window.expandLunaChat();
-            }, 600);
-          }
+  // ─── Highlights override auto-trigger + soft-navigation handling ────────
+  //
+  // What this does:
+  //   1. On page load, check if the current path has an active override.
+  //      If yes, auto-open the widget in expanded mode with the curated card.
+  //   2. On soft navigation (SPA), detect the URL change, clean up state
+  //      from the previous override page (if any), then re-check the new
+  //      path and auto-open or close as appropriate.
+  //
+  // Detection strategy for soft nav (no single browser API covers all):
+  //   - popstate event (back/forward buttons)
+  //   - Hooked history.pushState and history.replaceState (programmatic nav)
+  //   - 500ms URL polling fallback (catches any framework that bypasses
+  //     the history API — e.g. some CMS frameworks)
+  //
+  // The panel is only auto-closed on navigation IF it was auto-opened by
+  // this very mechanism. If the visitor manually opened the panel and is
+  // mid-conversation, navigation does NOT yank their conversation away.
+
+  // Track whether the currently-open panel was opened by an override
+  // (so we know whether to auto-close on nav).
+  var openedByOverride = false;
+  // The path the current override state was set for (so we don't repeat work).
+  var lastCheckedPath = null;
+  // Remember the original welcome bubble text so we can restore it.
+  var originalWelcomeBubble = null;
+
+  function captureOriginalWelcome() {
+    if (originalWelcomeBubble !== null) return;
+    try {
+      var bubbles = $msgs.querySelectorAll('.tgx-msg.bot');
+      if (bubbles.length === 1) {
+        originalWelcomeBubble = bubbles[0].innerHTML;
+      }
+    } catch(e) { /* best-effort */ }
+  }
+
+  function resetForNavigation() {
+    // Remove any rendered highlights card from the chat scroll
+    try {
+      var cards = $msgs ? $msgs.querySelectorAll('.tgx-hl-card') : [];
+      for (var i = 0; i < cards.length; i++) {
+        if (cards[i].parentNode) cards[i].parentNode.removeChild(cards[i]);
+      }
+    } catch(e) { /* best-effort */ }
+
+    // Reset flags so a fresh check can re-trigger
+    highlightsCardRequested = false;
+    suppressContextualOpener = false;
+    contextualOpenerSent = false;
+
+    // Restore the original welcome bubble text (if we captured it and the
+    // chat has only the welcome message — i.e. visitor hasn't interacted).
+    try {
+      if (originalWelcomeBubble !== null && msgs.length <= 1) {
+        var bubbles = $msgs.querySelectorAll('.tgx-msg.bot');
+        if (bubbles.length === 1) {
+          bubbles[0].innerHTML = originalWelcomeBubble;
         }
-      })
-      .catch(function() { /* silent — fall back to manual triggers */ });
-  } catch(e) { /* widget never blocks on this — silent */ }
+      }
+    } catch(e) { /* best-effort */ }
+
+    // If the panel was opened by override AND visitor hasn't interacted
+    // beyond the welcome, close it. They didn't ask for it on the new page.
+    if (openedByOverride && msgs.length <= 1) {
+      try { closeChat(); } catch(e) { /* best-effort */ }
+      expandedMode = false;
+      try { $panel.classList.remove('expanded'); } catch(e) {}
+    }
+    openedByOverride = false;
+  }
+
+  function runHighlightsCheck(isInitial) {
+    var currentPath = window.location.pathname || '/';
+    // Skip if we've already checked this path on this nav cycle
+    if (lastCheckedPath === currentPath) return;
+    lastCheckedPath = currentPath;
+
+    // Capture the original welcome on first run (before anything overrides it)
+    if (isInitial) captureOriginalWelcome();
+
+    try {
+      var checkUrl = C.endpoint.replace('/api/luna-chat', '/api/highlights-check') +
+                     '?path=' + encodeURIComponent(currentPath);
+      fetch(checkUrl, { method: 'GET' })
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(data) {
+          // If the path has CHANGED while the fetch was in flight, ignore.
+          if ((window.location.pathname || '/') !== currentPath) return;
+
+          if (data && data.hasOverride === true) {
+            // Refresh page context (so the card content matches the new path)
+            try { _currentPageContext = gatherPageContext(); } catch(e) {}
+            if (!panelOpen) {
+              setTimeout(function() {
+                if (!panelOpen && (window.location.pathname || '/') === currentPath) {
+                  openedByOverride = true;
+                  window.expandLunaChat();
+                }
+              }, isInitial ? 600 : 200);
+            } else if (openedByOverride) {
+              // Panel already open from a previous override — fetch the new
+              // card content for this page and render it (replacing the old
+              // override greeting/card).
+              try { _currentPageContext = gatherPageContext(); } catch(e) {}
+              try { requestHighlightsCard(C.hints); } catch(e) {}
+            }
+          }
+        })
+        .catch(function() { /* silent — fall back to manual triggers */ });
+    } catch(e) { /* widget never blocks on this — silent */ }
+  }
+
+  // Initial check
+  runHighlightsCheck(true);
+
+  // Soft-nav listeners
+  (function setupSoftNavListeners() {
+    var lastUrl = window.location.href;
+
+    function onUrlChange() {
+      var nowUrl = window.location.href;
+      if (nowUrl === lastUrl) return;
+      var prevPath = (function() {
+        try { return new URL(lastUrl).pathname; } catch(e) { return null; }
+      })();
+      var newPath = window.location.pathname || '/';
+      lastUrl = nowUrl;
+      // If the path itself didn't change (only hash/query), don't reset
+      if (prevPath === newPath) return;
+      // Clean up override state from previous path, then re-check
+      resetForNavigation();
+      runHighlightsCheck(false);
+    }
+
+    // 1. Back/forward
+    window.addEventListener('popstate', onUrlChange);
+    // 2. Hash changes (less relevant for path nav but cheap to add)
+    window.addEventListener('hashchange', onUrlChange);
+    // 3. Hook pushState + replaceState (programmatic SPA nav)
+    try {
+      var _push = history.pushState;
+      var _replace = history.replaceState;
+      history.pushState = function() {
+        var ret = _push.apply(this, arguments);
+        // Dispatch async so the URL has updated by the time we read it
+        setTimeout(onUrlChange, 0);
+        return ret;
+      };
+      history.replaceState = function() {
+        var ret = _replace.apply(this, arguments);
+        setTimeout(onUrlChange, 0);
+        return ret;
+      };
+    } catch(e) { /* some sites freeze the history object — fall back to polling */ }
+    // 4. Polling fallback (catches anything that bypasses history API)
+    setInterval(onUrlChange, 500);
+  })();
 
 
   loadAbly(function(){ initAbly(); });
