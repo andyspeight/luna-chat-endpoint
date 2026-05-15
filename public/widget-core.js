@@ -1946,7 +1946,7 @@ function injectCSS() {
   +'#tgx-cw .tgx-demoted button:hover{opacity:0.75;text-decoration:underline}'
 
   // Messages area
-  +'#tgx-cw .tgx-msgs{flex:1;overflow-y:auto;padding:18px 16px;display:flex;flex-direction:column;gap:14px;background:#FAFAF6;scrollbar-width:thin;scrollbar-color:'+T.line+' transparent}'
+  +'#tgx-cw .tgx-msgs{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:18px 16px;display:flex;flex-direction:column;gap:14px;background:#FAFAF6;scrollbar-width:thin;scrollbar-color:'+T.line+' transparent;scrollbar-gutter:stable}'
   +'#tgx-cw .tgx-more-below{position:absolute;left:50%;bottom:120px;transform:translateX(-50%) translateY(8px);background:'+C.brandColor+';color:#fff;border:none;border-radius:999px;padding:8px 14px;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;box-shadow:0 6px 18px rgba(15,26,61,0.25);display:none;align-items:center;gap:6px;opacity:0;transition:opacity .25s ease,transform .25s ease;z-index:10}'
   +'#tgx-cw .tgx-more-below.active{display:inline-flex;opacity:1;transform:translateX(-50%) translateY(0)}'
   +'#tgx-cw .tgx-more-below:hover{filter:brightness(1.08)}'
@@ -2018,8 +2018,10 @@ function injectCSS() {
   +'#tgx-cw .luna-weather-day-lo{font-size:10.5px;color:'+T.textMuted+';line-height:1.2;margin-top:1px}'
   /* Section label inside body when hero is present */
   +'#tgx-cw .luna-weather-section-label{font-size:9.5px;font-weight:600;letter-spacing:0.08em;color:'+T.textMuted+';margin-bottom:10px}'
-  +'#tgx-cw .tgx-msgs::-webkit-scrollbar{width:4px}'
-  +'#tgx-cw .tgx-msgs::-webkit-scrollbar-thumb{background:'+T.line+';border-radius:2px}'
+  +'#tgx-cw .tgx-msgs::-webkit-scrollbar{width:10px}'
+  +'#tgx-cw .tgx-msgs::-webkit-scrollbar-track{background:transparent}'
+  +'#tgx-cw .tgx-msgs::-webkit-scrollbar-thumb{background:'+T.line+';border-radius:6px;border:2px solid #FAFAF6}'
+  +'#tgx-cw .tgx-msgs::-webkit-scrollbar-thumb:hover{background:rgba(15,26,61,0.3)}'
 
   // Message rows
   +'#tgx-cw .tgx-msg-row{display:flex;gap:10px;animation:tgxFadeIn .25s cubic-bezier(.22,1,.36,1)}'
