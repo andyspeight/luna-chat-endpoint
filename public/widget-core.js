@@ -4926,22 +4926,29 @@ async function boot() {
     if (contextualOpenerSent) return;
     if (!_currentPageContext || !_currentPageContext.title) return;
     contextualOpenerSent = true;
-    fetch(C.endpoint, {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({
-        clientName: C.clientName,
-        convId: convId,
-        history: [],
-        pageContext: _currentPageContext,
-        page: _currentPageContext.path,
-        openerRequest: true,
-        stream: false
-      })
-    }).then(function(r) {
-      if (!r.ok) return null;
-      return r.json();
-    }).then(function(data) {
+    // Delay the fetch so the highlights-check (running in parallel) has time
+    // to resolve. If the current path has an override, the check will set
+    // suppressContextualOpener=true before we fire, and we bail out cleanly.
+    // If no override, this just adds a small delay to the contextual greeting
+    // — imperceptible in practice.
+    setTimeout(function() {
+      if (suppressContextualOpener) return;
+      fetch(C.endpoint, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          clientName: C.clientName,
+          convId: convId,
+          history: [],
+          pageContext: _currentPageContext,
+          page: _currentPageContext.path,
+          openerRequest: true,
+          stream: false
+        })
+      }).then(function(r) {
+        if (!r.ok) return null;
+        return r.json();
+      }).then(function(data) {
       if (!data || !data.reply) return;
       // If an override greeting has already been applied by the highlights
       // card (which renders in parallel), DO NOT overwrite it with the AI
@@ -4994,6 +5001,7 @@ async function boot() {
     }).catch(function(e) {
       console.warn("Luna contextual opener failed:", e && e.message);
     });
+    }, 350); /* close setTimeout */
   }
 
   document.getElementById("tgxHomeClose").addEventListener("click", closeChat);
@@ -5149,6 +5157,12 @@ async function boot() {
           if ((window.location.pathname || '/') !== currentPath) return;
 
           if (data && data.hasOverride === true) {
+            // KEY: pre-emptively suppress the AI contextual opener so when
+            // openChat() fires it, the reply gets discarded on arrival. This
+            // prevents the visible flash of stale AI text between the default
+            // welcome and the curated override greeting.
+            suppressContextualOpener = true;
+
             // Refresh page context (so the card content matches the new path)
             try { _currentPageContext = gatherPageContext(); } catch(e) {}
             if (!panelOpen) {
