@@ -4926,73 +4926,72 @@ async function boot() {
     if (contextualOpenerSent) return;
     if (!_currentPageContext || !_currentPageContext.title) return;
     contextualOpenerSent = true;
-    // Delay the fetch so the highlights-check (running in parallel) has time
-    // to resolve. If the current path has an override, the check will set
-    // suppressContextualOpener=true before we fire, and we bail out cleanly.
-    // If no override, this just adds a small delay to the contextual greeting
-    // — imperceptible in practice.
-    setTimeout(function() {
-      if (suppressContextualOpener) return;
-      fetch(C.endpoint, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({
-          clientName: C.clientName,
-          convId: convId,
-          history: [],
-          pageContext: _currentPageContext,
-          page: _currentPageContext.path,
-          openerRequest: true,
-          stream: false
-        })
-      }).then(function(r) {
-        if (!r.ok) return null;
-        return r.json();
-      }).then(function(data) {
+    fetch(C.endpoint, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        clientName: C.clientName,
+        convId: convId,
+        history: [],
+        pageContext: _currentPageContext,
+        page: _currentPageContext.path,
+        openerRequest: true,
+        stream: false
+      })
+    }).then(function(r) {
+      if (!r.ok) return null;
+      return r.json();
+    }).then(function(data) {
       if (!data || !data.reply) return;
-      // If an override greeting has already been applied by the highlights
-      // card (which renders in parallel), DO NOT overwrite it with the AI
-      // opener. Curated content wins.
-      if (suppressContextualOpener) return;
-      // Replace the generic welcome bubble with the contextual one. We do this
-      // gently — if the visitor has already interacted, we just add the
-      // contextual opener as an additional message.
+
+      // If an override greeting has been (or will be) applied by the
+      // highlights card, do NOT apply the AI reply to the bubble. But we
+      // still need to fire the card request below, so we don't early-return.
+      var applyReplyToBubble = !suppressContextualOpener;
+
       var bubbleUpdated = false;
-      if (msgs.length === 1 && msgs[0].role === "bot") {
-        // Update the existing welcome bubble
-        var bubbles = $msgs.querySelectorAll('.tgx-msg.bot');
-        if (bubbles.length >= 1) {
-          // Use the LAST .tgx-msg.bot (in case there are non-message bot-styled elements)
-          var bubble = bubbles[bubbles.length - 1];
-          bubble.textContent = '';
-          renderSafeMarkdown(bubble, data.reply);
-          msgs[0].content = data.reply;
-          bubbleUpdated = true;
-        }
-      }
-      if (!bubbleUpdated) {
-        // Visitor has interacted already, or DOM structure unexpected — append
-        // as an additional bot message rather than overwriting.
-        addMsg("bot", data.reply);
-      }
-      // Phase 3: contextual discover-mode pills under the greeting.
-      // One-shot — clicking removes all, sends as user message.
-      // PHASE_3_6_HIGHLIGHTS: in expanded mode, the card has its own pills,
-      // so we defer pill display until we know whether the card loaded.
-      // If the card succeeds, its own footer pills cover the same ground.
-      // If the card fails, we fall back to showing the opener pills.
       var openerPills = (data.pills && Array.isArray(data.pills) && data.pills.length > 0)
         ? data.pills : null;
 
-      if (!expandedMode && openerPills) {
-        clearPills();
-        showPills(openerPills, function(pill) {
-          sendToAI(pill);
-        });
+      if (applyReplyToBubble) {
+        // Replace the generic welcome bubble with the contextual one. We do
+        // this gently — if the visitor has already interacted, we just add
+        // the contextual opener as an additional message.
+        if (msgs.length === 1 && msgs[0].role === "bot") {
+          var bubbles = $msgs.querySelectorAll('.tgx-msg.bot');
+          if (bubbles.length >= 1) {
+            // Use the LAST .tgx-msg.bot (in case there are non-message bot-styled elements)
+            var bubble = bubbles[bubbles.length - 1];
+            bubble.textContent = '';
+            renderSafeMarkdown(bubble, data.reply);
+            msgs[0].content = data.reply;
+            bubbleUpdated = true;
+          }
+        }
+        if (!bubbleUpdated) {
+          // Visitor has interacted already, or DOM structure unexpected — append
+          // as an additional bot message rather than overwriting.
+          addMsg("bot", data.reply);
+        }
+        // Phase 3: contextual discover-mode pills under the greeting.
+        // One-shot — clicking removes all, sends as user message.
+        // PHASE_3_6_HIGHLIGHTS: in expanded mode, the card has its own pills,
+        // so we defer pill display until we know whether the card loaded.
+        // If the card succeeds, its own footer pills cover the same ground.
+        // If the card fails, we fall back to showing the opener pills.
+        if (!expandedMode && openerPills) {
+          clearPills();
+          showPills(openerPills, function(pill) {
+            sendToAI(pill);
+          });
+        }
       }
+
       // PHASE_3_6_HIGHLIGHTS: fire the highlights card request right after
       // the opener completes (only in expanded mode). Pass the opener pills
-      // as a fallback in case the card fails.
+      // as a fallback in case the card fails. This fires REGARDLESS of
+      // whether the AI reply was applied to the bubble — the card is what
+      // delivers the curated experience on override pages.
       if (expandedMode) {
         setTimeout(function() {
           requestHighlightsCard(openerPills);
@@ -5001,7 +5000,6 @@ async function boot() {
     }).catch(function(e) {
       console.warn("Luna contextual opener failed:", e && e.message);
     });
-    }, 350); /* close setTimeout */
   }
 
   document.getElementById("tgxHomeClose").addEventListener("click", closeChat);
