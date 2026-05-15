@@ -4979,6 +4979,33 @@ async function boot() {
     }
   } catch(e) { /* no URLSearchParams in very old browsers — ignore */ }
 
+  // Highlights override auto-trigger — if this page has a curated override
+  // configured in the Highlights Overrides table, auto-open in expanded mode.
+  // This is what makes Luna "take over" automatically on key destination pages
+  // (e.g. /africa, /greece) — no URL trick, no button click required. The
+  // backend endpoint is cached aggressively (60s) so this is fast.
+  try {
+    var _checkUrl = C.endpoint.replace('/api/luna-chat', '/api/highlights-check') +
+                    '?path=' + encodeURIComponent(window.location.pathname || '/');
+    fetch(_checkUrl, { method: 'GET' })
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(data) {
+        if (data && data.hasOverride === true) {
+          // Only trigger if the widget isn't already opening from another path
+          // (e.g. hash fragment) — expandLunaChat is idempotent but double-open
+          // is sloppy. The hash trigger fires at 800ms; we fire at 600ms so the
+          // override path wins cleanly.
+          if (!panelOpen) {
+            setTimeout(function() {
+              if (!panelOpen) window.expandLunaChat();
+            }, 600);
+          }
+        }
+      })
+      .catch(function() { /* silent — fall back to manual triggers */ });
+  } catch(e) { /* widget never blocks on this — silent */ }
+
+
   loadAbly(function(){ initAbly(); });
 
   /* Auto-trigger */
