@@ -2881,7 +2881,9 @@ No problem, drop your email and departure date in below and I'll find it.
     if (kbContext) {
       systemPrompt += kbContext;
       // Phase 3.5: status update — we found something in the knowledge base
-      if (wantStream && !openerRequest) emitStatus('Found something in our knowledge…');
+      // Suppressed when ack is in use: the ack already conveys progress and
+      // we don't want it overwritten on the typing-status line.
+      if (wantStream && !openerRequest && !wantAck) emitStatus('Found something in our knowledge…');
     }
     // Destination context (Airports + Theme Parks) — keyword-triggered
     mark('destCtxStart');
@@ -2890,7 +2892,7 @@ No problem, drop your email and departure date in below and I'll find it.
     if (destCtx) {
       systemPrompt += destCtx;
       // Phase 3.5: status update — destination data fetched
-      if (wantStream && !openerRequest) emitStatus('Looking up destination details…');
+      if (wantStream && !openerRequest && !wantAck) emitStatus('Looking up destination details…');
     }
     useHaiku = true;
   } else {
@@ -2906,7 +2908,9 @@ No problem, drop your email and departure date in below and I'll find it.
   }
 
   // Phase 3.5: final status before AI call — "Writing your answer…"
-  if (wantStream && !openerRequest) emitStatus('Writing your answer…');
+  // Also gated on !wantAck so the ack persists right up until the first
+  // real text delta arrives and replaces it via ensureBubble().
+  if (wantStream && !openerRequest && !wantAck) emitStatus('Writing your answer…');
 
   try {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
