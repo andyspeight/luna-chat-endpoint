@@ -1804,6 +1804,114 @@ function detectIntent(message, pageContext) {
   return 'Thinking about your question…';
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+// buildAck — templated acknowledgement for instant render before any LLM call
+// ───────────────────────────────────────────────────────────────────────────
+// Mirrors detectIntent()'s keyword logic but produces a richer holding line
+// that references the topic + destination + month if present. Sent as the
+// SSE 'ack' event after rate-limiting and before any Airtable/Anthropic
+// calls — typically arrives at the widget in under 500ms.
+//
+// Examples:
+//   "what's the weather like in Crete in June?"
+//     → "Let me look into the June weather in Crete for you…"
+//   "best time to visit Bali"
+//     → "Let me check when's best for Bali…"
+//   "do you have any all-inclusive holidays to Mexico?"
+//     → "Checking all-inclusive options for Mexico…"
+//
+// Falls back to a generic-but-warm phrase if no specific cues are found.
+// All output is plain text from a fixed template set — no user input is
+// rendered without going through capitalisation helpers below, so no XSS
+// risk from the message contents.
+function buildAck(message, pageContext) {
+  if (!message || typeof message !== 'string') return 'One moment…';
+  var t = message.toLowerCase();
+
+  // Destination matcher — high-traffic destinations only. Capitalised via
+  // a fixed helper so user-controlled casing/HTML can't leak through.
+  var destMatch = t.match(
+    /\b(crete|cyprus|greece|spain|portugal|turkey|italy|france|maldives|thailand|bali|africa|caribbean|dubai|egypt|morocco|mexico|usa|america|cuba|jamaica|barbados|tenerife|lanzarote|fuerteventura|gran canaria|majorca|mallorca|ibiza|menorca|santorini|mykonos|rhodes|corfu|kos|zante|kefalonia|algarve|costa del sol|costa brava|benidorm|marbella|malaga|sardinia|sicily|tuscany|amalfi|venice|rome|paris|barcelona|madrid|lisbon|amsterdam|prague|vienna|budapest|iceland|norway|finland|sweden|denmark|switzerland|austria|germany|croatia|montenegro|albania|malta|tunisia|kenya|tanzania|south africa|mauritius|seychelles|sri lanka|vietnam|cambodia|japan|china|india|nepal|peru|brazil|argentina|chile|costa rica|new york|las vegas|miami|orlando|los angeles|san francisco|hawaii|canada|australia|new zealand|fiji|dominican republic|antigua|bahamas|bermuda|st lucia|grenada)\b/i
+  );
+  var destination = destMatch ? capitaliseAckPhrase(destMatch[1]) : null;
+
+  var monthMatch = t.match(/\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\b/i);
+  var month = monthMatch ? capitaliseAckMonth(monthMatch[1]) : null;
+
+  // Topic detection (priority order — more specific first)
+  if (/weather|temperature|hot|cold|rain|sunny|climate|degrees|forecast/.test(t)) {
+    if (destination && month) return 'Let me look into the ' + month + ' weather in ' + destination + ' for you…';
+    if (destination) return 'Let me look into the weather in ' + destination + ' for you…';
+    if (month) return 'Checking what the weather is like in ' + month + '…';
+    return 'Checking the weather…';
+  }
+  if (/best time|when to (?:go|visit|travel)|when should/.test(t)) {
+    if (destination) return 'Let me check when is best for ' + destination + '…';
+    return 'Looking up the best time to go…';
+  }
+  if (/airport|terminal|transfer|arrival|departure|flight time|how long.*flight/.test(t)) {
+    if (destination) return 'Checking airport details for ' + destination + '…';
+    return 'Looking up airport info…';
+  }
+  if (/family|kids|child|children|teen|teenager|family.friendly/.test(t)) {
+    if (destination) return 'Finding family options for ' + destination + '…';
+    return 'Finding family-friendly options…';
+  }
+  if (/honeymoon|romantic|couple|couples|just the two of us/.test(t)) {
+    if (destination) return 'Looking up romantic ideas in ' + destination + '…';
+    return 'Finding ideas for couples…';
+  }
+  if (/budget|cheap|deal|offer|cost|price|how much|expensive|afford/.test(t)) {
+    if (destination) return 'Checking prices for ' + destination + '…';
+    return 'Checking what is available…';
+  }
+  if (/luxury|five star|5.star|premium|exclusive|high.end|upscale/.test(t)) {
+    if (destination) return 'Looking up luxury stays in ' + destination + '…';
+    return 'Looking up our luxury options…';
+  }
+  if (/all.?inclusive|board basis|half.board|full.board|breakfast included|meals included/.test(t)) {
+    if (destination) return 'Checking all-inclusive options for ' + destination + '…';
+    return 'Checking what is included…';
+  }
+  if (/safari|game drive|wildlife|big five/.test(t)) {
+    if (destination) return 'Looking up safari options in ' + destination + '…';
+    return 'Looking up our safari options…';
+  }
+  if (/cruise|ship|sailing|cruising/.test(t)) {
+    if (destination) return 'Checking cruises around ' + destination + '…';
+    return 'Checking our cruise options…';
+  }
+  if (/speak|human|agent|person|expert|advisor|call me back|phone me/.test(t)) {
+    return 'Finding the right person…';
+  }
+  if (/find my booking|my reservation|look up my|where('?s| is) my booking|manage.*booking/.test(t)) {
+    return 'Pulling up your booking…';
+  }
+  if (destination) return 'Looking into ' + destination + ' for you…';
+  if (/inspire|ideas|suggest|recommend|advice|help me|not sure|where should/.test(t)) {
+    return 'Putting some ideas together…';
+  }
+  if (pageContext && pageContext.title) {
+    // pageContext.title has already been through sanitizeInput
+    return 'Reading the ' + pageContext.title.slice(0, 40).trim() + ' page for you…';
+  }
+  return 'Looking that up for you…';
+}
+
+function capitaliseAckPhrase(s) {
+  if (!s) return s;
+  return s.split(' ').map(function(w) {
+    return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+  }).join(' ');
+}
+
+function capitaliseAckMonth(s) {
+  var m = (s || '').toLowerCase();
+  var map = { jan: 'January', feb: 'February', mar: 'March', apr: 'April', jun: 'June', jul: 'July', aug: 'August', sep: 'September', sept: 'September', oct: 'October', nov: 'November', dec: 'December' };
+  if (map[m]) return map[m];
+  return m.charAt(0).toUpperCase() + m.slice(1);
+}
+
 function sanitizeInput(str) {
   if (typeof str !== 'string') return '';
   return str
@@ -2263,6 +2371,12 @@ module.exports = async function handler(req, res) {
   // We respond with text/event-stream instead of JSON.
   const wantStream = body.stream === true || (req.query && req.query.stream === '1');
 
+  // Instant-ack: client sets body.useAck=true to opt in to receiving an SSE
+  // 'ack' event with a templated holding line immediately after rate limiting,
+  // before any context fetches or LLM calls. Old widgets that don't send the
+  // flag get the legacy behaviour (no ack event). Requires wantStream.
+  const wantAck = wantStream && (body.useAck === true || (req.query && req.query.useAck === '1'));
+
   // Phase 3: synthesize a user message when this is an opener request.
   // We DON'T mutate the input `message` (it's const) — instead, set a separate
   // variable used downstream. The guard below is then bypassed by openerRequest.
@@ -2280,33 +2394,42 @@ module.exports = async function handler(req, res) {
   // the visitor stares at "Thinking…" until the first AI token arrives.
   var _sseInitialised = false;
   var sendEvent = null;
-  function emitStatus(text) {
-    if (!wantStream) return;
-    if (!_sseInitialised) {
-      try {
-        res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
-        res.setHeader('Cache-Control', 'no-cache, no-transform');
-        res.setHeader('Connection', 'keep-alive');
-        res.setHeader('X-Accel-Buffering', 'no');
-        if (typeof res.flushHeaders === 'function') res.flushHeaders();
-        sendEvent = function(eventName, data) {
-          try {
-            res.write('event: ' + eventName + '\n');
-            res.write('data: ' + JSON.stringify(data) + '\n\n');
-          } catch (writeErr) {
-            console.warn('[luna-chat] SSE write failed:', writeErr.message);
-          }
-        };
-        sendEvent('meta', { convId: convId });
-        _sseInitialised = true;
-      } catch (e) {
-        console.warn('[luna-chat] early SSE init failed:', e.message);
-        return;
-      }
-    }
+  function _ensureSseInit() {
+    if (_sseInitialised || !wantStream) return _sseInitialised;
     try {
-      sendEvent('status', { text: text });
-    } catch (e) { /* swallowed */ }
+      res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-cache, no-transform');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Accel-Buffering', 'no');
+      if (typeof res.flushHeaders === 'function') res.flushHeaders();
+      sendEvent = function(eventName, data) {
+        try {
+          res.write('event: ' + eventName + '\n');
+          res.write('data: ' + JSON.stringify(data) + '\n\n');
+        } catch (writeErr) {
+          console.warn('[luna-chat] SSE write failed:', writeErr.message);
+        }
+      };
+      sendEvent('meta', { convId: convId });
+      _sseInitialised = true;
+    } catch (e) {
+      console.warn('[luna-chat] early SSE init failed:', e.message);
+    }
+    return _sseInitialised;
+  }
+  function emitStatus(text) {
+    if (!_ensureSseInit()) return;
+    try { sendEvent('status', { text: text }); } catch (e) { /* swallowed */ }
+  }
+  // emitAck — sends a one-off acknowledgement line to the widget BEFORE any
+  // slow context fetches or LLM calls. The widget renders this as a soft
+  // placeholder bubble (or in the typing area) so the visitor sees a
+  // contextual response in under ~500ms instead of staring at typing dots
+  // for several seconds. Body is plain text built from a fixed template
+  // set (see buildAck), never raw user input.
+  function emitAck(text) {
+    if (!_ensureSseInit()) return;
+    try { sendEvent('ack', { text: text }); } catch (e) { /* swallowed */ }
   }
 
   // Rate limiting: per-IP (stops convId rotation) and per-convId (stops session flooding)
@@ -2337,6 +2460,16 @@ module.exports = async function handler(req, res) {
       escalate: true,
       rateLimited: true
     });
+  }
+
+  // ── Instant ack ──
+  // Sent BEFORE any slow context fetches (Airtable, knowledge base, destination
+  // index). Typically arrives at the widget within a few hundred ms of the
+  // request being received, so the visitor sees a contextual response almost
+  // instantly. Gated by body.useAck so old widget builds are unaffected.
+  if (wantAck && !openerRequest) {
+    emitAck(buildAck(effectiveMessage, pageContext));
+    mark('ackSent');
   }
 
   // Phase 3.5: emit first status event based on intent detection.
