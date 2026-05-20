@@ -2207,6 +2207,22 @@ function recordStrike(convId, term) {
 
 // --- HANDLER ---
 module.exports = async function handler(req, res) {
+  // ═══ TIMING INSTRUMENTATION ═══
+  // Records ms-elapsed at every checkpoint. Logged as a single structured
+  // line at the end of the request for easy parsing from Vercel logs.
+  // Grep `[luna-chat] TIMING` to see all timing data.
+  const _tStart = Date.now();
+  const _t = { start: 0 }; // checkpoint name -> ms from start
+  function mark(label) {
+    _t[label] = Date.now() - _tStart;
+  }
+  function logTimings(extra) {
+    try {
+      const payload = Object.assign({ convId: extra && extra.convId, route: extra && extra.route }, _t, extra || {});
+      console.log('[luna-chat] TIMING ' + JSON.stringify(payload));
+    } catch (e) { /* swallow */ }
+  }
+
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('X-XSS-Protection', '1; mode=block');
@@ -2309,6 +2325,8 @@ module.exports = async function handler(req, res) {
       rateLimited: true
     });
   }
+
+  mark('rateLimitDone');
 
   // Global daily cap on Anthropic spend — prevents runaway bills if every other limit is bypassed
   const dailyCount = await ratelimit.incrDaily(DAILY_CHAT_KEY, 1);
@@ -2615,6 +2633,7 @@ No problem, drop your email and departure date in below and I'll find it.
       console.warn('[luna-chat] Booking lookup integration check failed:', e.message);
     }
   }
+  mark('clientProfileDone');
   // Booking context — sent by the chat widget AFTER the visitor has retrieved
   // an existing booking via the embedded My Booking widget. Lets Luna answer
   // follow-up questions ("what documents do I need?", "what's the weather
@@ -2720,14 +2739,18 @@ No problem, drop your email and departure date in below and I'll find it.
   var useHaiku = false;
   if (!isTravelgenix) {
     var atKey = process.env.AIRTABLE_KEY;
+    mark('brainSearchStart');
     var kbContext = await searchLunaBrain(message, atKey);
+    mark('brainSearchDone');
     if (kbContext) {
       systemPrompt += kbContext;
       // Phase 3.5: status update — we found something in the knowledge base
       if (wantStream && !openerRequest) emitStatus('Found something in our knowledge…');
     }
     // Destination context (Airports + Theme Parks) — keyword-triggered
+    mark('destCtxStart');
     var destCtx = await getDestinationContext(message, atKey);
+    mark('destCtxDone');
     if (destCtx) {
       systemPrompt += destCtx;
       // Phase 3.5: status update — destination data fetched
@@ -2739,7 +2762,9 @@ No problem, drop your email and departure date in below and I'll find it.
     // demos, since Andy may show the widget answering airport/park questions.
     var atKeyTg = process.env.AIRTABLE_KEY;
     if (atKeyTg) {
+      mark('destCtxStart');
       var destCtxTg = await getDestinationContext(message, atKeyTg);
+      mark('destCtxDone');
       if (destCtxTg) systemPrompt += destCtxTg;
     }
   }
@@ -2786,6 +2811,7 @@ No problem, drop your email and departure date in below and I'll find it.
       var detectedLang = null;
 
       try {
+        mark('llmCallStart');
         var stream = await client.messages.stream({
           model: modelId,
           max_tokens: 2048,
@@ -2825,6 +2851,7 @@ No problem, drop your email and departure date in below and I'll find it.
               }
               // Flush buffered (cleaned) text and switch to streaming mode
               if (langBuffer.length > 0) {
+                if (!firstTextChunkSeen) mark('firstToken');
                 sendEvent('text', { delta: langBuffer });
                 firstTextChunkSeen = true;
               }
@@ -2834,6 +2861,7 @@ No problem, drop your email and departure date in below and I'll find it.
             }
 
             // streaming phase — forward delta as-is
+            if (!firstTextChunkSeen) mark('firstToken');
             sendEvent('text', { delta: deltaText });
             firstTextChunkSeen = true;
           }
@@ -2858,6 +2886,7 @@ No problem, drop your email and departure date in below and I'll find it.
 
         // Final message from the SDK — includes usage
         var finalMessage = await stream.finalMessage();
+        mark('streamEnd');
 
         // Post-process the accumulated text (enrichment + output filter)
         var cleanReply = accumulated;
@@ -2927,10 +2956,25 @@ No problem, drop your email and departure date in below and I'll find it.
         if (detectedLang) donePayload.detectedLanguage = detectedLang;
 
         sendEvent('done', donePayload);
+        mark('end');
+        logTimings({
+          convId: convId,
+          route: 'stream',
+          model: modelId,
+          systemPromptChars: systemPrompt.length,
+          inputTokens: finalMessage && finalMessage.usage ? finalMessage.usage.input_tokens : null,
+          outputTokens: finalMessage && finalMessage.usage ? finalMessage.usage.output_tokens : null,
+          isTravelgenix: isTravelgenix,
+          hasBookingContext: !!bookingContext,
+          hasKbContext: !!(typeof kbContext !== 'undefined' && kbContext),
+          hasDestCtx: !!((typeof destCtx !== 'undefined' && destCtx) || (typeof destCtxTg !== 'undefined' && destCtxTg))
+        });
         return res.end();
 
       } catch (streamErr) {
         console.error('[luna-chat] streaming error:', streamErr.message || streamErr);
+        mark('end');
+        logTimings({ convId: convId, route: 'stream-error', error: streamErr.message || String(streamErr) });
         sendEvent('error', {
           message: 'stream_failed',
           fallbackReply: "I'm having a little trouble right now. Let me connect you with one of the team who can help directly."
@@ -2942,6 +2986,7 @@ No problem, drop your email and departure date in below and I'll find it.
     // ═══════════════════════════════════════════════════════════
     // NON-STREAMING PATH — original JSON response (unchanged)
     // ═══════════════════════════════════════════════════════════
+    mark('llmCallStart');
     const response = await client.messages.create({
       model: modelId,
       max_tokens: 2048,
@@ -2949,6 +2994,7 @@ No problem, drop your email and departure date in below and I'll find it.
       messages: claudeMessages,
       metadata: { user_id: convId || 'unknown' }
     });
+    mark('llmCallDone');
 
     const replyText = response.content
       .filter(block => block.type === 'text')
@@ -3055,10 +3101,25 @@ No problem, drop your email and departure date in below and I'll find it.
     if (detectedLang) responseJson.detectedLanguage = detectedLang;
     if (openerPills && openerPills.length > 0) responseJson.pills = openerPills;
 
+    mark('end');
+    logTimings({
+      convId: convId,
+      route: 'json',
+      model: modelId,
+      systemPromptChars: systemPrompt.length,
+      inputTokens: response.usage?.input_tokens,
+      outputTokens: response.usage?.output_tokens,
+      isTravelgenix: isTravelgenix,
+      hasBookingContext: !!bookingContext,
+      hasKbContext: !!(typeof kbContext !== 'undefined' && kbContext),
+      hasDestCtx: !!((typeof destCtx !== 'undefined' && destCtx) || (typeof destCtxTg !== 'undefined' && destCtxTg))
+    });
     return res.status(200).json(responseJson);
 
   } catch (err) {
     console.error('Luna AI error:', err?.message || err);
+    mark('end');
+    logTimings({ convId: convId, route: 'handler-error', error: err?.message || String(err) });
     if (wantStream) {
       // Try to send an SSE error event if we haven't ended yet
       try {
