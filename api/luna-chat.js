@@ -2474,7 +2474,10 @@ module.exports = async function handler(req, res) {
 
   // Phase 3.5: emit first status event based on intent detection.
   // Skip for opener requests — those have their own flow.
-  if (wantStream && !openerRequest) {
+  // Also skip when an ack has already been sent — the ack is richer than
+  // detectIntent's generic status, and emitting both back-to-back lets the
+  // status overwrite the ack on the widget's fade-in timer (~200ms).
+  if (wantStream && !openerRequest && !wantAck) {
     emitStatus(detectIntent(effectiveMessage, pageContext));
   }
 
