@@ -1912,6 +1912,71 @@ function capitaliseAckMonth(s) {
   return m.charAt(0).toUpperCase() + m.slice(1);
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+// isTrivialMessage — flag short/social messages where two-pass would feel weird
+// ───────────────────────────────────────────────────────────────────────────
+// Returns true if the message is so short or social that splitting the
+// response into "headline summary + detail" would feel mechanical (e.g. for
+// "hi", a two-pass answer would be "Hello there. ... [DETAIL] Welcome to our
+// travel site, how can I help you today?"). On trivial messages the server
+// falls through to the single-call path even when useTwoPass is on.
+function isTrivialMessage(msg) {
+  if (!msg || typeof msg !== 'string') return true;
+  var t = msg.trim().toLowerCase();
+  if (t.length === 0) return true;
+  // Very short messages (≤3 words AND under 20 chars) likely social
+  if (t.length < 20 && t.split(/\s+/).length <= 3) {
+    if (/^(hi|hey|hello|yo|sup|hiya|good (morning|afternoon|evening|day)|morning|afternoon|evening|howdy|hola|bonjour)[\s!.?]*$/.test(t)) return true;
+    if (/^(thanks?|thank you|cheers|ta|appreciated|nice one|brilliant|perfect|amazing)[\s!.?]*$/.test(t)) return true;
+    if (/^(yes|yeah|yep|yup|sure|ok|okay|cool|right|alright|got it|gotcha|sounds good|will do)[\s!.?]*$/.test(t)) return true;
+    if (/^(no|nope|nah|not really|never mind|nvm)[\s!.?]*$/.test(t)) return true;
+    if (/^(bye|goodbye|see ya|see you|later|cya|toodles|adios|farewell)[\s!.?]*$/.test(t)) return true;
+  }
+  // Single emoji or near-empty message
+  if (/^[\s!.?]*$/.test(t)) return true;
+  return false;
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// buildShortPromptAugment — system-prompt suffix for the short parallel call
+// ───────────────────────────────────────────────────────────────────────────
+// Appended to a hard-capped slice of the full system prompt. Tells the model
+// to produce ONE sentence, plain prose, no structured markers — those all
+// belong on the long call which is running in parallel. The visitor will
+// see this sentence streamed first; the long answer flows on right after.
+function buildShortPromptAugment() {
+  return '\n\n## SHORT-ANSWER MODE — STRICT\n'
+    + 'For THIS response only: reply with ONE sentence, 25 words or fewer. '
+    + 'Plain prose only. No greetings, no preamble, no follow-up questions. '
+    + 'No markdown headers, no bullet lists, no [BLOCK] markers, no [FQ] pills, '
+    + 'no [BOOKING_LOOKUP] markers, no links, no emojis. '
+    + 'Lead with the most useful single fact or recommendation. '
+    + 'A longer detailed answer will follow automatically and continue from your sentence — '
+    + 'do NOT say "let me explain more", do NOT promise detail. '
+    + 'Just give the headline answer in one tight sentence and stop.';
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// buildLongPromptAugment — system-prompt suffix for the long parallel call
+// ───────────────────────────────────────────────────────────────────────────
+// Tells the long call that a one-sentence summary has already been shown to
+// the visitor (streamed from the parallel short call). The long call should
+// continue naturally from there — expand, add context, recommendations,
+// blocks, pills — without repeating the headline or re-greeting.
+function buildLongPromptAugment() {
+  return '\n\n## CONTEXT — A ONE-SENTENCE SUMMARY HAS ALREADY BEEN SHOWN\n'
+    + 'A separate AI call has already streamed a one-sentence headline answer '
+    + 'to the visitor — they have already seen it in the same chat bubble. '
+    + 'Your job is to expand on it with rich detail, context, recommendations, '
+    + 'and structured elements ([BLOCK] markers, [FQ] pills, links, etc as normal). '
+    + 'Do NOT repeat the headline fact verbatim. Do NOT start with a greeting. '
+    + 'Do NOT start with phrases like "Sure!", "Let me explain", "Here is more detail" '
+    + 'or "To expand on that". Begin naturally, as a continuation — e.g. with '
+    + '"The best time to visit is...", "Most visitors find...", '
+    + '"Beyond that, you can also...". The visitor reads the summary and your '
+    + 'expansion as one continuous answer.';
+}
+
 function sanitizeInput(str) {
   if (typeof str !== 'string') return '';
   return str
@@ -2376,6 +2441,17 @@ module.exports = async function handler(req, res) {
   // before any context fetches or LLM calls. Old widgets that don't send the
   // flag get the legacy behaviour (no ack event). Requires wantStream.
   const wantAck = wantStream && (body.useAck === true || (req.query && req.query.useAck === '1'));
+
+  // Two-pass response: client sets body.useTwoPass=true to opt in to the
+  // parallel two-call pattern. The server fires a tiny Haiku call (one-sentence
+  // answer, ~800ms TTFT) AND the full long-form call concurrently. Short tokens
+  // stream as 'short_text' events, then 'short_done', then long tokens stream
+  // as 'long_text' events. Requires wantStream AND wantAck (the ack covers the
+  // sub-second before the short answer begins). Old widgets that don't send
+  // the flag get the single-call path unchanged. Trivial messages (greetings,
+  // thanks, single emoji, very short queries) bypass two-pass even when the
+  // flag is on — they don't benefit from a summary/detail split.
+  const wantTwoPass = wantAck && (body.useTwoPass === true || (req.query && req.query.useTwoPass === '1'));
 
   // Phase 3: synthesize a user message when this is an opener request.
   // We DON'T mutate the input `message` (it's const) — instead, set a separate
@@ -2945,6 +3021,207 @@ No problem, drop your email and departure date in below and I'll find it.
         _sseInitialised = true;
       }
       // sendEvent is guaranteed defined at this point (either via emitStatus init or via the block above).
+
+      // ═══════════════════════════════════════════════════════════════════
+      // TWO-PASS PARALLEL PATH (Ship 2)
+      // ═══════════════════════════════════════════════════════════════════
+      // Fires TWO Anthropic calls concurrently:
+      //   • SHORT — Haiku, tiny derived prompt, max_tokens 80, one sentence.
+      //     Streamed as 'short_text' SSE deltas. Replaces the ack on the
+      //     widget. Visitor sees a useful answer in ~800ms.
+      //   • LONG  — same model+prompt as single-call path, with an augment
+      //     telling it the short summary has been shown. Streamed as
+      //     'long_text' SSE deltas. Continues from the short.
+      //
+      // Why this works: the long call's first tokens usually arrive while
+      // the short answer is still streaming. By the time the short finishes
+      // (~2s elapsed), the long is already buffered and flows straight on.
+      //
+      // Skipped for trivial messages (greetings/thanks/yes-no) — those don't
+      // benefit from a summary/detail split and would feel mechanical.
+      // Gated on wantTwoPass which itself requires wantAck — the ack covers
+      // the sub-second before short tokens begin streaming.
+      if (wantTwoPass && !isTrivialMessage(effectiveMessage)) {
+        // Two-pass makes a SECOND Anthropic call. Bump the daily counter
+        // by 1 more so the spend cap reflects actual API usage.
+        await ratelimit.incrDaily(DAILY_CHAT_KEY, 1).catch(function(e){
+          console.warn('[luna-chat] daily-counter bump for two-pass failed:', e.message);
+        });
+
+        var shortModelId = process.env.LUNA_SHORT_MODEL || 'claude-haiku-4-5-20251001';
+        // Cap context for the short call to keep TTFT low. The full prompt
+        // can be 60-70KB; we don't need most of it to write one sentence.
+        var shortSystemPrompt = systemPrompt.slice(0, 8000) + buildShortPromptAugment();
+        var longSystemPrompt = systemPrompt + buildLongPromptAugment();
+
+        var shortText = '';
+        var longText = '';
+        var shortFinal = null;
+        var longFinal = null;
+        var shortFirstToken = false;
+        var longFirstToken = false;
+
+        mark('llmCallStart');
+
+        // Fire BOTH streams in parallel. We don't await — we just kick them
+        // off and hold the promises. Anthropic SDK's .stream() returns a
+        // promise that resolves to a stream iterator.
+        var shortStreamPromise = client.messages.stream({
+          model: shortModelId,
+          max_tokens: 100,
+          system: shortSystemPrompt,
+          messages: claudeMessages,
+          metadata: { user_id: convId || 'unknown' }
+        });
+        var longStreamPromise = client.messages.stream({
+          model: modelId,
+          max_tokens: 2048,
+          system: longSystemPrompt,
+          messages: claudeMessages,
+          metadata: { user_id: convId || 'unknown' }
+        });
+
+        // ── Phase A: stream SHORT tokens to the widget ──
+        try {
+          var shortStream = await shortStreamPromise;
+          for await (var sev of shortStream) {
+            if (sev.type === 'content_block_delta' && sev.delta && sev.delta.type === 'text_delta') {
+              var sd = sev.delta.text || '';
+              if (!sd) continue;
+              if (!shortFirstToken) { mark('shortFirstToken'); shortFirstToken = true; }
+              shortText += sd;
+              sendEvent('short_text', { delta: sd });
+            }
+          }
+          shortFinal = await shortStream.finalMessage();
+          mark('shortStreamEnd');
+          sendEvent('short_done', {});
+        } catch (shortErr) {
+          console.warn('[luna-chat] short stream failed (non-fatal, long will continue):', shortErr.message || shortErr);
+          // Signal widget that short is "done" with empty content. The long
+          // stream below will still run; user gets long-only output. This
+          // is the graceful degradation path.
+          sendEvent('short_done', { error: true });
+          mark('shortStreamEnd');
+        }
+
+        // ── Phase B: stream LONG tokens to the widget ──
+        // Tokens may already be buffered (call 2 was fired in parallel).
+        try {
+          var longStream = await longStreamPromise;
+          for await (var lev of longStream) {
+            if (lev.type === 'content_block_delta' && lev.delta && lev.delta.type === 'text_delta') {
+              var ld = lev.delta.text || '';
+              if (!ld) continue;
+              if (!longFirstToken) { mark('longFirstToken'); longFirstToken = true; }
+              longText += ld;
+              sendEvent('long_text', { delta: ld });
+            }
+          }
+          longFinal = await longStream.finalMessage();
+          mark('longStreamEnd');
+        } catch (longErr) {
+          console.error('[luna-chat] long stream failed:', longErr.message || longErr);
+          // If short also failed, send full error. If short succeeded, treat
+          // the short as the complete answer and proceed to post-processing.
+          if (!shortText) {
+            mark('end');
+            logTimings({ convId: convId, route: 'twopass-both-failed', error: longErr.message || String(longErr) });
+            sendEvent('error', {
+              message: 'stream_failed',
+              fallbackReply: "I'm having a little trouble right now. Let me connect you with one of the team who can help directly."
+            });
+            return res.end();
+          }
+        }
+
+        // ── Post-process combined output (same pipeline as single-call) ──
+        // The combined reply is short + " " + long. Post-processing runs on
+        // the WHOLE thing because [BLOCK]/[FQ]/escalation markers all live in
+        // the long output, and the cleanup must produce a single coherent
+        // reply object for downstream consumers (conversation log, etc).
+        var combinedRaw = shortText + ((shortText && longText) ? ' ' : '') + longText;
+        var combinedClean = combinedRaw;
+
+        // Knowledge marker handling (same as single-call path)
+        try {
+          var __km2 = knowledge.extractKnowledgeMarkers(combinedClean);
+          var __kCtx2 = req.__lunaKnowledgeContext || {};
+          var __cands2 = __kCtx2.candidates || [];
+          if (__km2.ids.length > 0) combinedClean = __km2.cleaned;
+          var __usedIds2 = knowledge.inferUsedKnowledge(combinedClean, __cands2, __km2.ids);
+          console.log('[luna-chat] knowledge: offered=' + __cands2.length + ' markers=' + __km2.ids.length + ' inferred=' + __usedIds2.length + ' (two-pass)');
+          if (__usedIds2.length) {
+            var __kKey2 = isTravelgenix ? process.env.AIRTABLE_KEY : atKey;
+            if (__kKey2) {
+              await knowledge.trackKnowledgeUsage(__kKey2, __usedIds2).catch(function(e){
+                console.warn('[luna-chat] track usage failed:', e.message);
+              });
+              req.__lunaUsedKnowledgeIds = __usedIds2;
+            }
+          }
+        } catch (kmErr2) {
+          console.warn('[luna-chat] knowledge marker handling failed (two-pass):', kmErr2.message);
+        }
+
+        // Destination image enrichment
+        try {
+          var enrichKey2 = isTravelgenix ? process.env.AIRTABLE_KEY : atKey;
+          if (enrichKey2) {
+            combinedClean = await enrichDestinationCardImages(combinedClean, enrichKey2);
+          }
+        } catch (enrichErr2) {
+          console.warn('[luna-chat] enrichment skipped (two-pass):', enrichErr2.message);
+        }
+
+        // Output filter — defence in depth on the combined text
+        var outputCheck2 = filterOutput(combinedClean);
+        if (outputCheck2.flagged) {
+          console.error('[Luna Filter] AI output was filtered (two-pass)! convId:', convId);
+          combinedClean = outputCheck2.filtered;
+        }
+        combinedClean = stripInternalTokens(combinedClean);
+
+        var escalate2 = detectEscalation(combinedClean, message);
+
+        var donePayload2 = {
+          reply: combinedClean,
+          shortPart: shortText,
+          longPart: longText,
+          escalate: escalate2,
+          convId: convId,
+          mode: 'two-pass',
+          usage: {
+            short_input_tokens: shortFinal && shortFinal.usage ? shortFinal.usage.input_tokens : null,
+            short_output_tokens: shortFinal && shortFinal.usage ? shortFinal.usage.output_tokens : null,
+            long_input_tokens: longFinal && longFinal.usage ? longFinal.usage.input_tokens : null,
+            long_output_tokens: longFinal && longFinal.usage ? longFinal.usage.output_tokens : null
+          }
+        };
+
+        sendEvent('done', donePayload2);
+        mark('end');
+        logTimings({
+          convId: convId,
+          route: 'twopass',
+          shortModel: shortModelId,
+          longModel: modelId,
+          systemPromptChars: systemPrompt.length,
+          shortInputTokens: donePayload2.usage.short_input_tokens,
+          shortOutputTokens: donePayload2.usage.short_output_tokens,
+          longInputTokens: donePayload2.usage.long_input_tokens,
+          longOutputTokens: donePayload2.usage.long_output_tokens,
+          isTravelgenix: isTravelgenix,
+          hasBookingContext: !!bookingContext,
+          hasKbContext: !!(typeof kbContext !== 'undefined' && kbContext),
+          hasDestCtx: !!((typeof destCtx !== 'undefined' && destCtx) || (typeof destCtxTg !== 'undefined' && destCtxTg))
+        });
+        return res.end();
+      }
+      // ═══════════════════════════════════════════════════════════════════
+      // (Fall through to single-call streaming below if two-pass not active
+      // or message was trivial.)
+      // ═══════════════════════════════════════════════════════════════════
 
       var accumulated = '';
       var firstTextChunkSeen = false;
