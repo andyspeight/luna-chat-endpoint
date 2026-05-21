@@ -3875,27 +3875,66 @@ async function streamFromLuna(userText) {
         visibleText = fullText.slice(0, blockIdx);
         inBlockBuffer = true;
         ensureBubble();
+        // Apply internal-marker stripping before rendering
+        var visibleClean = stripInternalMarkers(visibleText);
         // Clear bubble before re-render — renderSafeMarkdown only appends.
         streamedBubble.textContent = '';
-        renderSafeMarkdown(streamedBubble, visibleText);
+        renderSafeMarkdown(streamedBubble, visibleClean);
         return;
       }
-      // Defensive: if the tail of fullText is a partial "[", "[B", "[BL", "[BLO",
-      // "[BLOC", or "[BLOCK", hold those bytes back from the visible bubble so
-      // a chunk split across the marker boundary doesn't briefly show "[BLO".
-      var tail = fullText.slice(-7);
+      // Defensive holdback: any unclosed '[' at the end of fullText that
+      // looks like it could be the start of an internal marker is held back
+      // until its closing ']' arrives. Otherwise a chunk split across a
+      // marker boundary briefly flashes text like "[LANG:Engl" or
+      // "[BOOKING_LOOK" into the visible bubble.
+      //
+      // We look at the LAST unmatched '[' in fullText. If there's no ']'
+      // after it AND the character following '[' suggests an internal
+      // marker (uppercase letter, slash, or end-of-string), hold back
+      // everything from that '[' onwards.
       var holdback = 0;
-      var partials = ['[BLOCK', '[BLOC', '[BLO', '[BL', '[B', '['];
-      for (var pi = 0; pi < partials.length; pi++) {
-        if (tail.endsWith(partials[pi])) { holdback = partials[pi].length; break; }
+      var lastOpen = fullText.lastIndexOf('[');
+      if (lastOpen !== -1) {
+        var afterOpen = fullText.slice(lastOpen);
+        if (afterOpen.indexOf(']') === -1) {
+          // No closing bracket yet. Decide whether to hold back.
+          // Internal markers always start with [UPPERCASE or [/UPPERCASE.
+          // Visitor-quoted text might start with [lowercase or [a number,
+          // which we leave alone to avoid suppressing legitimate text.
+          var next = afterOpen.length > 1 ? afterOpen.charAt(1) : '';
+          var looksLikeMarker = (next === '' || next === '/' || (next >= 'A' && next <= 'Z'));
+          if (looksLikeMarker) {
+            holdback = afterOpen.length;
+          }
+        }
       }
       visibleText = fullText.slice(0, fullText.length - holdback);
+      // Strip COMPLETED internal markers from the visible text (markers
+      // that closed within fullText — incomplete ones are held back above).
+      visibleText = stripInternalMarkers(visibleText);
       ensureBubble();
       // Clear bubble before re-render — renderSafeMarkdown only appends.
       streamedBubble.textContent = '';
       renderSafeMarkdown(streamedBubble, visibleText);
     }
     // If we're already buffering a block, nothing visible to update
+  }
+
+  // Strip internal protocol markers from streaming visible text. Markers
+  // are still kept in fullText for post-processing on 'done' — only
+  // removed from what the visitor sees in the bubble while streaming.
+  // Handles markers that may appear anywhere in the text:
+  //   [LANG:LanguageName]   — language detection prefix
+  //   [BOOKING_LOOKUP:rec…] — triggers booking widget render (extracted on done)
+  //   [FQ]...[/FQ]          — follow-up question pills (rendered as buttons on done)
+  //   [OPT]...[/OPT]        — option pills (rendered as buttons on done)
+  function stripInternalMarkers(text) {
+    if (!text) return text;
+    return text
+      .replace(/\[LANG:[^\]]*\]\s*/g, '')
+      .replace(/\[BOOKING_LOOKUP:[^\]]*\]\s*/g, '')
+      .replace(/\[FQ\][\s\S]*?\[\/FQ\]/g, '')
+      .replace(/\[OPT\][\s\S]*?\[\/OPT\]/g, '');
   }
 
   try {
