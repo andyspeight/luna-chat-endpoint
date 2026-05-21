@@ -2530,6 +2530,39 @@ function renderSafeMarkdown(parent, text) {
   emitPlain(text.slice(cursor));
 }
 
+/* ─── TIME-AWARE GREETING HELPERS ─────────────────────────
+   getTimeGreeting() returns "Good morning" / "Good afternoon" / "Good
+   evening" based on the visitor's local clock. Defined as a function so
+   it's evaluated fresh each render (not at script-load time).
+
+   applyTimeAwareGreeting(welcome):
+     - Replaces generic "Hi there" / "Hey there" / "Hello there" / "Hi"
+       openers with the time-aware version (preserving the rest).
+     - If the welcome doesn't start with a generic greeting, prefixes
+       with the time-aware version (preserving the original).
+     - If the welcome already starts with "Good morning/afternoon/evening",
+       leaves it alone (assume client has customised it).
+
+   IMPORTANT: declared at IIFE-top-level so it's visible to all sibling
+   functions (buildDOM, startChat, etc). Placing this inside another
+   function caused a ReferenceError chain when startChat() was called. */
+function getTimeGreeting() {
+  var h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+function applyTimeAwareGreeting(welcome) {
+  if (!welcome || typeof welcome !== 'string') return welcome;
+  if (/^good (morning|afternoon|evening)/i.test(welcome.trim())) return welcome;
+  var greeting = getTimeGreeting();
+  var openerRe = /^(hi there|hey there|hello there|hi|hey|hello)([\s,!.\-—–])/i;
+  if (openerRe.test(welcome)) {
+    return welcome.replace(openerRe, greeting + '$2');
+  }
+  return greeting + '! ' + welcome;
+}
+
 /* ─── BUILD DOM ──────────────────────────────────────────── */
 function buildDOM() {
   var T = getTokens();
@@ -2605,42 +2638,6 @@ function buildDOM() {
 
   /* ── Populate tainted fields via textContent / safe DOM — never innerHTML ── */
   function setText(id, val) { var el = document.getElementById(id); if (el) el.textContent = val || ""; }
-
-  // ──────────────────────────────────────────────────────────────────────
-  // Time-aware greeting helpers
-  // ──────────────────────────────────────────────────────────────────────
-  // getTimeGreeting() returns "Good morning" / "Good afternoon" / "Good
-  // evening" based on the visitor's local clock. Defined as a function so
-  // it's evaluated fresh each render (not at script-load time, which would
-  // be wrong if a session persists across the morning→afternoon boundary).
-  //
-  // applyTimeAwareGreeting(welcome) returns a version of the welcome
-  // message with a time-aware opener. Behaviour:
-  //   - Replaces generic "Hi there" / "Hey there" / "Hello there" / "Hi"
-  //     openers with the time-aware version (preserving the rest).
-  //   - If the welcome doesn't start with a generic greeting, prefixes
-  //     with the time-aware version (preserving the original).
-  //   - If the welcome already contains "Good morning/afternoon/evening",
-  //     leaves it alone (assume client has customised it).
-  function getTimeGreeting() {
-    var h = new Date().getHours();
-    if (h < 12) return 'Good morning';
-    if (h < 18) return 'Good afternoon';
-    return 'Good evening';
-  }
-  function applyTimeAwareGreeting(welcome) {
-    if (!welcome || typeof welcome !== 'string') return welcome;
-    // Already has a time-aware opener — respect client customisation
-    if (/^good (morning|afternoon|evening)/i.test(welcome.trim())) return welcome;
-    var greeting = getTimeGreeting();
-    // Replace common generic openers (case-insensitive, with optional punctuation)
-    var openerRe = /^(hi there|hey there|hello there|hi|hey|hello)([\s,!.\-—–])/i;
-    if (openerRe.test(welcome)) {
-      return welcome.replace(openerRe, greeting + '$2');
-    }
-    // No generic opener — prefix with the time-aware greeting
-    return greeting + '! ' + welcome;
-  }
 
   /* FAB icon: custom image (validated URL) or built-in SVG */
   var fabIconEl = document.getElementById("tgxFabIcon");
