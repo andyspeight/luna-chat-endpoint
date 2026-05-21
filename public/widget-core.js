@@ -1283,7 +1283,14 @@ var D = {
   /* Endpoints & keys */
   endpoint: "https://luna-chat-endpoint.vercel.app/api/luna-chat",
   ablyTokenEndpoint: "https://luna-chat-endpoint.vercel.app/api/ably-token",
-  clientName: "Travelgenix",
+  /* clientName: intentionally blank as default. Each embed MUST declare its
+     own client identity (via window.__LUNA_CONFIG.clientName, a data-clientName
+     attribute on the script tag, or the remote /api/widget-config response).
+     A hardcoded default was previously "Travelgenix" — that caused any embed
+     that forgot to set clientName to silently inherit Travelgenix's identity,
+     which routed booking lookups and other client-scoped logic to the wrong
+     client. Leaving it blank surfaces missing config loudly instead. */
+  clientName: "",
   /* NOTE: ablyKey removed — tokens are now fetched server-side via ablyTokenEndpoint.
      The widget never holds a root Ably key. */
   airtableKey: "",
