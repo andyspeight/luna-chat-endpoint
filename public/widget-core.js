@@ -2606,6 +2606,42 @@ function buildDOM() {
   /* ── Populate tainted fields via textContent / safe DOM — never innerHTML ── */
   function setText(id, val) { var el = document.getElementById(id); if (el) el.textContent = val || ""; }
 
+  // ──────────────────────────────────────────────────────────────────────
+  // Time-aware greeting helpers
+  // ──────────────────────────────────────────────────────────────────────
+  // getTimeGreeting() returns "Good morning" / "Good afternoon" / "Good
+  // evening" based on the visitor's local clock. Defined as a function so
+  // it's evaluated fresh each render (not at script-load time, which would
+  // be wrong if a session persists across the morning→afternoon boundary).
+  //
+  // applyTimeAwareGreeting(welcome) returns a version of the welcome
+  // message with a time-aware opener. Behaviour:
+  //   - Replaces generic "Hi there" / "Hey there" / "Hello there" / "Hi"
+  //     openers with the time-aware version (preserving the rest).
+  //   - If the welcome doesn't start with a generic greeting, prefixes
+  //     with the time-aware version (preserving the original).
+  //   - If the welcome already contains "Good morning/afternoon/evening",
+  //     leaves it alone (assume client has customised it).
+  function getTimeGreeting() {
+    var h = new Date().getHours();
+    if (h < 12) return 'Good morning';
+    if (h < 18) return 'Good afternoon';
+    return 'Good evening';
+  }
+  function applyTimeAwareGreeting(welcome) {
+    if (!welcome || typeof welcome !== 'string') return welcome;
+    // Already has a time-aware opener — respect client customisation
+    if (/^good (morning|afternoon|evening)/i.test(welcome.trim())) return welcome;
+    var greeting = getTimeGreeting();
+    // Replace common generic openers (case-insensitive, with optional punctuation)
+    var openerRe = /^(hi there|hey there|hello there|hi|hey|hello)([\s,!.\-—–])/i;
+    if (openerRe.test(welcome)) {
+      return welcome.replace(openerRe, greeting + '$2');
+    }
+    // No generic opener — prefix with the time-aware greeting
+    return greeting + '! ' + welcome;
+  }
+
   /* FAB icon: custom image (validated URL) or built-in SVG */
   var fabIconEl = document.getElementById("tgxFabIcon");
   if (C.bubbleIcon && isSafeUrl(C.bubbleIcon)) {
@@ -2641,7 +2677,7 @@ function buildDOM() {
   // v2.1: greeting zone — render welcome with italic emphasis on *word*
   var bigHi = document.getElementById("tgxBigHi");
   if (bigHi) {
-    var raw = C.welcome || "Hi there — how can I help today?";
+    var raw = applyTimeAwareGreeting(C.welcome || "Hi there — how can I help today?");
     // Build DOM nodes so we don't innerHTML untrusted text
     var idx = 0; var node;
     raw.split(/(\*[^*]+\*)/).forEach(function(part) {
@@ -4299,7 +4335,11 @@ async function escalateToHuman() {
 /* ─── START CHAT ─────────────────────────────────────────── */
 function startChat() {
   var welcomeText = C.welcome;
-  if (userName) welcomeText = "Hey " + userName + "! " + welcomeText.replace(/^Hey there! /, "").replace(/^Hey there\b/, "");
+  if (userName) {
+    welcomeText = "Hey " + userName + "! " + welcomeText.replace(/^Hey there! /, "").replace(/^Hey there\b/, "");
+  } else {
+    welcomeText = applyTimeAwareGreeting(welcomeText);
+  }
   addMsg("bot", welcomeText);
   showPills(C.hints, function(h){ sendToAI(h); });
 }
@@ -4724,6 +4764,8 @@ async function boot() {
       var defaultWelcome = C.welcome || 'Hi there! How can I help today?';
       if (userName) {
         defaultWelcome = 'Hey ' + userName + '! ' + defaultWelcome.replace(/^Hey there! /, '').replace(/^Hey there\b/, '');
+      } else {
+        defaultWelcome = applyTimeAwareGreeting(defaultWelcome);
       }
       // Only swap if it's actually different — preserves any custom welcome
       // that was set legitimately (not via an override).
@@ -5251,6 +5293,8 @@ async function boot() {
           var defaultWelcome = C.welcome || 'Hi there! How can I help today?';
           if (userName) {
             defaultWelcome = 'Hey ' + userName + '! ' + defaultWelcome.replace(/^Hey there! /, '').replace(/^Hey there\b/, '');
+          } else {
+            defaultWelcome = applyTimeAwareGreeting(defaultWelcome);
           }
           msgs[0].content = defaultWelcome;
         }
