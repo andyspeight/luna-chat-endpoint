@@ -3729,7 +3729,14 @@ async function streamFromLuna(userText) {
     clientName: C.clientName, history: history.slice(-16), page: window.location.pathname,
     stream: true,
     useAck: true,
-    useTwoPass: true
+    // useTwoPass disabled 21 May 2026. The parallel two-call architecture
+    // worked structurally but produced duplicate content (both calls wrote
+    // the full answer instead of short+continuation) and leaked [LANG:...]
+    // markers from both calls. The instant-ack alone delivers the perceived-
+    // speed win we need; real speed gains will come from Anthropic prompt
+    // caching (next deploy) and other targeted optimisations. The two-pass
+    // code in api/luna-chat.js is dormant but kept intact for future revisit.
+    useTwoPass: false
   };
   if (_currentPageContext && typeof _currentPageContext === "object") {
     requestBody.pageContext = _currentPageContext;
