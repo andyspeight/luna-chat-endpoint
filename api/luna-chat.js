@@ -1940,20 +1940,29 @@ function isTrivialMessage(msg) {
 // ───────────────────────────────────────────────────────────────────────────
 // buildShortPromptAugment — system-prompt suffix for the short parallel call
 // ───────────────────────────────────────────────────────────────────────────
-// Appended to a hard-capped slice of the full system prompt. Tells the model
-// to produce ONE sentence, plain prose, no structured markers — those all
-// belong on the long call which is running in parallel. The visitor will
-// see this sentence streamed first; the long answer flows on right after.
+// Tells the model to produce ONE sentence using exactly the same knowledge,
+// destination context, and booking instructions as the full long call.
+// Critical: the short call must NOT fall back to "speak to our team" if it
+// doesn't see structured markers in the prompt — the visitor's question
+// has a real factual answer in the prompt and the short call should give it.
+// The structured markers ([BLOCK], [FQ], [BOOKING_LOOKUP]) all belong to
+// the long call running in parallel — the short call just writes prose.
 function buildShortPromptAugment() {
-  return '\n\n## SHORT-ANSWER MODE — STRICT\n'
+  return '\n\n## SHORT-ANSWER MODE\n'
     + 'For THIS response only: reply with ONE sentence, 25 words or fewer. '
-    + 'Plain prose only. No greetings, no preamble, no follow-up questions. '
-    + 'No markdown headers, no bullet lists, no [BLOCK] markers, no [FQ] pills, '
-    + 'no [BOOKING_LOOKUP] markers, no links, no emojis. '
+    + 'Use the same knowledge base and destination context that has been '
+    + 'provided in this system prompt — answer the visitor\'s question with '
+    + 'a real factual answer, not a referral to the team. '
+    + 'Plain prose only. No greetings, no preamble, no follow-up questions, '
+    + 'no markdown, no bullet lists, no [BLOCK]/[FQ]/[BOOKING_LOOKUP] markers, '
+    + 'no links, no emojis (those all belong to the longer answer that will '
+    + 'follow automatically). '
     + 'Lead with the most useful single fact or recommendation. '
-    + 'A longer detailed answer will follow automatically and continue from your sentence — '
-    + 'do NOT say "let me explain more", do NOT promise detail. '
-    + 'Just give the headline answer in one tight sentence and stop.';
+    + 'If the question is about booking lookup, booking management, or finding '
+    + 'an existing booking, say something brief and natural like "Let me pull '
+    + 'that up for you" — the long answer will handle the actual lookup. '
+    + 'If the visitor explicitly asks to speak to a human/agent/advisor, '
+    + 'acknowledge it briefly and the long answer will handle the escalation.';
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -1964,17 +1973,17 @@ function buildShortPromptAugment() {
 // continue naturally from there — expand, add context, recommendations,
 // blocks, pills — without repeating the headline or re-greeting.
 function buildLongPromptAugment() {
-  return '\n\n## CONTEXT — A ONE-SENTENCE SUMMARY HAS ALREADY BEEN SHOWN\n'
-    + 'A separate AI call has already streamed a one-sentence headline answer '
-    + 'to the visitor — they have already seen it in the same chat bubble. '
-    + 'Your job is to expand on it with rich detail, context, recommendations, '
-    + 'and structured elements ([BLOCK] markers, [FQ] pills, links, etc as normal). '
-    + 'Do NOT repeat the headline fact verbatim. Do NOT start with a greeting. '
-    + 'Do NOT start with phrases like "Sure!", "Let me explain", "Here is more detail" '
-    + 'or "To expand on that". Begin naturally, as a continuation — e.g. with '
-    + '"The best time to visit is...", "Most visitors find...", '
-    + '"Beyond that, you can also...". The visitor reads the summary and your '
-    + 'expansion as one continuous answer.';
+  return '\n\n## CONTINUATION MODE\n'
+    + 'A separate AI call has just shown the visitor a one-sentence headline '
+    + 'answer to their question, in the same chat bubble you are about to '
+    + 'continue. Your job: expand on that headline with rich detail, context, '
+    + 'recommendations, and any relevant structured elements ([BLOCK] markers, '
+    + '[FQ] pills, [BOOKING_LOOKUP] markers, links) — exactly as you normally '
+    + 'would in a full answer. Begin your response as a natural continuation '
+    + '(e.g. "The best time to visit is...", "Most visitors find...", '
+    + '"Beyond that..."), not as a fresh greeting or restated headline. '
+    + 'You still have full access to the knowledge base, destination context, '
+    + 'and booking instructions — use them normally.';
 }
 
 function sanitizeInput(str) {
@@ -3049,9 +3058,14 @@ No problem, drop your email and departure date in below and I'll find it.
         });
 
         var shortModelId = process.env.LUNA_SHORT_MODEL || 'claude-haiku-4-5-20251001';
-        // Cap context for the short call to keep TTFT low. The full prompt
-        // can be 60-70KB; we don't need most of it to write one sentence.
-        var shortSystemPrompt = systemPrompt.slice(0, 8000) + buildShortPromptAugment();
+        // Use the FULL system prompt for both calls. An earlier version
+        // sliced to 8KB for the short call hoping to save TTFT, but that
+        // stripped the knowledge base, destination context, and booking-
+        // widget instructions — causing the short call to fall back to
+        // "speak to the team" on questions it should have answered. TTFT
+        // difference between 8KB and 70KB is small (~200ms) and will
+        // disappear once Anthropic prompt caching is wired up.
+        var shortSystemPrompt = systemPrompt + buildShortPromptAugment();
         var longSystemPrompt = systemPrompt + buildLongPromptAugment();
 
         var shortText = '';
