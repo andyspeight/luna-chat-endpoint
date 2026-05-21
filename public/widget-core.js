@@ -2035,6 +2035,13 @@ function injectCSS() {
   +'@keyframes tgxStreamCursor{0%,50%{opacity:0.7}51%,100%{opacity:0}}'
   +'#tgx-cw .tgx-msg{padding:12px 15px;font-size:14px;line-height:1.55;word-wrap:break-word;border-radius:18px}'
   +'#tgx-cw .tgx-msg.bot{background:#fff;color:'+C.brandColor+';border:1px solid rgba(15,26,61,0.06);border-top-left-radius:6px}'
+  /* Ship 2: ack placeholder bubble. Renders in the position the real
+     answer will land. The inner .tgx-ack-text wrapper handles the slide-up
+     + fade-out transition when real content arrives. */
+  +'#tgx-cw .tgx-msg.bot.tgx-msg-ack{font-style:italic;color:'+C.accentColor+';transition:padding .2s ease}'
+  +'#tgx-cw .tgx-msg.bot.tgx-msg-ack.tgx-ack-exiting{padding-top:6px;padding-bottom:6px}'
+  +'#tgx-cw .tgx-ack-text{display:inline-block;transform:translateY(0);opacity:1;transition:transform .22s cubic-bezier(0.4,0,0.2,1),opacity .22s ease}'
+  +'#tgx-cw .tgx-msg-ack.tgx-ack-exiting .tgx-ack-text{transform:translateY(-8px);opacity:0}'
   +'#tgx-cw .tgx-msg.user{background:linear-gradient(135deg,'+C.brandColor+','+C.brandColor+'E0);color:#fff;border-top-right-radius:6px;box-shadow:0 4px 12px '+C.brandColor+'25}'
   +'#tgx-cw .tgx-msg.agent{background:#fff;color:'+C.brandColor+';border:1px solid rgba(34,197,94,0.3);border-left:3px solid #22c55e;border-top-left-radius:6px}'
   +'#tgx-cw .tgx-msg.system{align-self:center;background:transparent;color:#8A92A0;font-size:11.5px;font-style:italic;padding:6px 0;text-align:center;max-width:100%;border:none}'
@@ -3688,7 +3695,8 @@ async function streamFromLuna(userText) {
     message: userText, convId: convId, visitorName: userName || undefined,
     clientName: C.clientName, history: history.slice(-16), page: window.location.pathname,
     stream: true,
-    useAck: true
+    useAck: true,
+    useTwoPass: true
   };
   if (_currentPageContext && typeof _currentPageContext === "object") {
     requestBody.pageContext = _currentPageContext;
@@ -3702,13 +3710,92 @@ async function streamFromLuna(userText) {
   var visibleText = "";       // What we've shown in the bubble (with [BLOCK] stripped)
   var fullText = "";          // What we've received total (raw)
   var inBlockBuffer = false;  // Whether we've seen [BLOCK] but not [/BLOCK]
+  // Ship 2 (ack bubble): when an 'ack' SSE event arrives BEFORE the first
+  // real text token, we create the bubble row early with the ack text shown
+  // as a styled placeholder. When real text arrives, we slide the ack out
+  // and reuse the same bubble DOM for the streamed answer. While the
+  // slide-out is in flight, incoming deltas are buffered and flushed when
+  // the transition completes.
+  var ackBubbleActive = false;     // ack placeholder bubble is currently shown
+  var ackTransitionPending = false; // we've started the slide-out, waiting for it
+  var pendingDeltas = [];          // deltas buffered during the transition
 
-  function ensureBubble() {
-    if (streamedBubbleRow) return;
-    // Hide typing indicator now that text is coming
+  // Create a placeholder bubble in the messages area styled as the ack.
+  // Returns the bubble element. Caller is responsible for setting class
+  // and content. Mirrors ensureBubble()'s row construction so the final
+  // morphed bubble looks identical to a normal streamed bot reply.
+  function createAckBubble(ackText) {
+    if (streamedBubbleRow) return; // already have a bubble (shouldn't happen)
+    streamedBubbleRow = document.createElement("div");
+    streamedBubbleRow.className = "tgx-msg-row";
+    streamedBubbleRow.appendChild(makeAvatar(26, false));
+    var col = document.createElement("div");
+    col.className = "tgx-msg-col";
+    streamedBubble = document.createElement("div");
+    streamedBubble.className = "tgx-msg bot tgx-msg-ack";
+    // Wrap ack text in a span so we can slide it independently of the bubble
+    var ackSpan = document.createElement("span");
+    ackSpan.className = "tgx-ack-text";
+    ackSpan.textContent = ackText;
+    streamedBubble.appendChild(ackSpan);
+    col.appendChild(streamedBubble);
+    // No timestamp on ack — it'll be added when the bubble morphs into the real answer
+    streamedBubbleRow.appendChild(col);
+    $msgs.appendChild(streamedBubbleRow);
+    ackBubbleActive = true;
+    scrollToNewMessage(streamedBubbleRow);
+  }
+
+  // Slide the ack text out, then clear the bubble and prepare it for
+  // real content. On completion, flush any buffered deltas.
+  function morphAckIntoAnswer() {
+    if (!ackBubbleActive || ackTransitionPending) return;
+    ackTransitionPending = true;
+    // Trigger CSS transition (slide up + fade out)
+    streamedBubble.classList.add("tgx-ack-exiting");
+    // Hide typing dots now that the bubble is becoming the answer
     $typing.classList.remove("active");
     stopTypingStatus();
-    // Create the row + bubble structure manually (mirrors appendBubbleRow)
+    setTimeout(function() {
+      // Transition done — clear ack content, remove ack classes, mark as
+      // a regular streaming bubble, then add a timestamp like ensureBubble would
+      streamedBubble.innerHTML = "";
+      streamedBubble.classList.remove("tgx-msg-ack");
+      streamedBubble.classList.remove("tgx-ack-exiting");
+      streamedBubble.classList.add("tgx-msg-streaming");
+      // Add timestamp (the bubble's column needs one — mirrors ensureBubble)
+      var col = streamedBubble.parentNode;
+      if (col && !col.querySelector(".tgx-msg-time")) {
+        var timeEl = document.createElement("span");
+        timeEl.className = "tgx-msg-time";
+        var now = new Date();
+        timeEl.textContent = ("0" + now.getHours()).slice(-2) + ":" + ("0" + now.getMinutes()).slice(-2);
+        col.appendChild(timeEl);
+      }
+      ackBubbleActive = false;
+      ackTransitionPending = false;
+      // Flush any deltas that arrived during the transition
+      if (pendingDeltas.length) {
+        var buffered = pendingDeltas.slice();
+        pendingDeltas = [];
+        for (var i = 0; i < buffered.length; i++) {
+          appendVisible(buffered[i]);
+        }
+      }
+    }, 240); // matches CSS transition duration (220ms) + small buffer
+  }
+
+  function ensureBubble() {
+    if (streamedBubbleRow) {
+      // Bubble already exists. If it's still in ack state, kick off the morph.
+      if (ackBubbleActive && !ackTransitionPending) {
+        morphAckIntoAnswer();
+      }
+      return;
+    }
+    // No bubble yet — create one from scratch (no ack was shown)
+    $typing.classList.remove("active");
+    stopTypingStatus();
     streamedBubbleRow = document.createElement("div");
     streamedBubbleRow.className = "tgx-msg-row";
     streamedBubbleRow.appendChild(makeAvatar(26, false));
@@ -3724,12 +3811,25 @@ async function streamFromLuna(userText) {
     col.appendChild(timeEl);
     streamedBubbleRow.appendChild(col);
     $msgs.appendChild(streamedBubbleRow);
-    // Scroll the new bubble into view at the top of the visible area
     scrollToNewMessage(streamedBubbleRow);
   }
 
   function appendVisible(deltaText) {
     if (!deltaText) return;
+    // If the ack bubble is being slid out, buffer this delta and flush
+    // when the transition completes. Prevents real text from appearing
+    // mid-animation (which would look chaotic).
+    if (ackTransitionPending) {
+      pendingDeltas.push(deltaText);
+      return;
+    }
+    // If the ack bubble is still showing (first real token has arrived),
+    // start the morph and buffer this delta.
+    if (ackBubbleActive) {
+      pendingDeltas.push(deltaText);
+      morphAckIntoAnswer();
+      return;
+    }
     fullText += deltaText;
     // Mini state machine: if [BLOCK] appears anywhere in fullText, switch
     // to buffering mode. We re-derive visibleText each time so a [BLOCK]
@@ -3784,6 +3884,8 @@ async function streamFromLuna(userText) {
     var convIdFromMeta = null;
     var detectedLanguage = null;
     var donePayload = null;
+    var sawShortDone = false;       // Ship 2: short answer completed
+    var longSpaceInserted = false;  // Ship 2: space inserted between short and long
 
     function processEvent(eventName, dataJson) {
       var data;
@@ -3791,14 +3893,14 @@ async function streamFromLuna(userText) {
       if (eventName === 'meta') {
         if (data.convId) convIdFromMeta = data.convId;
       } else if (eventName === 'ack') {
-        // Instant templated acknowledgement from server, sent before any
-        // context fetch or LLM call. Replaces the generic "Thinking…" line
-        // in the typing-status area with something contextual. Cleared
-        // automatically when the first real text delta arrives (via
-        // appendVisible → ensureBubble → stopTypingStatus).
+        // Ship 2 (ack bubble): create a placeholder bubble where the real
+        // answer will land, with the ack text styled (italic + accent colour).
+        // When the first real text token arrives, the ack slides up and out,
+        // and the bubble morphs into the streamed answer in place. Typing
+        // dots at the bottom stay active throughout to reinforce that Luna
+        // is still working.
         if (typeof data.text === 'string' && data.text) {
-          stopTypingStatus();
-          setTypingStatus(data.text);
+          createAckBubble(data.text);
         }
       } else if (eventName === 'status') {
         // Phase 3.5: server-supplied real-time status text.
@@ -3810,6 +3912,32 @@ async function streamFromLuna(userText) {
         }
       } else if (eventName === 'text') {
         if (typeof data.delta === 'string') appendVisible(data.delta);
+      } else if (eventName === 'short_text') {
+        // Ship 2: two-pass response. The short answer streams first, into
+        // the same chat bubble that the full reply uses. Treated identically
+        // to a 'text' event — appendVisible() creates the bubble on first
+        // delta and appends subsequent deltas.
+        if (typeof data.delta === 'string') appendVisible(data.delta);
+      } else if (eventName === 'short_done') {
+        // Ship 2: marker that the short answer has finished streaming. The
+        // long answer's tokens will follow as 'long_text' events. We don't
+        // need to do anything visually — the bubble stays as-is and just
+        // keeps accumulating. The boolean flag lets the next 'long_text'
+        // handler know to prepend a space so the two parts don't run
+        // together (last short token ends with "." or similar, first long
+        // token may start with "The" etc).
+        sawShortDone = true;
+      } else if (eventName === 'long_text') {
+        if (typeof data.delta === 'string') {
+          // Prepend a space the first time long content arrives after short,
+          // to ensure clean visual separation between the two AI calls'
+          // outputs in the bubble.
+          if (sawShortDone && !longSpaceInserted) {
+            appendVisible(' ');
+            longSpaceInserted = true;
+          }
+          appendVisible(data.delta);
+        }
       } else if (eventName === 'done') {
         donePayload = data;
         if (data.detectedLanguage) detectedLanguage = data.detectedLanguage;
