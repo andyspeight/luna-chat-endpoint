@@ -14,6 +14,90 @@ const LB_TABLES = [
 const kbCache = {};
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
+// ─── TRAVELGENIX SUPPLIERS (single source of truth, read live from Airtable) ───
+// The Suppliers table is the authoritative list of who Travelgenix connects to and
+// how bookable each one is. Loaded on each Travelgenix chat and injected into the
+// system prompt so supplier facts never go stale in code. To change what Luna says
+// about a supplier, edit the Suppliers table — never hardcode it here.
+const TG_SUPPLIERS_BASE = 'app6Ot3eOb3DangkB';
+const TG_SUPPLIERS_TABLE = 'tbl5dbJmO5E7lQ4y6';
+const SUPPLIERS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+let suppliersCache = { block: null, ts: 0 };
+
+// Build an authoritative supplier block for the Travelgenix system prompt from the
+// Suppliers table. Cached ~5 min. On any failure falls back to the last good cache
+// so a transient Airtable issue never blanks supplier answers.
+async function loadTravelgenixSuppliers(atKey) {
+  if (!atKey) return '';
+  if (suppliersCache.block && (Date.now() - suppliersCache.ts < SUPPLIERS_CACHE_TTL)) {
+    return suppliersCache.block;
+  }
+  try {
+    var url = 'https://api.airtable.com/v0/' + TG_SUPPLIERS_BASE + '/' + TG_SUPPLIERS_TABLE
+      + '?filterByFormula=' + encodeURIComponent('{Active}=1')
+      + '&pageSize=100';
+    var r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + atKey } });
+    if (!r.ok) {
+      console.warn('[luna-chat] suppliers fetch failed:', r.status);
+      return suppliersCache.block || '';
+    }
+    var data = await r.json();
+    var recs = (data.records || []).map(function (x) { return x.fields || {}; });
+    if (!recs.length) return suppliersCache.block || '';
+
+    recs.sort(function (a, b) { return (a['Sort Order'] || 999) - (b['Sort Order'] || 999); });
+
+    function fmt(rec) {
+      var line = '- ' + (rec.Name || '');
+      var extras = [];
+      if (rec['No Booking Fees']) extras.push('no booking fees');
+      if (rec.Notes) extras.push(String(rec.Notes));
+      if (extras.length) line += ' (' + extras.join('; ') + ')';
+      return line;
+    }
+
+    var instant = recs.filter(function (r) { return r.Type === 'Tour Operator' && r.Bookability === 'Real-time instant'; });
+    var notInstant = recs.filter(function (r) { return r.Type === 'Tour Operator' && r.Bookability !== 'Real-time instant'; });
+    var api = recs.filter(function (r) { return r.Type === 'API Supplier' || r.Type === 'Bedbank'; });
+    var other = recs.filter(function (r) { return r.Type !== 'Tour Operator' && r.Type !== 'API Supplier' && r.Type !== 'Bedbank'; });
+
+    var lines = [];
+    lines.push('');
+    lines.push('## SUPPLIERS AND TOUR OPERATORS — AUTHORITATIVE, LIVE DATA');
+    lines.push('This is the current, official list of who Travelgenix connects to, loaded live from our records. It OVERRIDES any supplier or tour operator names mentioned anywhere else in this prompt. Rules you must follow:');
+    lines.push('- Only state what is listed here. If a supplier is not in this list, say you will confirm current details rather than guessing.');
+    lines.push('- Only describe a tour operator as integrated, real-time or instantly bookable if it appears under the real-time heading below. Never imply instant online booking for any operator listed as not real-time.');
+    lines.push('- Only claim "no booking fees" for an individual supplier where it is marked as such below.');
+    if (instant.length) {
+      lines.push('');
+      lines.push('Fully integrated tour operators (real-time, instant online confirmation):');
+      instant.forEach(function (r) { lines.push(fmt(r)); });
+    }
+    if (notInstant.length) {
+      lines.push('');
+      lines.push('Available to sell but NOT real-time and NOT instantly bookable online:');
+      notInstant.forEach(function (r) { lines.push(fmt(r)); });
+    }
+    if (api.length) {
+      lines.push('');
+      lines.push('Premium suppliers connected via API (200+ suppliers in total, with live availability):');
+      api.forEach(function (r) { lines.push(fmt(r)); });
+    }
+    if (other.length) {
+      lines.push('');
+      lines.push('Other suppliers and partners:');
+      other.forEach(function (r) { lines.push(fmt(r)); });
+    }
+
+    var block = lines.join('\n');
+    suppliersCache = { block: block, ts: Date.now() };
+    return block;
+  } catch (e) {
+    console.warn('[luna-chat] suppliers load error:', e.message);
+    return suppliersCache.block || '';
+  }
+}
+
 // ─── DESTINATION CONTEXT (Airports + Theme Parks) ───
 // Keyword-triggered injection. Index built once on cold start; per-request
 // scan picks up matches and fetches full record detail only when needed.
@@ -1296,7 +1380,7 @@ Ignite: GBP 299/month (setup GBP 3,995). Everything in Boost plus premium featur
 Clients can upgrade at any time. The upgrade is seamless with no disruption to their site.
 
 ### Booking integrations
-200+ supplier connections with no additional booking fees on premium suppliers including Jet2 Holidays, TUI, RateHawk, WebBeds, Hotelbeds, AERTiCKET, Gold Medal, Faremine, Etihad Holidays, Holiday Taxis, and Flexible Autos. Holiday Extras integration launched April 2026 (min GBP 1k/month).
+200+ supplier connections, with no additional booking fees on many premium suppliers. For the current named suppliers and tour operators and the exact booking status of each, use the SUPPLIERS AND TOUR OPERATORS section, which is the authoritative source. Holiday Extras integration launched April 2026 (min GBP 1k/month).
 
 ### Travelify mid-office
 Our mid-office platform for managing bookings, included in Boost and Ignite packages.
@@ -1459,10 +1543,10 @@ A: Yes. AWS and Azure, 99.95% uptime, free SSL, Google PageSpeed, CDN, dynamic s
 
 ### Products and Features
 Q: Suppliers?
-A: 200+ via API. Premium: RateHawk, WebBeds, Hotelbeds, AERTiCKET, Gold Medal, Faremine, Jet2 Holidays, TUI, Etihad Holidays, Holiday Taxis, Flexible Autos. Many with zero booking fees.
+A: We connect to 200+ suppliers via API, with 800+ airlines, 3M+ accommodations and 45k+ attractions. For the current named list of suppliers and tour operators, use the SUPPLIERS AND TOUR OPERATORS section, which is the authoritative source.
 
 Q: Tour operators?
-A: Jet2 Holidays, TUI, Etihad Holidays, Every Holidays. Fully integrated, real-time booking with instant online confirmation. Mercury Holidays can be sold but is NOT one of these real-time integrations and is NOT bookable online with instant confirmation. Never describe Mercury as integrated, real-time or instantly bookable.
+A: Use the SUPPLIERS AND TOUR OPERATORS section for the current authoritative list of tour operators and the exact booking status of each. Do not name or describe a tour operator's bookability from anywhere else.
 
 Q: Travelify mid-office?
 A: Central hub: suppliers, pricing, bookings, CRM, order management, promo codes, user roles. Included with all packages.
@@ -2584,6 +2668,16 @@ module.exports = async function handler(req, res) {
 
   const isTravelgenix = (clientName || '').toLowerCase().includes('travelgenix');
   let systemPrompt = isTravelgenix ? LUNA_TRAVELGENIX : LUNA_CLIENT;
+
+  if (isTravelgenix) {
+    try {
+      var __supBlock = await loadTravelgenixSuppliers(process.env.AIRTABLE_KEY);
+      if (__supBlock) {
+        systemPrompt += __supBlock;
+        console.log('[luna-chat] suppliers injected (Travelgenix), len=' + __supBlock.length);
+      }
+    } catch (e) { console.warn('[luna-chat] suppliers inject failed:', e.message); }
+  }
 
   if (!isTravelgenix && clientName) {
     systemPrompt += `\n\n## Client context\nYou are embedded on the website of "${clientName}". Refer to them naturally as "we" or "us".`;
