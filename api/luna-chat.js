@@ -1462,7 +1462,7 @@ Q: Suppliers?
 A: 200+ via API. Premium: RateHawk, WebBeds, Hotelbeds, AERTiCKET, Gold Medal, Faremine, Jet2 Holidays, TUI, Etihad Holidays, Holiday Taxis, Flexible Autos. Many with zero booking fees.
 
 Q: Tour operators?
-A: Jet2 Holidays, TUI, Mercury Holidays, Etihad Holidays, Every Holidays, Advantage Holidays and Cruise. Fully integrated real-time booking.
+A: Jet2 Holidays, TUI, Etihad Holidays, Every Holidays. Fully integrated, real-time booking with instant online confirmation. Mercury Holidays can be sold but is NOT one of these real-time integrations and is NOT bookable online with instant confirmation. Never describe Mercury as integrated, real-time or instantly bookable.
 
 Q: Travelify mid-office?
 A: Central hub: suppliers, pricing, bookings, CRM, order management, promo codes, user roles. Included with all packages.
