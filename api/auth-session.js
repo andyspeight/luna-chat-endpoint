@@ -17,6 +17,12 @@
 //      without breaking existing customers.
 //
 // If multiple candidates match, the picker is shown on the front end.
+//
+// SECURITY (2 Jun 2026): this endpoint NO LONGER returns the raw Ably key to
+// the browser. The dashboard now obtains a short-lived, capability-scoped Ably
+// token from /api/ably-token (mode "agent") using this same session. The root
+// key stays server-side. config.clientId is what the dashboard uses to request
+// that token and to build its client-scoped channel names.
 
 const AT_BASE = 'app6Ot3eOb3DangkB';
 const AT_TABLE = 'tbl6CZ7aVzq1wHF2v';
@@ -27,9 +33,6 @@ const ALLOWED_ORIGINS = [
   'https://chat.travelify.io'
 ];
 
-// Roles that can access ANY Luna Chat client via the picker. Mirrors the
-// auth platform's role taxonomy — owners and admins are Travelgenix staff
-// with cross-tenant access.
 const CROSS_TENANT_ROLES = new Set(['owner', 'admin']);
 
 function applyCors(req, res) {
@@ -53,15 +56,11 @@ function buildConfig(record) {
     clientId: record.id,
     clientName: f.ClientName || '',
     clientSlug: f.ClientSlug || '',
-    ablyKey: f.AblyKey || '',
+    // ablyKey intentionally REMOVED — dashboard fetches a scoped token instead.
     email: f.ContactEmail || ''
   };
 }
 
-/**
- * Fetch records from the Luna Chat Clients table with a given filter.
- * Returns the raw Airtable records array.
- */
 async function fetchClients(atKey, filterFormula, maxRecords) {
   const url = 'https://api.airtable.com/v0/' + AT_BASE + '/' + AT_TABLE
     + '?filterByFormula=' + encodeURIComponent(filterFormula)
@@ -74,9 +73,6 @@ async function fetchClients(atKey, filterFormula, maxRecords) {
   return (data && data.records) || [];
 }
 
-/**
- * De-duplicate an array of Airtable records by record id, preserving order.
- */
 function dedupeRecords(records) {
   const seen = new Set();
   const out = [];
@@ -99,7 +95,6 @@ module.exports = async function handler(req, res) {
   if (!atKey) return res.status(500).json({ error: 'Server not configured' });
 
   try {
-    // 1. Validate the central session by forwarding the cookie to id.travelify.io.
     const cookie = req.headers.cookie || '';
     if (!cookie.match(/(?:^|;\s*)tg_session=/)) {
       return res.status(401).json({ error: 'Not signed in' });
@@ -121,10 +116,8 @@ module.exports = async function handler(req, res) {
     const body = req.body || {};
     const requestedClientId = body.clientId ? String(body.clientId) : null;
 
-    // 2. Build the candidate list using the priority order described above.
     let candidates = [];
 
-    // 2a. Match by AuthClientId on the current scoped client (the modern path).
     if (currentAuthClientId) {
       const byAuth = await fetchClients(
         atKey,
@@ -134,16 +127,11 @@ module.exports = async function handler(req, res) {
       candidates = candidates.concat(byAuth);
     }
 
-    // 2b. Cross-tenant override: owners and admins can pick from ALL Luna
-    // Chat clients. We fetch up to 50 — enough for any realistic Travelgenix
-    // estate. If you grow past that we'll add proper pagination.
     if (CROSS_TENANT_ROLES.has(role)) {
       const allClients = await fetchClients(atKey, "TRUE()", 50);
       candidates = candidates.concat(allClients);
     }
 
-    // 2c. Legacy ContactEmail fallback — covers Luna Chat clients that
-    // haven't been migrated to the AuthClientId model yet.
     if (candidates.length === 0) {
       const byEmail = await fetchClients(
         atKey,
@@ -153,8 +141,6 @@ module.exports = async function handler(req, res) {
       candidates = candidates.concat(byEmail);
     }
 
-    // De-duplicate (an owner whose email IS on a Luna Chat client would
-    // otherwise see it listed twice).
     candidates = dedupeRecords(candidates);
 
     if (candidates.length === 0) {
@@ -163,9 +149,6 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    // 3. Build the summary list returned to the front-end (always returned,
-    // even when only one candidate matched — the dashboard uses it for the
-    // company switcher menu).
     const summary = candidates.map(function (rec) {
       return {
         id: rec.id,
@@ -173,15 +156,6 @@ module.exports = async function handler(req, res) {
       };
     });
 
-    // 4. Pick the right one to return as `config`.
-    //
-    // Priority:
-    //   - If the front-end requested a specific clientId (user clicked it
-    //     in the picker), respect that, but only if it's in the candidate
-    //     list (so users can't escalate by guessing record ids).
-    //   - Else if there's exactly one candidate, use it.
-    //   - Else (multiple candidates, no explicit request), return null —
-    //     the front-end will render the picker.
     let chosen = null;
     if (requestedClientId) {
       chosen = candidates.find(function (r) { return r.id === requestedClientId; });
@@ -192,7 +166,6 @@ module.exports = async function handler(req, res) {
       chosen = candidates[0];
     }
 
-    // Diagnostic — easy to spot in Vercel logs while we're migrating
     console.log('[auth-session] user', email, 'role=' + role,
       'currentAuthClientId=' + (currentAuthClientId || '-'),
       'candidates=' + candidates.length,
