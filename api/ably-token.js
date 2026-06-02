@@ -47,29 +47,32 @@ module.exports = async function handler(req, res) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Cache-Control', 'no-store');
 
-  // CORS. Visitor path is embedded anywhere ('*'); agent path needs credentials
-  // so it echoes the specific origin. We set per-request below.
+  // CORS must be decided by ORIGIN, not by request mode — the preflight OPTIONS
+  // request carries no body, so body.mode is unknowable here. The agent
+  // (dashboard) sends credentials:'include', and the spec forbids the wildcard
+  // '*' on credentialed requests: the server must echo the exact origin AND set
+  // Allow-Credentials. So: a request from a known agent origin always gets the
+  // echoed origin + credentials (covers preflight and the real POST); any other
+  // origin gets the wildcard with NO credentials (the visitor path, embeddable
+  // anywhere, which never sends credentials).
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   var origin = req.headers.origin || '';
-  var body = req.body || {};
-  var mode = (body.mode === 'agent') ? 'agent' : 'visitor';
-
-  if (mode === 'agent') {
-    // Credentialed: echo origin + allow credentials (cookie).
-    var AGENT_ORIGINS = ['https://chat.travelify.io', 'https://luna-chat-endpoint.vercel.app'];
-    if (AGENT_ORIGINS.indexOf(origin) !== -1) {
-      res.setHeader('Access-Control-Allow-Origin', origin);
-      res.setHeader('Vary', 'Origin');
-      res.setHeader('Access-Control-Allow-Credentials', 'true');
-    }
+  var AGENT_ORIGINS = ['https://chat.travelify.io', 'https://luna-chat-endpoint.vercel.app'];
+  if (AGENT_ORIGINS.indexOf(origin) !== -1) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
   } else {
     res.setHeader('Access-Control-Allow-Origin', '*');
   }
 
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  var body = req.body || {};
+  var mode = (body.mode === 'agent') ? 'agent' : 'visitor';
 
   var rootKey = process.env.ABLY_ROOT_KEY;
   var atKey = process.env.AIRTABLE_KEY;
