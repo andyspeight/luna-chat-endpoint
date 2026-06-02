@@ -3478,6 +3478,20 @@ function initAbly() {
   chatChannel = ably.channels.get(ch("chat"));
   agentsChannel = ably.channels.get(ch("agents"));
 
+  /* Attach to the agents presence channel up front. A channel obtained via
+     .get() is NOT attached until you subscribe/enter/attach — and calling
+     presence.get() on an unattached channel can resolve empty before the
+     presence set has synced. The dashboard attaches implicitly via
+     presence.enter(); the widget only ever READS presence, so we must attach
+     explicitly or the first "are agents online?" check races and sees nobody.
+     Subscribing to presence events forces attach and keeps it live, so if an
+     agent comes online mid-conversation the widget knows. */
+  try {
+    agentsChannel.presence.subscribe(function(){ /* keep presence synced */ });
+  } catch (e) {
+    console.warn("Luna widget: agents presence subscribe failed:", e && e.message);
+  }
+
   chatChannel.subscribe("message", function(msg){
     var d = msg.data;
     if (d && d.from === "agent") {
@@ -4359,7 +4373,21 @@ async function escalateToHuman() {
   var agentsOnline = false;
   if (agentsChannel) {
     try {
-      var members = await agentsChannel.presence.get();
+      /* Make sure the channel is actually attached before reading presence —
+         presence.get() on an unattached channel can return empty even when
+         agents are present. attach() is a no-op if already attached. */
+      if (agentsChannel.state !== "attached") {
+        await new Promise(function(resolve){
+          var done = false;
+          var finish = function(){ if (!done){ done = true; resolve(); } };
+          try {
+            agentsChannel.attach(function(){ finish(); });
+          } catch (e) { finish(); }
+          /* Safety timeout so we never hang the escalation */
+          setTimeout(finish, 2500);
+        });
+      }
+      var members = await agentsChannel.presence.get({ waitForSync: true });
       agentsOnline = members && members.length > 0;
     } catch(e) {
       console.warn("Luna widget: presence check failed:", e.message);
