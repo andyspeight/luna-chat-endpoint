@@ -2691,8 +2691,24 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       dbg.textContent = 'presence: ' + CONFIG.PRESENCE_CHANNEL + ' | dash: ' + CONFIG.DASHBOARD_CHANNEL + ' | clientId: ' + CONFIG.CLIENT_ID;
     } catch (e) {}
     presenceChannel.presence.enter({ name: CONFIG.AGENT_NAME, status: 'online' }).then(function() {
-      presenceChannel.presence.get().then(function(members) { renderPresence(members); });
-    }).catch(function(e) { console.warn('Presence enter failed:', e); });
+      try {
+        var dbg2 = document.getElementById('luna-chan-debug');
+        if (dbg2) dbg2.textContent += ' | ENTER: OK';
+      } catch (e) {}
+      presenceChannel.presence.get().then(function(members) {
+        renderPresence(members);
+        try {
+          var dbg3 = document.getElementById('luna-chan-debug');
+          if (dbg3) dbg3.textContent += ' | present.get=' + (members ? members.length : 'null');
+        } catch (e) {}
+      });
+    }).catch(function(e) {
+      console.warn('Presence enter failed:', e);
+      try {
+        var dbg4 = document.getElementById('luna-chan-debug');
+        if (dbg4) dbg4.textContent += ' | ENTER FAILED: ' + (e && e.message ? e.message : e);
+      } catch (er) {}
+    });
     presenceChannel.presence.subscribe(updatePresenceList);
   }
 
