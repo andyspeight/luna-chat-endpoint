@@ -7017,8 +7017,8 @@ setTimeout(function () {
   'use strict';
   function buildInlineSnippet() {
     var name = window.LUNA_CLIENT_NAME || (window.CONFIG && window.CONFIG.CLIENT_NAME) || 'YOUR_CLIENT_NAME';
-    var src = 'https://widgets.travelify.io/widget-core.js';
-    return '<script src="' + src + '" data-client-name="' + name + '" defer><\/script>';
+    var src = 'https://chat.travelify.io/widget-core.js';
+    return '<script src="' + src + '" data-clientName="' + name + '" async><\/script>';
   }
   function renderInlineSnippet() {
     var el = document.getElementById('embedCodeSnippet');
@@ -7271,8 +7271,8 @@ setTimeout(function () {
 
   function buildSnippet() {
     var name = window.LUNA_CLIENT_NAME || (window.CONFIG && window.CONFIG.CLIENT_NAME) || 'YOUR_CLIENT_NAME';
-    var src = 'https://widgets.travelify.io/widget-core.js';
-    return '<script src="' + src + '" data-client-name="' + name + '" defer><\/script>';
+    var src = 'https://chat.travelify.io/widget-core.js';
+    return '<script src="' + src + '" data-clientName="' + name + '" async><\/script>';
   }
 
   window._openGetCodeModal = function() {
