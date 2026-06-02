@@ -4389,11 +4389,6 @@ async function escalateToHuman() {
       }
       var members = await agentsChannel.presence.get({ waitForSync: true });
       agentsOnline = members && members.length > 0;
-      /* TEMP DIAGNOSTIC: surface what the widget actually sees, so we can tell a
-         cache problem from a code problem. Remove after debugging. */
-      try {
-        addMsg("system", "[debug] channel=" + ch("agents") + " state=" + agentsChannel.state + " members=" + (members ? members.length : "null"));
-      } catch (e) {}
     } catch(e) {
       console.warn("Luna widget: presence check failed:", e.message);
     }
