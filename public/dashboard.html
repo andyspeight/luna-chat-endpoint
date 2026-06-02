@@ -2637,7 +2637,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     try {
       ably = new Ably.Realtime({
         authCallback: function (tokenParams, callback) {
-          fetch('https://luna-chat-endpoint.vercel.app/api/ably-token', {
+          fetch('/api/ably-token', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
