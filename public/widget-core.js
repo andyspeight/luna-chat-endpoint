@@ -686,7 +686,16 @@ function renderHumanHandoffCard(props, ctx) {
 
   const action = props.actionType || 'connect';
   const labelMap = { connect: 'Connect', callback: 'Book a call', whatsapp: 'WhatsApp us' };
-  const btn = el('button', 'luna-handoff-btn', labelMap[action] || 'Connect');
+  const btnLabel = labelMap[action] || 'Connect';
+  const btn = el('button', 'luna-handoff-btn', btnLabel);
+  /* Localise the visible label for non-English conversations. Dispatch uses
+     `action` (a stable key), not the label, so translation can't break it. */
+  try {
+    var hcLang = (conversationLang || '').trim();
+    if (hcLang && !/^english$/i.test(hcLang)) {
+      translateText(btnLabel, hcLang).then(function(t){ if (t) btn.textContent = t; }).catch(function(){});
+    }
+  } catch (e) {}
   btn.type = 'button';
   btn.addEventListener('click', () => {
     if (ctx && ctx.dispatch) ctx.dispatch({ type: 'handoff', actionType: action });
@@ -3012,6 +3021,49 @@ function renderBookingWidgetMessage(descriptor, pendingPills) {
   });
 }
 
+/* Localised system message. The widget's fixed system notices (queue, handoff,
+   closed, etc.) are written in English. When the conversation has been detected
+   as another language (conversationLang, set from the AI's [LANG:] marker), we
+   translate the notice into that language via the existing /api/translate route
+   before showing it — the same machinery that translates agent<->visitor
+   messages. Fails safe: any error shows the original English, never blank. */
+/* Re-localise the persistent UI buttons (Talk to a human / Leave a message)
+   once the conversation language is known. These render in English at init
+   (before the visitor types), so we translate them in place after detection.
+   Guarded so we only do it once per language, and fails safe to English. */
+var _uiLabelsLocalisedFor = "";
+function localiseUiLabels() {
+  var lang = (conversationLang || "").trim();
+  if (!lang || /^english$/i.test(lang)) return;
+  if (_uiLabelsLocalisedFor === lang) return;
+  _uiLabelsLocalisedFor = lang;
+  var pairs = [
+    ["tgxDemotedHuman", C.escalateLabel],
+    ["tgxDemotedLeave", C.leaveLabel],
+    ["tgxHuman", C.escalateLabel],
+    ["tgxLeave", C.leaveLabel]
+  ];
+  pairs.forEach(function(p){
+    if (!p[1]) return;
+    translateText(p[1], lang).then(function(t){
+      if (t) { var el = document.getElementById(p[0]); if (el) el.textContent = t; }
+    }).catch(function(){});
+  });
+}
+
+function sysMsg(text) {
+  var lang = (conversationLang || "").trim();
+  if (!lang || /^english$/i.test(lang)) {
+    addMsg("system", text);
+    return;
+  }
+  translateText(text, lang).then(function(translated) {
+    addMsg("system", translated || text);
+  }).catch(function() {
+    addMsg("system", text);
+  });
+}
+
 function addMsg(role, text, noStore, originalText, pendingPills, blocks) {
   /* Booking widget embed — unchanged */
   if (role === "widget") {
@@ -3179,11 +3231,21 @@ function buildBlockContext() {
 
 function showPills(items, onClick) {
   $pills.innerHTML = "";
-  items.forEach(function(txt){
+  items.forEach(function(item){
+    /* Items may be a plain string (label === value) or { label, value } so the
+       visible label can be localised while the value passed to onClick stays a
+       stable English key (click logic compares against the value). */
+    var label = (item && typeof item === "object") ? item.label : item;
+    var value = (item && typeof item === "object") ? item.value : item;
     var btn = document.createElement("button");
     btn.className = "tgx-pill";
-    btn.textContent = txt;
-    btn.addEventListener("click", function(){ onClick(txt); });
+    btn.textContent = label;
+    /* Localise the visible label in place if the conversation is non-English. */
+    var lang = (conversationLang || "").trim();
+    if (lang && !/^english$/i.test(lang)) {
+      translateText(label, lang).then(function(t){ if (t) btn.textContent = t; }).catch(function(){});
+    }
+    btn.addEventListener("click", function(){ onClick(value); });
     $pills.appendChild(btn);
   });
 }
@@ -3511,12 +3573,12 @@ function initAbly() {
     var d = msg.data;
     if (!d) return;
     if (d.handler === "agent" || (d.handler && d.handler !== "waiting" && d.handler !== "ai")) {
-      addMsg("system", (d.agentName || "An agent") + " has joined the chat.");
+      sysMsg((d.agentName || "An agent") + " has joined the chat.");
       liveMode = true;
       $escBar.classList.remove("active");
     }
     if (d.handler === "resolved" || d.handler === "closed") {
-      addMsg("system", "This conversation has been closed.");
+      sysMsg("This conversation has been closed.");
       liveMode = false;
       var resolvedChannel = chatChannel;
       showRatingOverlay(resolvedChannel);
@@ -3709,7 +3771,7 @@ function doLeaveMessage() {
     }).catch(function(e){ console.warn("Airtable leave-msg error:", e); });
   }
   if (ov) ov.remove();
-  addMsg("system", "Message sent! We'll be in touch soon.");
+  sysMsg("Message sent! We'll be in touch soon.");
 }
 
 /* ─── RATING OVERLAY ─────────────────────────────────────── */
@@ -4110,7 +4172,7 @@ async function streamFromLuna(userText) {
 
     var finalReply = donePayload.reply || fullText || "";
     history.push({role: "assistant", content: finalReply});
-    if (detectedLanguage) conversationLang = detectedLanguage;
+    if (detectedLanguage) { conversationLang = detectedLanguage; localiseUiLabels(); }
     saveSession();
 
     return {
@@ -4163,7 +4225,7 @@ async function callLuna(userText) {
     var data = await res.json();
     var reply = data.reply || "Sorry, I'm having trouble connecting right now.";
     history.push({role: "assistant", content: reply});
-    if (data.detectedLanguage) conversationLang = data.detectedLanguage;
+    if (data.detectedLanguage) { conversationLang = data.detectedLanguage; localiseUiLabels(); }
     saveSession();
     return data;
   } catch(e) {
@@ -4396,7 +4458,7 @@ async function escalateToHuman() {
 
   if (agentsOnline) {
     /* Agents are online — real escalation */
-    addMsg("system", "Connecting you to our team...");
+    sysMsg("Connecting you to our team...");
     ensureConversationStarted();
     publishHandlerChange("waiting");
 
@@ -4417,16 +4479,16 @@ async function escalateToHuman() {
 
     liveMode = true;
     $escBar.classList.remove("active");
-    addMsg("system", "You're in the queue. An agent will be with you shortly.");
+    sysMsg("You're in the queue. An agent will be with you shortly.");
   } else {
     /* No agents online */
-    addMsg("system", "Sorry, there are no agents available right now. You can leave us a message and we'll get back to you, or you can carry on chatting with " + C.name + ".");
+    sysMsg("Sorry, there are no agents available right now. You can leave us a message and we'll get back to you, or you can carry on chatting with " + C.name + ".");
     showPills(["Leave a message", "Continue chatting"], function(choice) {
       if (choice === "Leave a message") {
         showLeaveOverlay();
       } else {
         clearPills();
-        addMsg("system", "No problem! I'm still here to help. What can I do for you?");
+        sysMsg("No problem! I'm still here to help. What can I do for you?");
         $input.focus();
       }
     });
