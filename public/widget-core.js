@@ -1291,6 +1291,7 @@ var D = {
      which routed booking lookups and other client-scoped logic to the wrong
      client. Leaving it blank surfaces missing config loudly instead. */
   clientName: "",
+  clientId: "",
   /* NOTE: ablyKey removed — tokens are now fetched server-side via ablyTokenEndpoint.
      The widget never holds a root Ably key. */
   airtableKey: "",
@@ -3439,7 +3440,18 @@ function initAbly() {
       if (!r.ok) throw new Error("Token endpoint returned " + r.status);
       return r.json();
     })
-    .then(function(tokenDetails) { callback(null, tokenDetails); })
+    .then(function(data) {
+      /* Token endpoint returns { token, clientId }. The clientId is also
+         available from config (C.clientId) which is set before init, so channel
+         scoping never depends on this callback's timing. Capture here too as a
+         belt-and-braces fallback. */
+      if (data && data.token) {
+        if (data.clientId && !C.clientId) C.clientId = data.clientId;
+        callback(null, data.token);
+      } else {
+        callback(null, data);
+      }
+    })
     .catch(function(err) {
       console.error("Luna widget: Ably token fetch failed:", err.message);
       callback(err, null);
@@ -3451,9 +3463,20 @@ function initAbly() {
     clientId: "visitor_" + convId
   });
 
-  dashChannel = ably.channels.get("luna-dashboard");
-  chatChannel = ably.channels.get("luna-chat:" + convId);
-  agentsChannel = ably.channels.get("luna-agents");
+  /* Client-scoped channel names. C.clientId is set from /api/widget-config
+     during boot(), before Ably ever initialises — so scoping is synchronous
+     and correct. One shared Ably app, isolated per client by capability. */
+  function ch(kind) {
+    var ns = C.clientId || "";
+    if (kind === "dashboard") return "luna-dashboard:" + ns;
+    if (kind === "agents") return "luna-agents:" + ns;
+    if (kind === "chat") return "luna-chat:" + ns + ":" + convId;
+    return kind;
+  }
+
+  dashChannel = ably.channels.get(ch("dashboard"));
+  chatChannel = ably.channels.get(ch("chat"));
+  agentsChannel = ably.channels.get(ch("agents"));
 
   chatChannel.subscribe("message", function(msg){
     var d = msg.data;
@@ -3485,7 +3508,7 @@ function initAbly() {
       showRatingOverlay(resolvedChannel);
       chatChannel.unsubscribe();
       convId = "conv_" + Date.now() + "_" + Math.random().toString(36).substr(2,6);
-      chatChannel = ably.channels.get("luna-chat:" + convId);
+      chatChannel = ably.channels.get(ch("chat"));
       convStarted = false;
       $escBar.classList.add("active");
     }
