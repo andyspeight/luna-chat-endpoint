@@ -2678,6 +2678,18 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
 
     // Agent presence
     presenceChannel = ably.channels.get(CONFIG.PRESENCE_CHANNEL);
+    // TEMP DIAGNOSTIC: show the exact channel this dashboard entered presence on,
+    // so we can confirm it matches the widget's scope. Remove after debugging.
+    try {
+      var dbg = document.getElementById('luna-chan-debug');
+      if (!dbg) {
+        dbg = document.createElement('div');
+        dbg.id = 'luna-chan-debug';
+        dbg.style.cssText = 'position:fixed;bottom:8px;left:8px;z-index:99999;background:#111;color:#0f0;font:11px monospace;padding:6px 10px;border-radius:6px;max-width:90vw;word-break:break-all';
+        document.body.appendChild(dbg);
+      }
+      dbg.textContent = 'presence: ' + CONFIG.PRESENCE_CHANNEL + ' | dash: ' + CONFIG.DASHBOARD_CHANNEL + ' | clientId: ' + CONFIG.CLIENT_ID;
+    } catch (e) {}
     presenceChannel.presence.enter({ name: CONFIG.AGENT_NAME, status: 'online' }).then(function() {
       presenceChannel.presence.get().then(function(members) { renderPresence(members); });
     }).catch(function(e) { console.warn('Presence enter failed:', e); });
