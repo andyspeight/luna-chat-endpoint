@@ -2405,6 +2405,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
   // ─── CONFIG (populated after login) ───
   const CONFIG = {
     ABLY_KEY: '',
+    CLIENT_ID: '',
     AGENT_NAME: '',
     AGENT_ID: 'agent-' + Date.now(),
     CHANNEL_PREFIX: 'luna-chat:',
@@ -2516,7 +2517,14 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     // Also expose the client name on window so standalone scripts (embed code
     // section, Get Code modal) can read it — CONFIG itself is block-scoped.
     window.LUNA_CLIENT_NAME = data.config.clientName;
-    CONFIG.ABLY_KEY = data.config.ablyKey;
+    CONFIG.CLIENT_ID = data.config.clientId;
+    /* Channels are now scoped per client by record id, so one shared Ably app
+       stays fully isolated between clients. Set the scoped names once here; all
+       downstream code keeps using CONFIG.DASHBOARD_CHANNEL / PRESENCE_CHANNEL /
+       CHANNEL_PREFIX unchanged. */
+    CONFIG.DASHBOARD_CHANNEL = 'luna-dashboard:' + CONFIG.CLIENT_ID;
+    CONFIG.PRESENCE_CHANNEL = 'luna-agents:' + CONFIG.CLIENT_ID;
+    CONFIG.CHANNEL_PREFIX = 'luna-chat:' + CONFIG.CLIENT_ID + ':';
     CONFIG.PASSWORD = ''; // no longer used
     CONFIG.AGENT_NAME = (data.account && data.account.fullName) || (data.account && data.account.email) || 'Agent';
     CONFIG.AGENT_ID = 'agent-' + CONFIG.AGENT_NAME.toLowerCase().replace(/[^a-z0-9]/g, '-');
@@ -2573,11 +2581,11 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     app.classList.add('active');
 
     // Connect Ably
-    if (CONFIG.ABLY_KEY) {
+    if (CONFIG.CLIENT_ID) {
       initAbly();
     } else {
       updateConnection('disconnected');
-      document.getElementById('presenceList').innerHTML = '<div style="font-size:var(--text-sm);color:var(--text-muted);">No Ably key configured. Contact your administrator.</div>';
+      document.getElementById('presenceList').innerHTML = '<div style="font-size:var(--text-sm);color:var(--text-muted);">No client configured. Contact your administrator.</div>';
     }
   }
 
@@ -2624,11 +2632,27 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     }
 
     console.log('Ably library found, version:', Ably.version || 'unknown');
-    console.log('Attempting connection with key prefix:', CONFIG.ABLY_KEY.split(':')[0]);
+    console.log('Connecting via scoped agent token for client', CONFIG.CLIENT_ID);
 
     try {
       ably = new Ably.Realtime({
-        key: CONFIG.ABLY_KEY,
+        authCallback: function (tokenParams, callback) {
+          fetch('https://luna-chat-endpoint.vercel.app/api/ably-token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ mode: 'agent', clientId: CONFIG.CLIENT_ID })
+          })
+          .then(function (r) {
+            if (!r.ok) throw new Error('Token endpoint returned ' + r.status);
+            return r.json();
+          })
+          .then(function (data) { callback(null, data.token); })
+          .catch(function (err) {
+            console.error('Agent token fetch failed:', err.message);
+            callback(err, null);
+          });
+        },
         clientId: CONFIG.AGENT_ID,
         echoMessages: false
       });
