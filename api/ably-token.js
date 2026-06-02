@@ -2,13 +2,24 @@
 // Issues short-lived capability tokens scoped to ONE conversation channel.
 // The root Ably key stays server-side, NEVER ships to the browser.
 //
-// Env vars required:
-//   ABLY_ROOT_KEY — set in Vercel project settings, Production + Preview
+// Per-client keys (fixed 2 Jun 2026):
+//   Each client has its OWN Ably app/key, stored in the AblyKey field on their
+//   Clients-table record. The token is minted against THAT key, so the visitor
+//   widget lands in the SAME Ably app as that client's agent dashboard. Using a
+//   single global key here was the cause of the "no agents available" bug: every
+//   widget got a token for the global key's app while each dashboard used its own
+//   client key, so presence never matched.
 //
-// Capabilities issued:
+// Env vars:
+//   AIRTABLE_KEY  — required, to read the client's AblyKey
+//   ABLY_ROOT_KEY — OPTIONAL legacy fallback; intentionally NOT used to mint
+//                   tokens any more. Kept only so the absence of a per-client key
+//                   fails closed rather than silently cross-wiring clients.
+//
+// Capabilities issued (least privilege):
 //   luna-chat:{convId} — subscribe + publish (visitor's own channel only)
-//   luna-dashboard    — subscribe only (to hear dashboard events about this convo)
-//   luna-agents       — subscribe only (presence checks)
+//   luna-dashboard     — subscribe only
+//   luna-agents        — subscribe + presence (presence checks for handoff)
 
 const ratelimit = require('../lib/ratelimit');
 
@@ -22,6 +33,12 @@ function isValidConvId(id) {
 
 function isValidClientName(name) {
   return typeof name === 'string' && name.length > 0 && name.length < 100 && /^[A-Za-z0-9 .&'\-]+$/.test(name);
+}
+
+// An Ably key looks like "appId.keyId:secret". Validate shape before use so a
+// malformed field value fails closed instead of producing a broken token call.
+function isValidAblyKey(k) {
+  return typeof k === 'string' && /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+:[A-Za-z0-9_+/=-]+$/.test(k);
 }
 
 module.exports = async function handler(req, res) {
@@ -48,12 +65,6 @@ module.exports = async function handler(req, res) {
     return res.status(429).json({ error: 'Too many token requests' });
   }
 
-  var rootKey = process.env.ABLY_ROOT_KEY;
-  if (!rootKey) {
-    console.error('[ably-token] ABLY_ROOT_KEY not configured');
-    return res.status(500).json({ error: 'Service misconfigured' });
-  }
-
   // Validate inputs
   var body = req.body || {};
   var convId = (body.convId || '').trim();
@@ -66,39 +77,50 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: 'Invalid clientName' });
   }
 
-  // Optional: verify client exists in Airtable before issuing a token
-  // This prevents random callers from getting tokens for made-up client names
+  // Resolve THIS client's Ably key from their Clients-table record.
+  // This both verifies the client exists AND gives us the right key to mint
+  // against. No per-client key => fail closed (real-time disabled for that
+  // client) rather than fall back to a global key and cross-wire clients.
+  var clientAblyKey = '';
   try {
     var atKey = process.env.AIRTABLE_KEY;
-    if (atKey) {
-      var searchUrl = 'https://api.airtable.com/v0/' + AT_BASE + '/' + AT_TABLE
-        + '?filterByFormula=' + encodeURIComponent("LOWER({ClientName})='" + clientName.toLowerCase().replace(/'/g, "\\'") + "'")
-        + '&maxRecords=1&fields%5B%5D=ClientName';
-      var sRes = await fetch(searchUrl, { headers: { 'Authorization': 'Bearer ' + atKey } });
-      var sData = await sRes.json();
-      if (!sData.records || sData.records.length === 0) {
-        return res.status(404).json({ error: 'Unknown client' });
-      }
+    if (!atKey) {
+      console.error('[ably-token] AIRTABLE_KEY not configured');
+      return res.status(500).json({ error: 'Service misconfigured' });
     }
+    var searchUrl = 'https://api.airtable.com/v0/' + AT_BASE + '/' + AT_TABLE
+      + '?filterByFormula=' + encodeURIComponent("LOWER({ClientName})='" + clientName.toLowerCase().replace(/'/g, "\\'") + "'")
+      + '&maxRecords=1&fields%5B%5D=ClientName&fields%5B%5D=AblyKey';
+    var sRes = await fetch(searchUrl, { headers: { 'Authorization': 'Bearer ' + atKey } });
+    var sData = await sRes.json();
+    if (!sData.records || sData.records.length === 0) {
+      return res.status(404).json({ error: 'Unknown client' });
+    }
+    clientAblyKey = ((sData.records[0].fields || {}).AblyKey || '').trim();
   } catch (e) {
     // If Airtable lookup fails, fail closed
     console.error('[ably-token] Client verification failed:', e.message);
     return res.status(500).json({ error: 'Service unavailable' });
   }
 
+  if (!isValidAblyKey(clientAblyKey)) {
+    // Fail closed: a client without a valid AblyKey gets no token, rather than
+    // silently inheriting another client's Ably app.
+    console.error('[ably-token] No valid AblyKey for client:', clientName);
+    return res.status(503).json({ error: 'Real-time not configured for this client' });
+  }
+
   // Build capability object — least privilege
-  // Visitor can publish+subscribe ONLY on their own conversation channel
-  // Visitor can subscribe (read-only) to the dashboard channel for handler changes
   var capability = {};
   capability['luna-chat:' + convId] = ['subscribe', 'publish'];
   capability['luna-dashboard'] = ['subscribe'];
   capability['luna-agents'] = ['subscribe', 'presence'];
 
-  // Request a token from Ably
+  // Request a token from Ably, minted against THIS client's key.
   // ttl: 2 hours — long enough for a chat session, short enough to limit damage if leaked
   try {
-    var keyParts = rootKey.split(':');
-    var keyName = keyParts[0];
+    var keyParts = clientAblyKey.split(':');
+    var keyName = keyParts[0];               // "appId.keyId"
     var tokenUrl = 'https://rest.ably.io/keys/' + encodeURIComponent(keyName) + '/requestToken';
 
     var tokenReq = {
@@ -112,7 +134,7 @@ module.exports = async function handler(req, res) {
     var ablyRes = await fetch(tokenUrl, {
       method: 'POST',
       headers: {
-        'Authorization': 'Basic ' + Buffer.from(rootKey).toString('base64'),
+        'Authorization': 'Basic ' + Buffer.from(clientAblyKey).toString('base64'),
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(tokenReq)
