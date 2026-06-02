@@ -88,6 +88,10 @@ module.exports = async function handler(req, res) {
     if (f.WidgetTagline) config.tagline = f.WidgetTagline;
     if (f.LogoText) config.logoText = f.LogoText;
     if (f.ClientName) config.clientName = f.ClientName;
+    /* clientId = Airtable record id. The widget uses this to scope its Ably
+       channels (luna-chat:{clientId}:{convId} etc) so the shared Ably app stays
+       isolated per client. Set before Ably initialises, so scoping is reliable. */
+    config.clientId = sData.records[0].id;
 
     /* ── Business types (multi-select) ── */
     if (f.BusinessTypes && Array.isArray(f.BusinessTypes)) {
