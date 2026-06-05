@@ -2449,6 +2449,84 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     updateHistoryCount();
   }
 
+  // ─── LIVE CONVERSATION PERSISTENCE (survive page refresh) ───
+  // Live chats previously lived only in memory + the one-time Ably
+  // 'new_conversation' event, so a refresh dropped them. We snapshot open
+  // conversations to localStorage (mirroring history) and rehydrate them on
+  // reconnect, then replay any messages missed during the refresh via Ably
+  // channel history so a still-active visitor is never lost.
+  const OPEN_TTL_MS = 12 * 60 * 60 * 1000; // forget anything idle > 12h
+  let _openSaveT = null;
+  function saveOpenConversations() {
+    try {
+      const open = Object.values(conversations).map(function(c) {
+        const last = (c.messages && c.messages.length) ? c.messages[c.messages.length - 1] : null;
+        return {
+          id: c.id,
+          visitor: c.visitor,
+          handler: c.handler,
+          startedAt: c.startedAt,
+          lang: c.lang || null,
+          rating: c.rating || null,
+          unread: !!c.unread,
+          lastAt: (last && last.timestamp) ? last.timestamp : (c.startedAt || new Date().toISOString()),
+          messages: (c.messages || []).slice(-80)
+        };
+      });
+      localStorage.setItem(STORAGE_PREFIX + 'open', JSON.stringify(open));
+    } catch (e) {}
+  }
+  function persistOpenSoon() { clearTimeout(_openSaveT); _openSaveT = setTimeout(saveOpenConversations, 400); }
+  function getOpenConversations() {
+    try {
+      const arr = JSON.parse(localStorage.getItem(STORAGE_PREFIX + 'open') || '[]');
+      const cutoff = Date.now() - OPEN_TTL_MS;
+      return arr.filter(function (c) { return new Date(c.lastAt || c.startedAt || 0).getTime() > cutoff; });
+    } catch (e) { return []; }
+  }
+  function rehydrateOpenConversations() {
+    let saved;
+    try { saved = getOpenConversations(); } catch (e) { return; }
+    if (!saved || !saved.length) return;
+    saved.forEach(function (s) {
+      if (!s || !s.id || conversations[s.id]) return; // already live — leave it
+      handleNewConversation({
+        convId: s.id,
+        visitor: s.visitor,
+        handler: s.handler,
+        startedAt: s.startedAt,
+        messages: s.messages || [],
+        _silent: true
+      });
+      const conv = conversations[s.id];
+      if (!conv) return;
+      if (s.lang) conv.lang = s.lang;
+      if (s.rating) conv.rating = s.rating;
+      conv.unread = !!s.unread;
+      // Replay anything the visitor sent while the dashboard was away
+      if (conv.channel && conv.channel.history) {
+        conv.channel.history({ limit: 50, direction: 'backwards' }).then(function (page) {
+          if (!page || !page.items || !page.items.length) return;
+          const known = {};
+          (conv.messages || []).forEach(function (m) { known[(m.timestamp || '') + '|' + (m.text || '')] = 1; });
+          const missed = [];
+          page.items.forEach(function (item) {
+            if (item.name !== 'message' || !item.data) return;
+            const d = item.data;
+            if (!known[(d.timestamp || '') + '|' + (d.text || '')]) missed.push(d);
+          });
+          if (!missed.length) return;
+          missed.reverse().forEach(function (d) { conv.messages.push(d); });
+          conv.unread = true;
+          renderConvList();
+          if (conv.id === activeConvId) { renderMessages(conv); scrollChat(); }
+          saveOpenConversations();
+        }).catch(function () {});
+      }
+    });
+    renderConvList();
+  }
+
   // ─── LOGIN — central session via tg-auth-gate.js ───
   //
   // The page is gated by /tg-auth-gate.js loaded in <head>. When that script
@@ -2663,7 +2741,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       return;
     }
 
-    ably.connection.on('connected', () => { console.log('Ably: CONNECTED'); updateConnection('connected'); });
+    ably.connection.on('connected', () => { console.log('Ably: CONNECTED'); updateConnection('connected'); rehydrateOpenConversations(); });
     ably.connection.on('connecting', () => { console.log('Ably: connecting...'); updateConnection('connecting'); });
     ably.connection.on('disconnected', () => { console.log('Ably: disconnected'); updateConnection('disconnected'); });
     ably.connection.on('failed', (err) => {
@@ -2790,8 +2868,10 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
 
     conversations[convId] = conv;
     renderConvList();
-    playNotificationSound();
-    showDesktopNotification('New chat — ' + conv.visitor.name, conv.visitor.page || 'New visitor');
+    if (!data._silent) {
+      playNotificationSound();
+      showDesktopNotification('New chat — ' + conv.visitor.name, conv.visitor.page || 'New visitor');
+    }
   }
 
   function onConvMessage(convId, data) {
@@ -2870,6 +2950,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
 
   // ─── RENDER CONVERSATION LIST ───
   function renderConvList() {
+    persistOpenSoon();
     const list = document.getElementById('convList');
     const search = document.getElementById('convSearch').value.toLowerCase();
     const sorted = Object.values(conversations).sort((a,b) => {
