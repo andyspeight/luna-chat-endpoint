@@ -1599,6 +1599,7 @@ var panelOpen = false;
 var nameCollected = false;
 var convId = null;
 var convStarted = false;
+var pendingNewConv = false;  // set when a conversation is resolved/cleared; the next send opens a fresh conversation on a fresh connection
 var liveMode = false;
 var unread = 0;
 var typingTimeout = null;
@@ -1656,7 +1657,7 @@ function clearConversation() {
   // Reset in-memory state
   msgs = [];
   history = [];
-  convId = "conv_" + Date.now() + "_" + Math.random().toString(36).substr(2,6);
+  pendingNewConv = true;  // next message opens a fresh conversation + fresh Ably connection (see ensureConversationStarted)
   convStarted = false;
   // Keep userName, visitorEmail, marketingConsent, nameCollected — visitor identity persists
   // Wipe the message rendering area
@@ -3488,6 +3489,13 @@ function initAbly() {
     console.warn("Luna widget: no ablyTokenEndpoint configured, real-time disabled");
     return;
   }
+  /* Safe to call again to rebuild the connection (e.g. starting a new
+     conversation after a resolve). Tear down any existing connection first so
+     we never run two live connections or leak channel subscriptions. */
+  if (ably) {
+    try { ably.close(); } catch (e) {}
+    ably = null; dashChannel = null; chatChannel = null; agentsChannel = null;
+  }
   if (!convId) convId = "conv_" + Date.now() + "_" + Math.random().toString(36).substr(2,6);
 
   /* authCallback: Ably SDK calls this when it needs a token, and whenever the
@@ -3580,12 +3588,10 @@ function initAbly() {
     if (d.handler === "resolved" || d.handler === "closed") {
       sysMsg("This conversation has been closed.");
       liveMode = false;
-      var resolvedChannel = chatChannel;
-      showRatingOverlay(resolvedChannel);
-      chatChannel.unsubscribe();
-      convId = "conv_" + Date.now() + "_" + Math.random().toString(36).substr(2,6);
-      chatChannel = ably.channels.get(ch("chat"));
+      showRatingOverlay(chatChannel);   // rate on the still-valid current channel
       convStarted = false;
+      pendingNewConv = true;            // defer convId rotation to the next send, so the rating still posts
+                                        // and the new conversation gets a fresh connection whose token matches it
       $escBar.classList.add("active");
     }
   });
@@ -3611,6 +3617,21 @@ function initAbly() {
 
 /* ─── ABLY: publish helpers ──────────────────────────────── */
 function ensureConversationStarted() {
+  if (pendingNewConv) {
+    /* A previous conversation was resolved or cleared. Start a genuinely new
+       one: rotate to a fresh convId AND rebuild the Ably connection, so the
+       visitor token's capability and clientId both match the new convId.
+       Without the rebuild the new conversation's channel is outside the old
+       token's scope and Ably silently denies it — the dashboard would see the
+       opener (sent via the dashboard channel) but no live messages in either
+       direction. Publishes below queue at the connection level until the fresh
+       connection authenticates, so nothing is lost. */
+    pendingNewConv = false;
+    convId = "conv_" + Date.now() + "_" + Math.random().toString(36).substr(2,6);
+    convStarted = false;
+    saveSession();
+    initAbly();
+  }
   if (convStarted || !dashChannel) return;
   convStarted = true;
   var now = new Date().toISOString();
