@@ -3565,9 +3565,18 @@ function initAbly() {
   chatChannel.subscribe("message", function(msg){
     var d = msg.data;
     if (d && d.from === "agent") {
-      if (d.translateTo) {
-        translateText(d.text, d.translateTo).then(function(translated) {
+      // Show the agent's reply in the visitor's language. Prefer the dashboard's
+      // hint (translateTo); otherwise fall back to the language we detected for
+      // THIS visitor (conversationLang). The widget is the reliable source of the
+      // visitor's language, so the reply is translated even when the dashboard
+      // didn't tag it.
+      var target = d.translateTo || ((conversationLang && conversationLang !== "English") ? conversationLang : null);
+      if (target) {
+        translateText(d.text, target).then(function(translated) {
           addMsg("agent", translated, false, d.text);
+          if (!panelOpen) { unread++; $badge.textContent = unread; $badge.style.display = "flex"; }
+        }).catch(function() {
+          addMsg("agent", d.text);
           if (!panelOpen) { unread++; $badge.textContent = unread; $badge.style.display = "flex"; }
         });
       } else {
