@@ -320,7 +320,7 @@
   .conv-handler.closed { background:rgba(148,163,184,0.12); color:var(--text-muted); }
 
   /* ── CHAT PANEL ── */
-  .chat-panel { display:flex; flex-direction:column; background:var(--navy); }
+  .chat-panel { display:flex; flex-direction:column; background:var(--navy); min-height:0; overflow:hidden; }
   .chat-empty {
     flex:1; display:flex; align-items:center; justify-content:center;
     flex-direction:column; gap:var(--space-3); color:var(--text-muted);
@@ -353,10 +353,24 @@
   .chat-action-btn.resolve:hover { background:var(--green-glow); }
 
   .chat-messages {
-    flex:1; overflow-y:auto; padding:var(--space-5); display:flex; flex-direction:column; gap:var(--space-3);
+    flex:1; min-height:0; overflow-y:auto; padding:var(--space-5); display:flex; flex-direction:column; gap:var(--space-3);
   }
   .chat-messages::-webkit-scrollbar { width:4px; }
   .chat-messages::-webkit-scrollbar-thumb { background:var(--text-muted); border-radius:2px; }
+
+  /* Clickable language pill on translated messages — toggles English ↔ original */
+  .lang-pill {
+    display:inline-flex; align-items:center; gap:4px; margin-top:6px;
+    font-size:var(--text-xs); line-height:1; font-family:var(--font);
+    padding:3px var(--space-2); border-radius:999px;
+    background:var(--teal-glow); color:var(--teal);
+    border:1px solid transparent; cursor:pointer;
+    transition:background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  }
+  .lang-pill:hover { border-color:var(--teal); }
+  .lang-pill:focus-visible { outline:2px solid var(--teal); outline-offset:2px; }
+  .lang-pill.active { background:var(--teal); color:#fff; }
+  .lang-pill svg { width:11px; height:11px; flex-shrink:0; }
 
   .msg { max-width:70%; display:flex; flex-direction:column; }
   .msg.visitor { align-self:flex-start; }
@@ -3043,24 +3057,43 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
 
     var bubbleContent = '';
     if (hasTranslation) {
+      var langName = esc(m.lang || 'original');
       bubbleContent = '<div id="' + msgId + '-en" style="display:block">' + esc(m.translated) + '</div>'
         + '<div id="' + msgId + '-orig" style="display:none">' + esc(m.text) + '</div>'
-        + '<div style="margin-top:4px"><button onclick="var en=document.getElementById(\'' + msgId + '-en\'),orig=document.getElementById(\'' + msgId + '-orig\');if(en.style.display===\'none\'){en.style.display=\'block\';orig.style.display=\'none\';this.textContent=\'View original\';}else{en.style.display=\'none\';orig.style.display=\'block\';this.textContent=\'View translated\';}" style="font-size:var(--text-xs);color:var(--teal);background:none;border:none;cursor:pointer;padding:0;font-family:var(--font)">View original</button></div>';
+        + '<button type="button" class="lang-pill" data-lang="' + langName + '" title="Show original (' + langName + ')" onclick="window._toggleMsgLang(this,\'' + msgId + '\')">'
+        + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 0 20 15.3 15.3 0 0 1 0-20"/></svg>'
+        + '<span class="lang-pill-label">' + langName + '</span></button>';
     } else {
       bubbleContent = esc(m.text);
     }
 
-    var langBadge = '';
-    if (m.lang && m.lang !== 'English' && (m.from === 'visitor' || m.from === 'ai')) {
-      langBadge = '<span style="font-size:var(--text-xs);padding:2px var(--space-2);border-radius:var(--radius-sm);background:var(--teal-glow);color:var(--teal);margin-left:var(--space-2)">' + esc(m.lang) + '</span>';
-    }
-
     return '<div class="msg ' + type + '">'
-      + (label ? '<span class="msg-label">' + label + langBadge + '</span>' : '')
+      + (label ? '<span class="msg-label">' + label + '</span>' : '')
       + '<div class="msg-bubble">' + bubbleContent + '</div>'
       + '<div class="msg-meta"><span>' + time + '</span></div>'
       + '</div>';
   }
+
+  // Toggle a translated message bubble between the English translation and the original language.
+  window._toggleMsgLang = function (btn, msgId) {
+    var en = document.getElementById(msgId + '-en');
+    var orig = document.getElementById(msgId + '-orig');
+    if (!en || !orig) return;
+    var lbl = btn.querySelector('.lang-pill-label');
+    var src = btn.getAttribute('data-lang') || 'original';
+    var showingOrig = orig.style.display !== 'none';
+    if (showingOrig) {
+      orig.style.display = 'none'; en.style.display = 'block';
+      btn.classList.remove('active');
+      if (lbl) lbl.textContent = src;
+      btn.title = 'Show original (' + src + ')';
+    } else {
+      en.style.display = 'none'; orig.style.display = 'block';
+      btn.classList.add('active');
+      if (lbl) lbl.textContent = 'English';
+      btn.title = 'Show English translation';
+    }
+  };
 
   // ─── TRANSLATION ───
   async function translateForAgent(text) {
