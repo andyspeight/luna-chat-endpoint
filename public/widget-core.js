@@ -1656,7 +1656,7 @@ function clearConversation() {
   // Reset in-memory state
   msgs = [];
   history = [];
-  convId = "v_" + Date.now() + "_" + Math.random().toString(36).substr(2,9);
+  convId = "conv_" + Date.now() + "_" + Math.random().toString(36).substr(2,6);
   convStarted = false;
   // Keep userName, visitorEmail, marketingConsent, nameCollected — visitor identity persists
   // Wipe the message rendering area
