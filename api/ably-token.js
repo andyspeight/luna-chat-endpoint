@@ -34,7 +34,15 @@ const ratelimit = require('../lib/ratelimit');
 const auth = require('../lib/luna-auth');
 
 function isValidConvId(id) {
-  return typeof id === 'string' && /^conv_\d{10,16}_[a-z0-9]{4,12}$/i.test(id) && id.length < 64;
+  // Accept BOTH historical prefixes. The widget mints convIds in two formats:
+  //   "conv_<ts>_<rand>"  (first-load / Ably-setup path)
+  //   "v_<ts>_<rand>"     (clearConversation / new-conversation path)
+  // Both are equally valid; rejecting "v_" silently broke real-time for any
+  // session that had been cleared/restarted (no token -> no Ably -> dashboard
+  // never sees the visitor and the widget reports "no agents available").
+  // Validation stays strict: fixed prefix set, bounded digits, bounded alnum
+  // suffix, no special characters — so this cannot widen the attack surface.
+  return typeof id === 'string' && /^(?:conv|v)_\d{10,16}_[a-z0-9]{4,12}$/i.test(id) && id.length < 64;
 }
 function isValidClientName(name) {
   return typeof name === 'string' && name.length > 0 && name.length < 100 && /^[A-Za-z0-9 .&'\-]+$/.test(name);
