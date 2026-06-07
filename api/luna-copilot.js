@@ -12,7 +12,8 @@
 //  Design notes
 //  - Server-side proxy for Anthropic (key never leaves the server).  [sec rule 2]
 //  - POST only, full input validation, CORS allowlist, rate limited. [sec rules 3,5]
-//  - Per-client auth against the dashboard password (constant-time). [sec rule 4,7]
+//  - SSO auth: validates the central tg_session cookie + client entitlement,
+//    exactly like ably-token agent mode. No passwords.                [sec rule 4,7]
 //  - Grounded only in supplied knowledge + transcript. Never invents
 //    prices, availability, ATOL/ABTA detail, refs or policy.          [voice/anti-hallucination]
 //  - Treats visitor text as DATA, never as instructions.              [prompt injection]
@@ -20,7 +21,8 @@
 //
 //  Required env vars (Vercel project settings, server-only):
 //    ANTHROPIC_API_KEY          - Anthropic key (same one Luna Chat uses)
-//    AIRTABLE_PAT               - Airtable PAT scoped to the Luna Chat base
+//    AIRTABLE_KEY               - Airtable PAT for the Luna Chat base
+//                                 (AIRTABLE_PAT is also accepted as a fallback)
 //  Optional env vars:
 //    LUNA_BASE_ID               - defaults to app6Ot3eOb3DangkB
 //    LUNA_COPILOT_MODEL         - defaults to claude-haiku-4-5-20251001
@@ -30,10 +32,13 @@
 // ============================================================================
 
 const crypto = require('crypto');
+const auth = require('../lib/luna-auth');
 
 // ---- config ---------------------------------------------------------------
 const MODEL        = process.env.LUNA_COPILOT_MODEL || 'claude-haiku-4-5-20251001';
 const BASE_ID      = process.env.LUNA_BASE_ID || 'app6Ot3eOb3DangkB';
+// Use the project's existing key name; fall back keeps older AIRTABLE_PAT working.
+const AT_KEY       = process.env.AIRTABLE_PAT || process.env.AIRTABLE_KEY;
 const CLIENTS_TBL  = 'tbl6CZ7aVzq1wHF2v';
 const KNOWLEDGE_TBL = 'tblstATJ3BSqtuTDU';
 const RATE_PER_MIN = 40;            // per client, per minute
@@ -93,6 +98,7 @@ function applyCors(req, res) {
   if (ok) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
   }
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -136,7 +142,7 @@ async function airtable(path, params) {
     if (Array.isArray(v)) v.forEach(x => url.searchParams.append(k, x));
     else url.searchParams.set(k, v);
   });
-  const r = await fetch(url, { headers: { Authorization: `Bearer ${process.env.AIRTABLE_PAT}` } });
+  const r = await fetch(url, { headers: { Authorization: `Bearer ${AT_KEY}` } });
   if (!r.ok) throw new Error(`airtable ${r.status}`);
   return r.json();
 }
@@ -147,6 +153,17 @@ async function getClient(name) {
   const safe = String(name).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/[\r\n]/g, ' ');
   const data = await airtable(CLIENTS_TBL, {
     filterByFormula: `{ClientName}="${safe}"`,
+    maxRecords: 1,
+    'returnFieldsByFieldId': 'true'
+  });
+  return (data.records && data.records[0]) || null;
+}
+
+// Fetch a client record by its Airtable record id, fields keyed by field id
+// (so the field-id map below resolves). The id is validated (rec...) upstream.
+async function getClientById(id) {
+  const data = await airtable(CLIENTS_TBL, {
+    filterByFormula: `RECORD_ID()="${id}"`,
     maxRecords: 1,
     'returnFieldsByFieldId': 'true'
   });
@@ -339,12 +356,11 @@ module.exports = async function handler(req, res) {
   let body;
   try { body = await readBody(req); } catch { body = {}; }
 
-  const action = String(body.action || '').trim();
-  const client = clamp(body.client, 120).trim();
-  const pass   = clamp(body.pass, 200);
+  const action   = String(body.action || '').trim();
+  const clientId = clamp(body.clientId, 30).trim();
 
   if (!ACTIONS.has(action)) return send(res, 400, { ok: false, error: 'Unknown action' });
-  if (!client || !pass)     return send(res, 400, { ok: false, error: 'Missing client or pass' });
+  if (!/^rec[A-Za-z0-9]{14}$/.test(clientId)) return send(res, 400, { ok: false, error: 'Invalid client' });
 
   // normalise + bound the transcript
   let transcript = Array.isArray(body.transcript) ? body.transcript : [];
@@ -362,17 +378,19 @@ module.exports = async function handler(req, res) {
 
   const started = Date.now();
   try {
-    // auth: client must exist and the dashboard password must match
-    const record = await getClient(client);
-    if (!record) return send(res, 401, { ok: false, error: 'Not authorised' });
-    const realPass = record.fields[F.pass];
-    if (!realPass || !constantTimeEqual(pass, realPass)) {
-      console.warn(`luna-copilot: auth fail for client "${client}"`);
-      return send(res, 401, { ok: false, error: 'Not authorised' });
-    }
+    // auth: a valid SSO session AND entitlement to this client (mirrors the
+    // agent mode in ably-token.js). No passwords — the dashboard is SSO-only.
+    const session = await auth.validateSession(req.headers.cookie || '');
+    if (!session.ok) return send(res, session.status || 401, { ok: false, error: 'Not authorised' });
+    const entitled = await auth.resolveEntitledClient(AT_KEY, session, clientId);
+    if (!entitled) return send(res, 403, { ok: false, error: 'Not authorised' });
+
+    // grounding context: fetch the client record WITH fields-by-id
+    const record = await getClientById(clientId);
+    if (!record) return send(res, 404, { ok: false, error: 'Client not found' });
 
     // rate limit per client
-    if (await rateLimited(client)) {
+    if (await rateLimited(clientId)) {
       return send(res, 429, { ok: false, error: 'Slow down a moment, too many requests' });
     }
 
