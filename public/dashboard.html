@@ -7451,5 +7451,11 @@ setTimeout(function () {
 })();
 </script>
 
+<!-- Luna Copilot (agent assist). Same-origin endpoint so the tg_session cookie
+     flows automatically on chat./lunachat./vercel domains. dashboard-copilot.js
+     is served as a sibling static file alongside dashboard.html. -->
+<script>window.LUNA_COPILOT_ENDPOINT = '/api/luna-copilot';</script>
+<script src="/dashboard-copilot.js"></script>
+
 </body>
 </html>
