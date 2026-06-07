@@ -2914,19 +2914,34 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     // Update visitor info (live message count etc.)
     if (convId === activeConvId) showVisitorInfo(conv);
 
-    // Auto-translate non-English visitor/AI messages for the agent
-    if ((data.from === 'visitor' || data.from === 'ai') && conv.lang && conv.lang !== 'English' && !data.translated) {
-      translateForAgent(data.text).then(function(result) {
-        if (result && result.translation && result.translation !== data.text) {
-          data.translated = result.translation;
-          data.lang = result.detectedLanguage || conv.lang;
-          // Re-render the conversation if it's currently active
-          if (convId === activeConvId) {
-            renderMessages(conv);
-            scrollChat();
+    // Auto-translate non-English visitor/AI messages for the agent.
+    // We do NOT rely solely on the widget's per-message `lang` tag: a visitor's
+    // first message is published before the widget has detected the language,
+    // so it is tagged "English" even when it isn't. If the conversation language
+    // is not yet established, detect it from the message CONTENT (one translate
+    // call per conversation), then translate this and every later foreign message.
+    if ((data.from === 'visitor' || data.from === 'ai') && !data.translated && !data._langChecked) {
+      var knownForeign = conv.lang && conv.lang !== 'English';
+      if (knownForeign || !conv._langResolved) {
+        data._langChecked = true; // probe each message at most once
+        translateForAgent(data.text).then(function(result) {
+          if (!result) return;
+          conv._langResolved = true; // language now established (English or not) -> stop probing English chats
+          var detected = result.detectedLanguage || conv.lang;
+          if (detected && detected !== 'English') {
+            conv.lang = detected;
+            if (result.translation && result.translation !== data.text) {
+              data.translated = result.translation;
+              data.lang = detected;
+              if (convId === activeConvId) {
+                renderMessages(conv);
+                scrollChat();
+                showVisitorInfo(conv); // reflect newly-detected language in the Intel panel
+              }
+            }
           }
-        }
-      });
+        });
+      }
     }
   }
 
