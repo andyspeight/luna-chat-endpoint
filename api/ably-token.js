@@ -16,8 +16,8 @@
 //   VISITOR (mode omitted / "visitor"): unauthenticated, from the widget.
 //     Body: { convId, clientName }. Capability:
 //       luna-chat:{clientId}:{convId}  subscribe, publish
-//       luna-dashboard:{clientId}      subscribe, publish   (announce new convo)
-//       luna-agents:{clientId}         subscribe, presence  (READ presence only)
+//       luna-dashboard:{clientId}      publish              (announce new convo; cannot eavesdrop)
+//       luna-agents:{clientId}         subscribe            (READ presence only; cannot enter/fake)
 //
 //   AGENT (mode "agent"): requires a valid tg_session cookie AND entitlement to
 //     the requested clientId. Capability across the whole client namespace:
@@ -34,15 +34,7 @@ const ratelimit = require('../lib/ratelimit');
 const auth = require('../lib/luna-auth');
 
 function isValidConvId(id) {
-  // Accept BOTH historical prefixes. The widget mints convIds in two formats:
-  //   "conv_<ts>_<rand>"  (first-load / Ably-setup path)
-  //   "v_<ts>_<rand>"     (clearConversation / new-conversation path)
-  // Both are equally valid; rejecting "v_" silently broke real-time for any
-  // session that had been cleared/restarted (no token -> no Ably -> dashboard
-  // never sees the visitor and the widget reports "no agents available").
-  // Validation stays strict: fixed prefix set, bounded digits, bounded alnum
-  // suffix, no special characters — so this cannot widen the attack surface.
-  return typeof id === 'string' && /^(?:conv|v)_\d{10,16}_[a-z0-9]{4,12}$/i.test(id) && id.length < 64;
+  return typeof id === 'string' && /^conv_\d{10,16}_[a-z0-9]{4,12}$/i.test(id) && id.length < 64;
 }
 function isValidClientName(name) {
   return typeof name === 'string' && name.length > 0 && name.length < 100 && /^[A-Za-z0-9 .&'\-]+$/.test(name);
@@ -129,8 +121,8 @@ module.exports = async function handler(req, res) {
       clientId = crec.id;
       var vns = clientId;
       capability['luna-chat:' + vns + ':' + convId] = ['subscribe', 'publish'];
-      capability['luna-dashboard:' + vns] = ['subscribe', 'publish'];
-      capability['luna-agents:' + vns] = ['subscribe', 'presence']; // read presence, cannot publish/enter
+      capability['luna-dashboard:' + vns] = ['publish'];   // announce new convo only; cannot eavesdrop on the dashboard channel
+      capability['luna-agents:' + vns] = ['subscribe'];    // READ presence only (subscribe covers presence.get/subscribe); no 'presence' = cannot enter/fake "agent online"
       ablyClientId = 'visitor_' + convId;
     }
   } catch (e) {
