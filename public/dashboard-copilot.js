@@ -36,8 +36,8 @@
   function creds() {
     var C = window.CONFIG || {};
     return {
-      client: C.CLIENT_NAME || param('client') || '',
-      pass:   C.PASSWORD    || param('pass')   || ''
+      clientId: C.CLIENT_ID || param('clientId') || '',
+      client:   C.CLIENT_NAME || param('client') || ''  // for display/logging only
     };
   }
 
@@ -194,8 +194,9 @@
     var c = creds();
     return fetch(ENDPOINT, {
       method: 'POST',
+      credentials: 'include',                       // send the tg_session cookie
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(Object.assign({ client: c.client, pass: c.pass }, payload))
+      body: JSON.stringify(Object.assign({ clientId: c.clientId }, payload))
     }).then(function (res) {
       return res.json().catch(function () { return { ok: false, error: 'Bad response' }; })
         .then(function (data) {
