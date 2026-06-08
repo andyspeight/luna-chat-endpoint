@@ -1167,6 +1167,17 @@
   .cobrowse-btn { width:100%; padding:var(--space-3); border-radius:var(--radius-md); border:none; background:var(--green); color:#FFF; font-family:var(--font); font-size:var(--text-sm); font-weight:600; cursor:pointer; margin-top:var(--space-3); display:flex; align-items:center; justify-content:center; gap:var(--space-2); transition:background 0.15s; }
   .cobrowse-btn:hover { background:#0E9F6E; }
   .cobrowse-hint { font-size:var(--text-xs); color:var(--text-muted); text-align:center; margin-top:var(--space-1); }
+  .cobrowse-overlay { position:fixed; inset:0; background:rgba(15,26,61,0.55); display:none; align-items:center; justify-content:center; z-index:1000; }
+  .cobrowse-overlay.active { display:flex; }
+  .cobrowse-modal { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); width:min(520px,calc(100vw - 32px)); box-shadow:0 24px 64px rgba(0,0,0,0.4); overflow:hidden; }
+  .cobrowse-head { display:flex; align-items:center; justify-content:space-between; padding:var(--space-3) var(--space-4); border-bottom:1px solid var(--border); font-size:var(--text-sm); }
+  .cobrowse-close { background:none; border:none; color:var(--text-muted); font-size:18px; cursor:pointer; line-height:1; }
+  .cobrowse-close:hover { color:var(--text); }
+  .cobrowse-body { padding:var(--space-6) var(--space-4); text-align:center; color:var(--text-dim); font-size:var(--text-sm); line-height:1.6; min-height:130px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:var(--space-3); }
+  .cb-spinner { width:28px; height:28px; border:3px solid var(--border); border-top-color:var(--teal); border-radius:50%; animation:cbspin 0.8s linear infinite; }
+  @keyframes cbspin { to { transform:rotate(360deg); } }
+  .cb-live { color:var(--red); font-weight:700; font-size:var(--text-xs); letter-spacing:1.5px; }
+  .cb-stage { color:var(--text); }
   .info-panel-tabs { display:flex; gap:0; margin:-20px -20px 16px; padding:0 20px; border-bottom:1px solid var(--border); }
   .info-panel-tab { flex:1; padding:var(--space-3) 0; text-align:center; font-size:var(--text-xs); font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:var(--text-muted); cursor:pointer; border:none; background:transparent; font-family:var(--font); border-bottom:2px solid transparent; transition:all 0.15s; }
   .info-panel-tab:hover { color:var(--text-dim); }
@@ -1970,6 +1981,7 @@
 
   <!-- ANALYTICS OVERLAY -->
   <div class="analytics-overlay" id="analyticsPanel"></div>
+  <div class="cobrowse-overlay" id="cobrowsePanel"></div>
   
 
   <!-- SETTINGS OVERLAY -->
@@ -5289,7 +5301,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       + '</div>';
 
     // Co-browse button
-    html += '<button class="cobrowse-btn" onclick="alert(\'Co-browse coming soon — this will let you see the visitor\\\'s screen in real time.\')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> View Their Screen</button>'
+    html += '<button class="cobrowse-btn" onclick="window._startCobrowse()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> View Their Screen</button>'
       + '<div class="cobrowse-hint">Co-browse their session in real time</div>';
 
     // Session metadata
@@ -5307,6 +5319,65 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     html += '</div>';
 
     container.innerHTML = html;
+  }
+
+  // ─── CO-BROWSE (agent side: view-only screen share) ───
+  // Stage 1: request -> consent -> accept/decline/stop handshake + viewer shell.
+  // Stage 2 swaps the 'sharing' placeholder for a live rrweb player on the same channel.
+  var cobrowse = { channel:null, convId:null, timeout:null, onAccept:null, onDecline:null, onStop:null };
+
+  window._startCobrowse = function() {
+    if (!activeConvId || !ably || !CONFIG.CLIENT_ID) return;
+    var conv = conversations[activeConvId];
+    var name = (conv && conv.visitor && conv.visitor.name) ? conv.visitor.name : 'the visitor';
+    _cobrowseTeardown(false);
+    cobrowse.convId = activeConvId;
+    cobrowse.channel = ably.channels.get('cobrowse:' + CONFIG.CLIENT_ID + ':' + activeConvId);
+    cobrowse.onAccept  = function(){ clearTimeout(cobrowse.timeout); _cobrowseRender('sharing', name); };
+    cobrowse.onDecline = function(){ clearTimeout(cobrowse.timeout); _cobrowseRender('declined', name); };
+    cobrowse.onStop    = function(){ clearTimeout(cobrowse.timeout); _cobrowseRender('stopped', name); };
+    cobrowse.channel.subscribe('cb-accept', cobrowse.onAccept);
+    cobrowse.channel.subscribe('cb-decline', cobrowse.onDecline);
+    cobrowse.channel.subscribe('cb-stop', cobrowse.onStop);
+    _cobrowseRender('requesting', name);
+    cobrowse.channel.publish('cb-request', {});
+    cobrowse.timeout = setTimeout(function(){ _cobrowseRender('timeout', name); }, 30000);
+  };
+
+  window._stopCobrowse = function(){ _cobrowseTeardown(true); };
+
+  function _cobrowseRender(state, name) {
+    var panel = document.getElementById('cobrowsePanel');
+    if (!panel) return;
+    var n = esc(name), body = '';
+    if (state === 'requesting')      body = '<div class="cb-spinner"></div><p>Waiting for ' + n + ' to allow screen sharing…</p>';
+    else if (state === 'declined')   body = '<p>' + n + ' declined the screen-sharing request.</p>';
+    else if (state === 'sharing')    body = '<div class="cb-live">● LIVE</div><div class="cb-stage">Connected — ' + n + ' is sharing their screen.<br><span style="color:var(--text-muted);font-size:var(--text-xs)">Live screen view arrives in the next update.</span></div>';
+    else if (state === 'stopped')    body = '<p>' + n + ' stopped sharing.</p>';
+    else                             body = '<p>No response from ' + n + '. They may not be on the page right now.</p>';
+    panel.innerHTML =
+      '<div class="cobrowse-modal">'
+      + '<div class="cobrowse-head"><strong>Viewing ' + n + '\'s screen</strong>'
+      + '<button class="cobrowse-close" onclick="window._stopCobrowse()" aria-label="Close">✕</button></div>'
+      + '<div class="cobrowse-body">' + body + '</div>'
+      + '</div>';
+    panel.classList.add('active');
+  }
+
+  function _cobrowseTeardown(publishStop) {
+    clearTimeout(cobrowse.timeout);
+    if (cobrowse.channel) {
+      if (publishStop) { try { cobrowse.channel.publish('cb-stop', {}); } catch(e){} }
+      try {
+        if (cobrowse.onAccept)  cobrowse.channel.unsubscribe('cb-accept', cobrowse.onAccept);
+        if (cobrowse.onDecline) cobrowse.channel.unsubscribe('cb-decline', cobrowse.onDecline);
+        if (cobrowse.onStop)    cobrowse.channel.unsubscribe('cb-stop', cobrowse.onStop);
+      } catch(e){}
+    }
+    cobrowse.channel = null; cobrowse.convId = null;
+    cobrowse.onAccept = cobrowse.onDecline = cobrowse.onStop = null;
+    var panel = document.getElementById('cobrowsePanel');
+    if (panel) { panel.classList.remove('active'); panel.innerHTML = ''; }
   }
 
   // ─── FILE ATTACHMENT ───
