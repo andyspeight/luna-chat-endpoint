@@ -1615,6 +1615,9 @@ var cobrowseChannel = null;
 var cobrowseState = "idle"; // idle | asked | sharing  (view-only screen share, consent-gated)
 var cobrowseStopFn = null;  // rrweb.record() stop handle, set while sharing
 var cobrowseSeq = 0;        // monotonic frame sequence for ordered reassembly
+var cobrowseEpoch = 0;      // session epoch from the agent; lets it discard stale frames after a reconnect
+var cobrowseAgentZ = 0;     // 1 if the agent advertised it can decompress (pako) — only then do we compress
+var cobrowseBeat = null;    // heartbeat interval id while sharing
 var visitorCountry = "";
 var visitorId = "";
 var autoTriggerTimer = null;
@@ -3559,7 +3562,7 @@ function initAbly() {
   agentsChannel = ably.channels.get(ch("agents"));
   cobrowseChannel = ably.channels.get(ch("cobrowse"));
   cobrowseChannel.subscribe("cb-request", function(){ onCobrowseRequest(); });
-  cobrowseChannel.subscribe("cb-ready", function(){ startCobrowseRecording(); });
+  cobrowseChannel.subscribe("cb-ready", function(msg){ onCobrowseReady(msg && msg.data); });
   cobrowseChannel.subscribe("cb-stop", function(){ stopCobrowse("agent"); });
 
   /* Attach to the agents presence channel up front. A channel obtained via
@@ -3894,29 +3897,55 @@ function stopCobrowse(by) {
     cobrowseChannel.publish("cb-stop", {});
   }
   if (cobrowseStopFn) { try { cobrowseStopFn(); } catch (e) {} cobrowseStopFn = null; }
+  if (cobrowseBeat) { clearInterval(cobrowseBeat); cobrowseBeat = null; }
   teardownCobrowseUI();
   cobrowseState = "idle";
 }
 
-/* ─── CO-BROWSE STAGE 2: record the page and stream it (consent already given) ─── */
-var _rrwebLoading = false, _rrwebCbs = [];
-function loadRrweb(cb) {
-  if (window.rrweb && window.rrweb.record) return cb();
-  _rrwebCbs.push(cb);
-  if (_rrwebLoading) return;
-  _rrwebLoading = true;
+/* ─── CO-BROWSE STAGE 2/3: record the page and stream it (consent already given) ─── */
+var _cbLibsLoading = false, _cbLibsCbs = [];
+function loadCobrowseLibs(cb) {
+  // rrweb is required; pako (compression) is best-effort.
+  if (window.rrweb && window.rrweb.record) { _ensurePako(cb); return; }
+  _cbLibsCbs.push(cb);
+  if (_cbLibsLoading) return;
+  _cbLibsLoading = true;
   var s = document.createElement("script");
   s.src = "https://cdn.jsdelivr.net/npm/rrweb@1.1.3/dist/rrweb.min.js";
   s.async = true;
-  s.onload = function(){ _rrwebLoading = false; var cbs = _rrwebCbs; _rrwebCbs = []; cbs.forEach(function(f){ try { f(); } catch (e) {} }); };
-  s.onerror = function(){ _rrwebLoading = false; _rrwebCbs = []; console.error("Luna widget: rrweb failed to load"); };
+  s.onload = function(){ _cbLibsLoading = false; var cbs = _cbLibsCbs; _cbLibsCbs = []; cbs.forEach(function(f){ _ensurePako(f); }); };
+  s.onerror = function(){ _cbLibsLoading = false; _cbLibsCbs = []; console.error("Luna widget: rrweb failed to load"); };
   document.head.appendChild(s);
+}
+var _pakoLoading = false, _pakoCbs = [];
+function _ensurePako(cb) {
+  if (window.pako && window.pako.deflate) return cb();
+  _pakoCbs.push(cb);
+  if (_pakoLoading) return;
+  _pakoLoading = true;
+  var s = document.createElement("script");
+  s.src = "https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js";
+  s.async = true;
+  var done = function(){ _pakoLoading = false; var c = _pakoCbs; _pakoCbs = []; c.forEach(function(f){ try { f(); } catch (e) {} }); };
+  s.onload = done;
+  s.onerror = function(){ console.warn("Luna widget: pako unavailable; co-browse will send uncompressed"); done(); }; // not fatal
+  document.head.appendChild(s);
+}
+
+// Agent signalled its viewer is ready (initial start or a re-prime after a drop).
+function onCobrowseReady(data) {
+  if (cobrowseState !== "sharing") return;
+  cobrowseEpoch  = (data && typeof data.e === "number") ? data.e : (cobrowseEpoch + 1);
+  cobrowseAgentZ = (data && data.z === 1) ? 1 : 0;   // only compress if the agent can decompress
+  // Restart cleanly so the agent always receives a fresh Meta + full snapshot.
+  if (cobrowseStopFn) { try { cobrowseStopFn(); } catch (e) {} cobrowseStopFn = null; }
+  startCobrowseRecording();
 }
 
 function startCobrowseRecording() {
   if (cobrowseState !== "sharing") return;   // only after the visitor allowed
   if (cobrowseStopFn) return;                 // already recording
-  loadRrweb(function(){
+  loadCobrowseLibs(function(){
     if (!window.rrweb || !window.rrweb.record || !cobrowseChannel || cobrowseState !== "sharing") return;
     cobrowseSeq = 0;
     try {
@@ -3929,19 +3958,40 @@ function startCobrowseRecording() {
         collectFonts: false,
         sampling: { mousemove: 50, scroll: 100, input: "last", media: 800 }
       });
-    } catch (e) { console.warn("Luna widget: rrweb record failed:", e.message); }
+    } catch (e) { console.warn("Luna widget: rrweb record failed:", e.message); return; }
+    startCobrowseHeartbeat();
   });
+}
+
+// Lightweight keepalive so the agent can tell "idle but connected" from "gone".
+function startCobrowseHeartbeat() {
+  if (cobrowseBeat) clearInterval(cobrowseBeat);
+  cobrowseBeat = setInterval(function(){
+    if (cobrowseState !== "sharing" || !cobrowseChannel) { clearInterval(cobrowseBeat); cobrowseBeat = null; return; }
+    try { cobrowseChannel.publish("cb-beat", { e: cobrowseEpoch }); } catch (e) {}
+  }, 3000);
+}
+
+function _u8ToB64(u8) {
+  var s = "", CH = 0x8000;
+  for (var i = 0; i < u8.length; i += CH) { s += String.fromCharCode.apply(null, u8.subarray(i, i + CH)); }
+  return btoa(s);
 }
 
 function publishCobrowseFrame(event) {
   if (!cobrowseChannel || cobrowseState !== "sharing") return;
   var json;
   try { json = JSON.stringify(event); } catch (e) { return; }
+  var payload = json, z = 0;
+  if (cobrowseAgentZ === 1 && window.pako && window.pako.deflate) {
+    try { payload = _u8ToB64(window.pako.deflate(new TextEncoder().encode(json))); z = 1; }
+    catch (e) { payload = json; z = 0; }
+  }
   var CHUNK = 30000;                          // keep each Ably message well under the 64KB limit
   var seq = cobrowseSeq++;
-  var total = Math.ceil(json.length / CHUNK) || 1;
+  var total = Math.ceil(payload.length / CHUNK) || 1;
   for (var k = 0; k < total; k++) {
-    cobrowseChannel.publish("cb-frame", { i: seq, c: total, k: k, d: json.slice(k * CHUNK, (k + 1) * CHUNK) });
+    cobrowseChannel.publish("cb-frame", { i: seq, c: total, k: k, e: cobrowseEpoch, z: z, d: payload.slice(k * CHUNK, (k + 1) * CHUNK) });
   }
 }
 
