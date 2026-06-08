@@ -47,7 +47,7 @@ const MAX_MSG_CHARS  = 700;
 const MAX_DRAFT_CHARS = 2500;
 const MAX_KNOWLEDGE  = 18;
 const MAX_SCANNED_CHARS = 3500;
-const ACTIONS = new Set(['suggest', 'rephrase', 'summarise', 'translate']);
+const ACTIONS = new Set(['suggest', 'rephrase', 'summarise', 'translate', 'handover']);
 const STYLES  = new Set(['improve', 'friendlier', 'shorter', 'detailed', 'professional']);
 
 const BASE_ALLOWED = [
@@ -295,6 +295,15 @@ function actionInstruction(action, payload, langs) {
       'JSON shape: {"result":"the translation"}'
     ].join('\n');
   }
+  if (action === 'handover') {
+    return [
+      'TASK: Produce a handover brief for the human agent taking over this chat. Base it ONLY on the conversation (use the business context for tone, not for invented facts).',
+      'Write a "summary" of 2 to 3 short sentences: who the visitor is, what they want, and where things stand. Plain text, no markdown.',
+      'Extract any travel preferences the visitor actually expressed into "preferences". Leave a field as an empty string if it was not stated, and use empty arrays for wants/avoids if none. Do NOT guess. Keep wants/avoids to at most 5 short tags each (1 to 3 words per tag).',
+      'Write an "opener": one short, ready-to-send first message the agent could use to take over the chat, in the business voice, referencing what the visitor was after. No sign-off.',
+      'JSON shape: {"summary":"...","preferences":{"destination":"","dates":"","passengers":"","budget":"","board":"","wants":[],"avoids":[]},"opener":"..."}'
+    ].join('\n');
+  }
   return '';
 }
 
@@ -302,6 +311,7 @@ function actionInstruction(action, payload, langs) {
 async function callAnthropic(system, userContent, action) {
   const temperature = action === 'suggest' ? 0.6
     : action === 'summarise' ? 0.2
+    : action === 'handover' ? 0.2
     : action === 'translate' ? 0.1
     : 0.4;
   const r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -369,7 +379,7 @@ module.exports = async function handler(req, res) {
     .slice(-MAX_TRANSCRIPT_MSGS)
     .map(m => ({ from: ['visitor', 'agent', 'ai'].includes(m.from) ? m.from : 'visitor', text: m.text }));
 
-  if (action === 'suggest' && transcript.length === 0)
+  if ((action === 'suggest' || action === 'handover') && transcript.length === 0)
     return send(res, 400, { ok: false, error: 'No conversation to work from yet' });
   if ((action === 'rephrase') && !clamp(body.draft, MAX_DRAFT_CHARS).trim())
     return send(res, 400, { ok: false, error: 'No draft to rephrase' });
@@ -427,6 +437,29 @@ module.exports = async function handler(req, res) {
         }));
       if (!suggestions.length) return send(res, 502, { ok: false, error: 'Could not generate suggestions, try again' });
       return send(res, 200, { ok: true, action, suggestions, meta });
+    }
+
+    if (action === 'handover') {
+      const p  = (parsed && typeof parsed === 'object') ? parsed : {};
+      const pr = (p.preferences && typeof p.preferences === 'object') ? p.preferences : {};
+      const tags = (v) => Array.isArray(v)
+        ? v.filter(x => typeof x === 'string' && x.trim()).slice(0, 5).map(x => clamp(x, 40).trim())
+        : [];
+      const brief = {
+        summary: clamp(typeof p.summary === 'string' ? p.summary : '', 800).trim(),
+        opener:  clamp(typeof p.opener === 'string' ? p.opener : '', 600).trim(),
+        preferences: {
+          destination: clamp(pr.destination, 80).trim(),
+          dates:       clamp(pr.dates, 80).trim(),
+          passengers:  clamp(pr.passengers, 80).trim(),
+          budget:      clamp(pr.budget, 80).trim(),
+          board:       clamp(pr.board, 80).trim(),
+          wants:  tags(pr.wants),
+          avoids: tags(pr.avoids)
+        }
+      };
+      if (!brief.summary && !brief.opener) return send(res, 502, { ok: false, error: 'Could not build a brief, try again' });
+      return send(res, 200, { ok: true, action, brief, meta });
     }
 
     let result = parsed && typeof parsed.result === 'string' ? parsed.result : (parsed ? '' : raw);
