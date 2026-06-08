@@ -435,7 +435,12 @@ function renderDestinationCard(props, ctx) {
     link.appendChild(iconNode('arrow-right'));
     link.addEventListener('click', () => {
       if (safeDeepLink && safeDeepLink !== '#') {
-        window.open(safeDeepLink, '_blank', 'noopener,noreferrer');
+        // Same-tab navigation: keeps the visitor's conversation alive across
+        // the move to the results page (same-origin sessionStorage carries,
+        // and restoreSession() rehydrates the chat). Mirrors the in-message
+        // search-link behaviour (target="_self"). A new tab would start a
+        // cold session with no history.
+        window.location.href = safeDeepLink;
       }
     });
     actions.appendChild(link);
@@ -511,7 +516,9 @@ function renderOfferCard(props, ctx) {
     book.appendChild(iconNode('arrow-right'));
     book.addEventListener('click', () => {
       if (safeBookUrl && safeBookUrl !== '#') {
-        window.open(safeBookUrl, '_blank', 'noopener,noreferrer');
+        // Same-tab navigation (see deepLink handler) so the conversation
+        // persists into the booking flow rather than starting cold in a new tab.
+        window.location.href = safeBookUrl;
       }
     });
     priceRow.appendChild(book);
