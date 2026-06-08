@@ -49,6 +49,8 @@ const RUBRIC_PROMPT = [
   '',
   'wasAnswered: true if Luna gave a concrete on-topic answer. False if she said "I\'m not sure", "let me connect you", "I don\'t have that info", or only generic content.',
   '',
+  'IMPORTANT — greetings and small talk are NOT failures and NOT knowledge gaps. If the visitor only greeted Luna or made small talk (e.g. "hi", "hello", "good morning", "thanks", "how are you") and never asked a real question, set wasAnswered to true, knowledgeGap to "", gapTopic to "", suggestedAnswer to "", and score at least 3. Never invent a knowledge gap for a greeting or pleasantry.',
+  '',
   'topicTags examples: "destinations", "Crete", "cancellation policy", "pricing", "honeymoon", "all inclusive", "booking", "flights", "weather"',
   '',
   'knowledgeGap should be specific. Bad: "couldn\'t answer". Good: "didn\'t know if Jet2 fly to Faro from Manchester in winter".',
@@ -84,6 +86,34 @@ function parseJsonFromReply(text) {
   } catch (e) {
     return null;
   }
+}
+
+// Pull out everything the visitor actually said from the stored transcript.
+function visitorTextFrom(transcript) {
+  var out = [];
+  var re = /Visitor:\s*([\s\S]*?)(?=\n?\s*(?:Luna|Agent|Visitor):|$)/gi;
+  var m;
+  while ((m = re.exec(transcript)) !== null) {
+    if (m[1] && m[1].trim()) out.push(m[1].trim());
+  }
+  return out;
+}
+
+// True when the visitor only greeted / made small talk and never asked a real
+// question. Such conversations are not failures and must not create a gap.
+// Deterministic and conservative: any "?" or any substantive word left after
+// stripping greeting/pleasantry tokens means it is NOT trivial.
+function isTrivialConversation(transcript) {
+  var msgs = visitorTextFrom(transcript);
+  if (!msgs.length) return true;                       // no visitor content at all
+  var joined = msgs.join(' ').toLowerCase();
+  if (joined.indexOf('?') !== -1) return false;        // a question was asked
+  var stripped = joined
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\b(hi|hii|hiya|hey+|hello+|yo|hai|howdy|morning|afternoon|evening|night|good|day|how|are|is|was|you|u|ya|r|doing|thanks|thank|thankyou|ta|cheers|ok|okay|kk|kewl|cool|great|nice|yes|yeah|yep|yup|no|nope|nah|bye|goodbye|see|later|please|pls|test|testing|sup|greetings|hello there|welcome|here|there|just|looking|browsing|hm+|ah+|oh+|lol)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return stripped.length < 4;                          // nothing substantive remains
 }
 
 module.exports = async function handler(req, res) {
@@ -122,6 +152,27 @@ module.exports = async function handler(req, res) {
     var transcript = fields.Transcript || '';
     if (!transcript || transcript.length < 30) {
       return res.status(200).json({ success: true, skipped: 'no transcript' });
+    }
+
+    // D3: a pure greeting / small-talk chat is not a failure and not a knowledge
+    // gap. Detect it deterministically, write a neutral score with no gap, and
+    // skip the model call entirely.
+    if (isTrivialConversation(transcript)) {
+      var trivialFields = {};
+      trivialFields[F.qualityScore] = 3;
+      trivialFields[F.qualityReason] = 'Greeting or small talk — no question was asked.';
+      trivialFields[F.wasAnswered] = true;
+      trivialFields[F.topicTags] = [];
+      trivialFields[F.knowledgeGap] = '';
+      trivialFields[F.scoredAt] = new Date().toISOString();
+      try {
+        await fetch('https://api.airtable.com/v0/' + AT_BASE + '/' + CONV_TABLE + '/' + conv.id, {
+          method: 'PATCH',
+          headers: { 'Authorization': 'Bearer ' + atKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fields: trivialFields, typecast: true })
+        });
+      } catch (e) { console.warn('[quality] trivial write failed:', e.message); }
+      return res.status(200).json({ success: true, skipped: 'greeting/small talk', score: 3 });
     }
 
     // Cap transcript size to keep scoring cheap (Haiku is fast, but huge contexts cost)
