@@ -11,6 +11,7 @@
 //   luna-chat:{clientId}:{convId}
 //   luna-dashboard:{clientId}
 //   luna-agents:{clientId}
+//   cobrowse:{clientId}:{convId}
 //
 // Two modes:
 //   VISITOR (mode omitted / "visitor"): unauthenticated, from the widget.
@@ -18,12 +19,14 @@
 //       luna-chat:{clientId}:{convId}  subscribe, publish
 //       luna-dashboard:{clientId}      publish              (announce new convo; cannot eavesdrop)
 //       luna-agents:{clientId}         subscribe            (READ presence only; cannot enter/fake)
+//       cobrowse:{clientId}:{convId}   subscribe, publish   (consent-gated screen mirror for this convo)
 //
 //   AGENT (mode "agent"): requires a valid tg_session cookie AND entitlement to
 //     the requested clientId. Capability across the whole client namespace:
 //       luna-chat:{clientId}:*         subscribe, publish
 //       luna-dashboard:{clientId}      subscribe, publish
 //       luna-agents:{clientId}         subscribe, publish, presence (ENTER)
+//       cobrowse:{clientId}:*          subscribe, publish
 //
 // A visitor can never enter agent presence (so cannot fake "agent online"),
 // and neither side can cross client boundaries. Fails closed everywhere.
@@ -106,6 +109,7 @@ module.exports = async function handler(req, res) {
       capability['luna-chat:' + ns + ':*'] = ['subscribe', 'publish'];
       capability['luna-dashboard:' + ns] = ['subscribe', 'publish'];
       capability['luna-agents:' + ns] = ['subscribe', 'publish', 'presence'];
+      capability['cobrowse:' + ns + ':*'] = ['subscribe', 'publish']; // live screen co-browse, any conversation in this client
       ablyClientId = 'agent_' + (session.user.email || 'unknown').toLowerCase().replace(/[^a-z0-9]/g, '_');
 
     } else {
@@ -123,6 +127,7 @@ module.exports = async function handler(req, res) {
       capability['luna-chat:' + vns + ':' + convId] = ['subscribe', 'publish'];
       capability['luna-dashboard:' + vns] = ['publish'];   // announce new convo only; cannot eavesdrop on the dashboard channel
       capability['luna-agents:' + vns] = ['subscribe'];    // READ presence only (subscribe covers presence.get/subscribe); no 'presence' = cannot enter/fake "agent online"
+      capability['cobrowse:' + vns + ':' + convId] = ['subscribe', 'publish']; // consent-gated screen co-browse for THIS conversation only
       ablyClientId = 'visitor_' + convId;
     }
   } catch (e) {
