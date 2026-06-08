@@ -36,8 +36,8 @@
   function creds() {
     var C = window.CONFIG || {};
     return {
-      clientId: C.CLIENT_ID || param('clientId') || '',
-      client:   C.CLIENT_NAME || param('client') || ''  // for display/logging only
+      clientId: C.CLIENT_ID || window.LUNA_CLIENT_ID || param('clientId') || '',
+      client:   C.CLIENT_NAME || window.LUNA_CLIENT_NAME || param('client') || ''  // for display/logging only
     };
   }
 
