@@ -2419,6 +2419,12 @@ module.exports = async function handler(req, res) {
   const isTravelgenix = (clientName || '').toLowerCase().includes('travelgenix');
   let systemPrompt = isTravelgenix ? LUNA_TRAVELGENIX : LUNA_CLIENT;
 
+  // -- Multilingual: ON for every client, always -------------------------
+  // Luna detects the visitor's language and replies in it, for all clients,
+  // with no per-client flag. The [LANG:...] marker is stripped before the
+  // visitor sees the reply (see marker-stripping below). Fails safe to English.
+  systemPrompt += '\n\n## Multilingual support\nYou speak multiple languages fluently. Detect the language the visitor is writing in and respond in that same language throughout the conversation. If the visitor switches language mid-conversation, follow their lead. The travel knowledge base is in English, so translate facts and information naturally into the visitor\'s language. Keep your warm, friendly tone in every language. Do not mention that you are translating or that the knowledge base is in English.\n\nCRITICAL: Start EVERY response with [LANG:LanguageName] on its own line (e.g. [LANG:French] or [LANG:English]). This tag will be removed before the visitor sees it. Always include it, even for English.';
+
   if (isTravelgenix) {
     try {
       var __kbBlock = await loadTravelgenixKnowledge(process.env.AIRTABLE_KEY);
@@ -2435,37 +2441,8 @@ module.exports = async function handler(req, res) {
       }
     } catch (e) { console.warn('[luna-chat] suppliers inject failed:', e.message); }
 
-    // ── Multilingual for Travelgenix ─────────────────────────────────────
-    // The per-client record block below is gated on !isTravelgenix, so the
-    // Travelgenix client (which uses the hardcoded LUNA_TRAVELGENIX prompt)
-    // never received the multilingual instruction — even with its
-    // MultilingualEnabled flag set. That meant French/Romanian/etc. visitors
-    // got an English reply and no [LANG:] marker. Mirror the multilingual
-    // block here, driven by the same flag, so language detection and the
-    // [LANG:] marker work when testing or demoing on the Travelgenix site
-    // exactly as they do for every other client. Fails safe to English.
-    try {
-      var __tgKey = process.env.AIRTABLE_KEY;
-      if (__tgKey) {
-        var __tgUrl = 'https://api.airtable.com/v0/app6Ot3eOb3DangkB/tbl6CZ7aVzq1wHF2v'
-          + '?filterByFormula=' + encodeURIComponent("{ClientName}='" + sanitizeClientNameForFormula(clientName) + "'")
-          + '&maxRecords=1';
-        var __tgRes = await fetch(__tgUrl, { headers: { 'Authorization': 'Bearer ' + __tgKey } });
-        var __tgData = await __tgRes.json();
-        if (__tgData.records && __tgData.records.length > 0) {
-          var __tgF = __tgData.records[0].fields || {};
-          if (__tgF.MultilingualEnabled) {
-            var __tgRestriction = '';
-            var __tgLangs = (__tgF.SupportedLanguages || '').trim();
-            if (__tgLangs) {
-              __tgRestriction = ' You are configured to support these languages: ' + __tgLangs + '. If a visitor writes in a language not on this list, respond in English and politely let them know which languages you can help in.';
-            }
-            systemPrompt += '\n\n## Multilingual support\nYou speak multiple languages fluently. Detect the language the visitor is writing in and respond in that same language throughout the conversation. If the visitor switches language mid-conversation, follow their lead. The travel knowledge base is in English, so translate facts and information naturally into the visitor\'s language. Keep your warm, friendly tone in every language. Do not mention that you are translating or that the knowledge base is in English.\n\nCRITICAL: Start EVERY response with [LANG:LanguageName] on its own line (e.g. [LANG:French] or [LANG:English]). This tag will be removed before the visitor sees it. Always include it, even for English.' + __tgRestriction;
-            console.log('[luna-chat] multilingual injected (Travelgenix)');
-          }
-        }
-      }
-    } catch (e) { console.warn('[luna-chat] TG multilingual inject failed:', e.message); }
+    // Multilingual is applied globally for every client (see the unconditional
+    // block at the top of prompt assembly) -- no per-client flag needed here.
   }
 
   if (!isTravelgenix && clientName) {
@@ -2526,15 +2503,8 @@ module.exports = async function handler(req, res) {
             systemPrompt += '\n\n## Emergency phone\nThe configured emergency phone for this client is: ' + f.EmergencyPhone + '\nUse this exact value as the "phone" and "phoneDisplay" property when rendering emergency_card blocks.';
           }
 
-          // Multilingual support
-          if (f.MultilingualEnabled) {
-            var langRestriction = '';
-            var supportedLangs = (f.SupportedLanguages || '').trim();
-            if (supportedLangs) {
-              langRestriction = ' You are configured to support these languages: ' + supportedLangs + '. If a visitor writes in a language not on this list, respond in English and politely let them know which languages you can help in.';
-            }
-            systemPrompt += '\n\n## Multilingual support\nYou speak multiple languages fluently. Detect the language the visitor is writing in and respond in that same language throughout the conversation. If the visitor switches language mid-conversation, follow their lead. The travel knowledge base is in English, so translate facts and information naturally into the visitor\'s language. Keep your warm, friendly tone in every language. Do not mention that you are translating or that the knowledge base is in English.\n\nCRITICAL: Start EVERY response with [LANG:LanguageName] on its own line (e.g. [LANG:French] or [LANG:English]). This tag will be removed before the visitor sees it. Always include it, even for English.' + langRestriction;
-          }
+          // Multilingual is applied globally for every client (see the
+          // unconditional block at the top of prompt assembly).
 
           // Booking search integration
           const siteId = f.DeepLinkSiteID;
