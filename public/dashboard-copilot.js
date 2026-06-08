@@ -301,25 +301,10 @@
       .finally(function () { setBusy(false, btn); });
   }
 
-  function doTranslate(lang, btn) {
-    if (busy) return;
-    var draft = getDraft().trim();
-    var text = draft || lastVisitorMessage();
-    if (!text) { openPanel(noteBox('Nothing to translate yet.')); return; }
-    setBusy(true, btn);
-    openPanel(skeletons(1));
-    api({ action: 'translate', text: text, targetLang: lang, transcript: readTranscript() })
-      .then(function (data) {
-        showResult(data.result, {
-          title: 'In ' + lang,
-          insertReplaces: !!draft, prev: draft,
-          // if it was the visitor's message, offer insert as a fresh draft
-          insertFresh: !draft
-        });
-      })
-      .catch(function (e) { openPanel(noteBox(e.message, true)); })
-      .finally(function () { setBusy(false, btn); });
-  }
+  function doTranslate_removed() { /* Translate action removed: the platform
+    already auto-translates the agent's reply into the visitor's language on
+    send, and incoming messages into the agent's dashboard language. A manual
+    translate button duplicated that and spent tokens for no benefit. */ }
 
   function showResult(text, opts) {
     opts = opts || {};
@@ -392,19 +377,6 @@
     var detail  = chip('More detail', ICON.plus);
     var summary = chip('Summarise', ICON.list);
 
-    // translate menu
-    var menu = el('div', 'lcp-menu');
-    var translate = chip('Translate', ICON.globe);
-    var pop = el('div', 'lcp-pop');
-    ['English', 'French', 'Spanish', 'German', 'Italian', 'Portuguese', 'Dutch', 'Polish', 'Arabic'].forEach(function (lng) {
-      var b = el('button', null, { 'type': 'button' }); b.textContent = lng;
-      b.addEventListener('click', function () { pop.classList.remove('open'); doTranslate(lng, translate); });
-      pop.appendChild(b);
-    });
-    translate.addEventListener('click', function (e) { e.stopPropagation(); pop.classList.toggle('open'); });
-    document.addEventListener('click', function () { pop.classList.remove('open'); });
-    menu.appendChild(translate); menu.appendChild(pop);
-
     suggest.addEventListener('click', function () { doSuggest(suggest); });
     improve.addEventListener('click', function () { doRephrase('improve', improve); });
     friend.addEventListener('click', function () { doRephrase('friendlier', friend); });
@@ -413,7 +385,7 @@
     summary.addEventListener('click', function () { doSummarise(summary); });
 
     bar.appendChild(tagLabel('Copilot'));
-    [suggest, improve, friend, shorter, detail, summary, menu].forEach(function (n) { bar.appendChild(n); });
+    [suggest, improve, friend, shorter, detail, summary].forEach(function (n) { bar.appendChild(n); });
 
     wrap.appendChild(panel); wrap.appendChild(bar);
     // Mount the Copilot bar ABOVE the input row. ta.parentNode is the
@@ -425,7 +397,7 @@
     else ta.parentNode.insertBefore(wrap, ta); // fallback: original behaviour if shape differs
 
     ui.panel = panel;
-    ui.buttons = [suggest, improve, friend, shorter, detail, summary, translate];
+    ui.buttons = [suggest, improve, friend, shorter, detail, summary];
 
     // keyboard: Cmd/Ctrl+J suggests, Esc clears the panel
     document.addEventListener('keydown', function (e) {
