@@ -2616,6 +2616,10 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     // section, Get Code modal) can read it — CONFIG itself is block-scoped.
     window.LUNA_CLIENT_NAME = data.config.clientName;
     CONFIG.CLIENT_ID = data.config.clientId;
+    // Expose the client record id too, so standalone scripts (e.g. the Copilot
+    // bar in dashboard-copilot.js) can authenticate against /api/luna-copilot.
+    // The record id is not secret — it already appears in embed/URLs.
+    window.LUNA_CLIENT_ID = data.config.clientId;
     /* Channels are now scoped per client by record id, so one shared Ably app
        stays fully isolated between clients. Set the scoped names once here; all
        downstream code keeps using CONFIG.DASHBOARD_CHANNEL / PRESENCE_CHANNEL /
