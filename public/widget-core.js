@@ -1611,6 +1611,8 @@ var ably = null;
 var dashChannel = null;
 var chatChannel = null;
 var agentsChannel = null;
+var cobrowseChannel = null;
+var cobrowseState = "idle"; // idle | asked | sharing  (view-only screen share, consent-gated)
 var visitorCountry = "";
 var visitorId = "";
 var autoTriggerTimer = null;
@@ -3498,7 +3500,8 @@ function initAbly() {
      we never run two live connections or leak channel subscriptions. */
   if (ably) {
     try { ably.close(); } catch (e) {}
-    ably = null; dashChannel = null; chatChannel = null; agentsChannel = null;
+    ably = null; dashChannel = null; chatChannel = null; agentsChannel = null; cobrowseChannel = null;
+    teardownCobrowseUI(); cobrowseState = "idle";
   }
   if (!convId) convId = "conv_" + Date.now() + "_" + Math.random().toString(36).substr(2,6);
 
@@ -3545,12 +3548,16 @@ function initAbly() {
     if (kind === "dashboard") return "luna-dashboard:" + ns;
     if (kind === "agents") return "luna-agents:" + ns;
     if (kind === "chat") return "luna-chat:" + ns + ":" + convId;
+    if (kind === "cobrowse") return "cobrowse:" + ns + ":" + convId;
     return kind;
   }
 
   dashChannel = ably.channels.get(ch("dashboard"));
   chatChannel = ably.channels.get(ch("chat"));
   agentsChannel = ably.channels.get(ch("agents"));
+  cobrowseChannel = ably.channels.get(ch("cobrowse"));
+  cobrowseChannel.subscribe("cb-request", function(){ onCobrowseRequest(); });
+  cobrowseChannel.subscribe("cb-stop", function(){ stopCobrowse("agent"); });
 
   /* Attach to the agents presence channel up front. A channel obtained via
      .get() is NOT attached until you subscribe/enter/attach — and calling
@@ -3805,6 +3812,89 @@ function doLeaveMessage() {
 }
 
 /* ─── RATING OVERLAY ─────────────────────────────────────── */
+/* ─── CO-BROWSE (view-only screen share, consent-gated) ──────────────
+   Stage 1: the request -> consent -> accept/decline/stop handshake plus
+   the persistent "you're sharing" indicator. The actual screen stream
+   (rrweb) is added in Stage 2 and plugs into this same channel + state.
+   Nothing about the visitor's screen leaves the page in Stage 1. */
+function onCobrowseRequest() {
+  if (cobrowseState !== "idle") return;   // ignore duplicates / mid-session requests
+  cobrowseState = "asked";
+  if (!panelOpen && typeof openChat === "function") openChat();  // ensure the visitor sees the prompt
+  showCobrowseConsent();
+}
+
+function showCobrowseConsent() {
+  var old = document.getElementById("tgxCobrowseOv");
+  if (old) old.remove();
+  var ov = document.createElement("div");
+  ov.className = "tgx-overlay";
+  ov.id = "tgxCobrowseOv";
+  ov.innerHTML =
+    '<h3>Screen sharing request</h3>'
+    + '<p>An agent would like to view this page with you to help. You can stop sharing at any time.</p>'
+    + '<div style="display:flex;gap:10px;justify-content:center;margin-top:16px">'
+    +   '<button id="tgxCbAllow" style="padding:10px 20px;border:none;border-radius:10px;cursor:pointer;font-weight:600;font-size:14px;background:' + (C.accentColor || "#00B4D8") + ';color:#fff">Allow</button>'
+    +   '<button id="tgxCbDecline" class="tgx-olink" style="padding:10px 20px">Decline</button>'
+    + '</div>';
+  $panel.appendChild(ov);
+  setTimeout(function(){
+    var allow = document.getElementById("tgxCbAllow");
+    var decline = document.getElementById("tgxCbDecline");
+    if (allow) allow.addEventListener("click", function(){
+      if (cobrowseChannel) cobrowseChannel.publish("cb-accept", {});
+      cobrowseState = "sharing";
+      ov.remove();
+      startCobrowseSharing();
+      /* Stage 2: begin rrweb recording here and publish cb-frame events. */
+    });
+    if (decline) decline.addEventListener("click", function(){
+      if (cobrowseChannel) cobrowseChannel.publish("cb-decline", {});
+      cobrowseState = "idle";
+      ov.remove();
+    });
+  }, 50);
+}
+
+function startCobrowseSharing() {
+  if (document.getElementById("tgxCobrowsePill")) return;
+  if (!document.getElementById("tgxCbAnim")) {
+    var st = document.createElement("style");
+    st.id = "tgxCbAnim";
+    st.textContent = "@keyframes tgxCbPulse{0%{box-shadow:0 0 0 0 rgba(239,68,68,0.55)}70%{box-shadow:0 0 0 8px rgba(239,68,68,0)}100%{box-shadow:0 0 0 0 rgba(239,68,68,0)}}";
+    document.head.appendChild(st);
+  }
+  var host = document.getElementById("tgx-cw") || document.body;
+  var pill = document.createElement("div");
+  pill.id = "tgxCobrowsePill";
+  pill.style.cssText = "position:fixed;left:16px;bottom:16px;z-index:1000000;display:flex;align-items:center;gap:8px;"
+    + "background:#0F1A3D;color:#fff;padding:8px 12px;border-radius:999px;"
+    + "font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;font-weight:600;"
+    + "box-shadow:0 8px 24px rgba(15,26,61,0.35)";
+  pill.innerHTML =
+    '<span style="width:9px;height:9px;border-radius:50%;background:#EF4444;display:inline-block;animation:tgxCbPulse 1.5s infinite"></span>'
+    + '<span>Sharing your screen</span>'
+    + '<button id="tgxCbStop" style="margin-left:4px;background:rgba(255,255,255,0.18);color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-weight:600;font-size:12px">Stop</button>';
+  host.appendChild(pill);
+  var stop = document.getElementById("tgxCbStop");
+  if (stop) stop.addEventListener("click", function(){ stopCobrowse("visitor"); });
+}
+
+function teardownCobrowseUI() {
+  var ov = document.getElementById("tgxCobrowseOv"); if (ov) ov.remove();
+  var pill = document.getElementById("tgxCobrowsePill"); if (pill) pill.remove();
+}
+
+function stopCobrowse(by) {
+  // by: "visitor" (the visitor pressed Stop) or "agent" (the agent ended it)
+  if (by === "visitor" && cobrowseChannel && cobrowseState === "sharing") {
+    cobrowseChannel.publish("cb-stop", {});
+  }
+  /* Stage 2: stop rrweb recording here. */
+  teardownCobrowseUI();
+  cobrowseState = "idle";
+}
+
 function showRatingOverlay(ratingChannel) {
   var T = getTokens();
   var ov = document.createElement("div");
