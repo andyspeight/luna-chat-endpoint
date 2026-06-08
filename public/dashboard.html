@@ -5133,18 +5133,21 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     var container = document.getElementById('lunaIntelContainer');
     if (!container) return;
     var msgs = conv.messages || [];
-    var visitorMsgs = msgs.filter(function(m) { return m.from === 'visitor'; });
     var aiMsgs = msgs.filter(function(m) { return m.from === 'ai'; });
 
-    // Extract preferences from conversation
-    var prefs = extractPreferences(msgs);
-    var visitorName = conv.visitor?.name || 'Visitor';
-
-    // Build summary text
-    var summary = buildConversationSummary(conv, prefs);
-
-    // Build suggested opener
-    var opener = buildSuggestedOpener(conv, prefs);
+    // Prefer the AI-generated handover brief; fall back to the instant in-browser
+    // heuristic so the panel is never blank and still works if the AI call fails.
+    var ai = conv._aiBrief || null;
+    var prefs, summary, opener;
+    if (ai) {
+      prefs = ai.preferences || {};
+      summary = '<p>' + esc(ai.summary || '').replace(/\n+/g, '<br>') + '</p>';
+      opener = ai.opener || '';
+    } else {
+      prefs = extractPreferences(msgs);
+      summary = buildConversationSummary(conv, prefs);
+      opener = buildSuggestedOpener(conv, prefs);
+    }
 
     var html = '';
 
@@ -5153,6 +5156,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       + '<div class="luna-intel-header">'
       + '<div class="luna-intel-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.912 5.813a2 2 0 0 0 1.275 1.275L21 12l-5.813 1.912a2 2 0 0 0-1.275 1.275L12 21l-1.912-5.813a2 2 0 0 0-1.275-1.275L3 12l5.813-1.912a2 2 0 0 0 1.275-1.275L12 3Z"/></svg></div>'
       + '<span class="luna-intel-title">Luna Summary</span>'
+      + (conv._aiBriefInFlight ? '<span style="font-size:var(--text-xs);color:var(--text-muted);margin-left:8px">summarising…</span>' : '')
       + '<span class="luna-intel-badge">' + msgs.length + ' messages</span>'
       + '</div>'
       + '<div class="luna-intel-body">' + summary + '</div>';
@@ -5208,9 +5212,46 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     }
 
     container.innerHTML = html;
+
+    // Upgrade the instant heuristic brief to an AI-generated one (grounded,
+    // server-side, same auth as Co-Pilot). One attempt per message-count state.
+    maybeFetchLunaBrief(conv);
   }
 
-  // ─── EXTRACT PREFERENCES FROM CONVERSATION ───
+  function maybeFetchLunaBrief(conv) {
+    if (!window.LUNA_COPILOT_ENDPOINT || !CONFIG.CLIENT_ID || !conv) return;
+    var msgs = conv.messages || [];
+    var hasChat = msgs.some(function(m) { return m.from === 'ai' || m.from === 'visitor'; });
+    if (!hasChat) return;                                  // nothing worth summarising yet
+    var count = msgs.length;
+    if (conv._aiBriefTriedAtCount === count) return;       // already attempted for this exact state
+    if (conv._aiBriefInFlight) return;
+    conv._aiBriefInFlight = true;
+
+    var transcript = msgs
+      .filter(function(m) { return m && m.text && ['visitor', 'ai', 'agent'].indexOf(m.from) !== -1; })
+      .slice(-24)
+      .map(function(m) { return { from: m.from, text: String(m.text).slice(0, 700) }; });
+
+    fetch(window.LUNA_COPILOT_ENDPOINT, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'handover', clientId: CONFIG.CLIENT_ID, transcript: transcript })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      conv._aiBriefInFlight = false;
+      conv._aiBriefTriedAtCount = count;
+      if (data && data.ok && data.brief) { conv._aiBrief = data.brief; conv._aiBriefAtCount = count; }
+      if (conversations[activeConvId] === conv) renderLunaIntel(conv);   // refresh if still showing this conv
+    })
+    .catch(function() {
+      conv._aiBriefInFlight = false;
+      conv._aiBriefTriedAtCount = count;                   // don't hammer on failure; heuristic stays
+      if (conversations[activeConvId] === conv) renderLunaIntel(conv);
+    });
+  }
   function extractPreferences(msgs) {
     var prefs = { destination: '', dates: '', passengers: '', budget: '', board: '', wants: [], avoids: [] };
     var allText = msgs.map(function(m) { return (m.text || '').toLowerCase(); }).join(' ');
