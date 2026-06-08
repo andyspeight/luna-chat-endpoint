@@ -1187,6 +1187,9 @@
   .cb-screen { position:absolute; top:0; left:0; }
   .cb-waiting { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-size:var(--text-sm); }
   .cobrowse-foot { padding:var(--space-2) var(--space-4); border-top:1px solid var(--border); font-size:var(--text-xs); color:var(--text-muted); text-align:center; }
+  .cb-head-r { display:flex; align-items:center; gap:var(--space-2); }
+  .cb-recon { background:transparent; border:none; color:var(--text-muted); font-size:16px; line-height:1; cursor:pointer; padding:0 4px; }
+  .cb-recon:hover { color:var(--text); }
   .info-panel-tabs { display:flex; gap:0; margin:-20px -20px 16px; padding:0 20px; border-bottom:1px solid var(--border); }
   .info-panel-tab { flex:1; padding:var(--space-3) 0; text-align:center; font-size:var(--text-xs); font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:var(--text-muted); cursor:pointer; border:none; background:transparent; font-family:var(--font); border-bottom:2px solid transparent; transition:all 0.15s; }
   .info-panel-tab:hover { color:var(--text-dim); }
@@ -5337,8 +5340,9 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
   // miss the opening full-snapshot. The replay iframe runs with scripts disabled
   // (rrweb rebuilds DOM passively) so visitor page JS never executes here.
   var cobrowse = { channel:null, convId:null, timeout:null,
-                   onAccept:null, onDecline:null, onStop:null, onFrame:null,
-                   replayer:null, events:[], chunks:{}, started:false, recW:1280, recH:720 };
+                   onAccept:null, onDecline:null, onStop:null, onFrame:null, onBeat:null,
+                   replayer:null, events:[], chunks:{}, started:false, recW:1280, recH:720,
+                   epoch:0, lastBeatAt:0, lastReprimeAt:0, watch:null, connHandler:null };
 
   window._startCobrowse = function() {
     if (!activeConvId || !ably || !CONFIG.CLIENT_ID) return;
@@ -5359,6 +5363,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
   };
 
   window._stopCobrowse = function(){ _cobrowseTeardown(true); };
+  window._cobrowseReconnect = function(){ if (cobrowse.channel && cobrowse.started) _cobrowseReprime('Reconnecting…'); };
 
   // Text states (requesting / declined / stopped / timeout). The live 'sharing'
   // view is rendered once by _cobrowseStartViewer so frames don't get wiped.
@@ -5386,32 +5391,81 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     panel.innerHTML =
       '<div class="cobrowse-modal cobrowse-modal-live">'
       + '<div class="cobrowse-head"><span class="cb-head-l"><span class="cb-live-dot"></span><strong>Viewing ' + n + '\'s screen</strong></span>'
-      + '<button class="cobrowse-close" onclick="window._stopCobrowse()" aria-label="Close">✕</button></div>'
+      + '<span class="cb-head-r"><button class="cb-recon" onclick="window._cobrowseReconnect()" title="Reconnect">⟳</button>'
+      + '<button class="cobrowse-close" onclick="window._stopCobrowse()" aria-label="Close">✕</button></span></div>'
       + '<div class="cobrowse-screen-wrap" id="cbScreenWrap"><div id="cbScreen" class="cb-screen"></div>'
       + '<div class="cb-waiting" id="cbWaiting">Connecting to ' + n + '\'s screen…</div></div>'
       + '<div class="cobrowse-foot">View-only. Passwords, card numbers and anything typed into fields stay hidden.</div>'
       + '</div>';
     panel.classList.add('active');
     cobrowse.events = []; cobrowse.chunks = {}; cobrowse.started = false; cobrowse.replayer = null;
-    _cobrowseLoadRrweb(function(ok){
-      if (!ok) { var w = document.getElementById('cbWaiting'); if (w) w.textContent = 'Could not load the screen viewer.'; return; }
+    _cobrowseLoadLibs(function(rrwebOk){
+      if (!rrwebOk) { var w = document.getElementById('cbWaiting'); if (w) w.textContent = 'Could not load the screen viewer.'; return; }
       if (!cobrowse.channel) return;
       cobrowse.onFrame = function(msg){ _cobrowseOnFrame(msg && msg.data); };
+      cobrowse.onBeat  = function(msg){ _cobrowseOnBeat(msg && msg.data); };
       cobrowse.channel.subscribe('cb-frame', cobrowse.onFrame);
-      cobrowse.channel.publish('cb-ready', {});   // visitor starts recording on this
+      cobrowse.channel.subscribe('cb-beat', cobrowse.onBeat);
+      cobrowse.epoch++;
+      cobrowse.lastBeatAt = Date.now();
+      var hasPako = !!(window.pako && window.pako.inflate);
+      cobrowse.channel.publish('cb-ready', { e: cobrowse.epoch, z: hasPako ? 1 : 0 });  // visitor records on this
+      if (cobrowse.watch) clearInterval(cobrowse.watch);
+      cobrowse.watch = setInterval(_cobrowseWatch, 4000);
+      if (!cobrowse.connHandler && ably && ably.connection) {          // heal the agent's own connection blips
+        cobrowse.connHandler = function(){ if (cobrowse.started) _cobrowseReprime('Reconnecting…'); };
+        try { ably.connection.on('connected', cobrowse.connHandler); } catch (e) {}
+      }
     });
   }
 
+  function _cobrowseOnBeat(d) {
+    if (!d || d.e !== cobrowse.epoch) return;
+    cobrowse.lastBeatAt = Date.now();
+  }
+
+  function _cobrowseReprime(label) {
+    var now = Date.now();
+    if (now - cobrowse.lastReprimeAt < 6000) return;   // throttle re-primes
+    cobrowse.lastReprimeAt = now;
+    if (!cobrowse.channel) return;
+    _cobrowseDestroyReplayer();
+    cobrowse.events = []; cobrowse.chunks = {};
+    var w = document.getElementById('cbWaiting'); if (w) { w.style.display = 'flex'; w.textContent = label || 'Reconnecting…'; }
+    cobrowse.epoch++;
+    cobrowse.lastBeatAt = Date.now();   // give the visitor time to respond before the next check
+    var hasPako = !!(window.pako && window.pako.inflate);
+    try { cobrowse.channel.publish('cb-ready', { e: cobrowse.epoch, z: hasPako ? 1 : 0 }); } catch (e) {}
+  }
+
+  function _cobrowseWatch() {
+    if (!cobrowse.channel) return;
+    var gap = Date.now() - cobrowse.lastBeatAt;
+    if (gap > 30000) {   // long silence — give up gracefully
+      if (cobrowse.watch) { clearInterval(cobrowse.watch); cobrowse.watch = null; }
+      _cobrowseDestroyReplayer();
+      var w = document.getElementById('cbWaiting'); if (w) { w.style.display = 'flex'; w.textContent = 'Connection lost — the visitor may have left the page.'; }
+      return;
+    }
+    if (gap > 9000) _cobrowseReprime('Reconnecting…');   // short drop — try to recover
+  }
+
   function _cobrowseOnFrame(d) {
-    if (!d || typeof d.i !== 'number') return;
+    if (!d || typeof d.i !== 'number' || d.e !== cobrowse.epoch) return;   // ignore stale-epoch frames
+    cobrowse.lastBeatAt = Date.now();
     var buf = cobrowse.chunks[d.i];
-    if (!buf) buf = cobrowse.chunks[d.i] = { total: d.c, parts: [] };
+    if (!buf) buf = cobrowse.chunks[d.i] = { total: d.c, parts: [], z: d.z };
     buf.parts[d.k] = d.d;
     var have = 0; for (var x = 0; x < buf.total; x++) { if (typeof buf.parts[x] === 'string') have++; }
     if (have !== buf.total) return;
     delete cobrowse.chunks[d.i];
+    var joined = buf.parts.join(''), json;
+    if (buf.z === 1) {
+      if (!(window.pako && window.pako.inflate)) return;
+      try { json = new TextDecoder().decode(window.pako.inflate(_b64ToU8(joined))); } catch (e) { return; }
+    } else { json = joined; }
     var event;
-    try { event = JSON.parse(buf.parts.join('')); } catch (e) { return; }
+    try { event = JSON.parse(json); } catch (e) { return; }
     _cobrowseFeed(event);
   }
 
@@ -5431,6 +5485,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       cobrowse.replayer = new rrweb.Replayer(cobrowse.events, { root: host, liveMode: true, mouseTail: false, skipInactive: false });
       cobrowse.replayer.startLive(cobrowse.events[0].timestamp);
       cobrowse.started = true;
+      try { cobrowse.replayer.on('resize', function(sz){ if (sz && sz.width) { cobrowse.recW = sz.width; cobrowse.recH = sz.height; _cobrowseFit(); } }); } catch (e) {}
       _cobrowseFit(); setTimeout(_cobrowseFit, 300); setTimeout(_cobrowseFit, 1000);
       window.addEventListener('resize', _cobrowseFit);
     } catch (e) { console.warn('co-browse replayer init failed:', e); }
@@ -5441,9 +5496,11 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     var wrap = document.getElementById('cbScreenWrap');
     var host = document.getElementById('cbScreen');
     if (!wrap || !host) return;
-    var scale = wrap.clientWidth / (cobrowse.recW || 1280);
+    var maxH = Math.max(140, Math.min(window.innerHeight * 0.7, 680));
+    var scale = Math.min(wrap.clientWidth / (cobrowse.recW || 1280), maxH / (cobrowse.recH || 720));
     if (!isFinite(scale) || scale <= 0) scale = 1;
-    host.style.transform = 'scale(' + scale + ')';
+    var offX = Math.max(0, (wrap.clientWidth - (cobrowse.recW || 1280) * scale) / 2);  // centre horizontally
+    host.style.transform = 'translateX(' + offX + 'px) scale(' + scale + ')';
     host.style.transformOrigin = 'top left';
     wrap.style.height = ((cobrowse.recH || 720) * scale) + 'px';
   }
@@ -5459,6 +5516,8 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
 
   function _cobrowseTeardown(publishStop) {
     clearTimeout(cobrowse.timeout);
+    if (cobrowse.watch) { clearInterval(cobrowse.watch); cobrowse.watch = null; }
+    if (cobrowse.connHandler && ably && ably.connection) { try { ably.connection.off('connected', cobrowse.connHandler); } catch (e) {} cobrowse.connHandler = null; }
     if (cobrowse.channel) {
       if (publishStop) { try { cobrowse.channel.publish('cb-stop', {}); } catch(e){} }
       try {
@@ -5466,22 +5525,30 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
         if (cobrowse.onDecline) cobrowse.channel.unsubscribe('cb-decline', cobrowse.onDecline);
         if (cobrowse.onStop)    cobrowse.channel.unsubscribe('cb-stop', cobrowse.onStop);
         if (cobrowse.onFrame)   cobrowse.channel.unsubscribe('cb-frame', cobrowse.onFrame);
+        if (cobrowse.onBeat)    cobrowse.channel.unsubscribe('cb-beat', cobrowse.onBeat);
       } catch(e){}
     }
     _cobrowseDestroyReplayer();
+    cobrowse.events = []; cobrowse.chunks = {};
     cobrowse.channel = null; cobrowse.convId = null;
-    cobrowse.onAccept = cobrowse.onDecline = cobrowse.onStop = cobrowse.onFrame = null;
+    cobrowse.onAccept = cobrowse.onDecline = cobrowse.onStop = cobrowse.onFrame = cobrowse.onBeat = null;
     var panel = document.getElementById('cobrowsePanel');
     if (panel) { panel.classList.remove('active'); panel.innerHTML = ''; }
   }
 
-  // Lazy-load rrweb (replay) from CDN, once, on first co-browse use.
-  var _cbRrwebLoading = false, _cbRrwebCbs = [];
-  function _cobrowseLoadRrweb(cb) {
-    if (window.rrweb && window.rrweb.Replayer) return cb(true);
-    _cbRrwebCbs.push(cb);
-    if (_cbRrwebLoading) return;
-    _cbRrwebLoading = true;
+  function _b64ToU8(b64) {
+    var bin = atob(b64), u8 = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    return u8;
+  }
+
+  // Lazy-load rrweb (replay, required) + pako (decompress, best-effort), once.
+  var _cbLibsLoading = false, _cbLibsCbs = [];
+  function _cobrowseLoadLibs(cb) {
+    if (window.rrweb && window.rrweb.Replayer) { _cobrowseEnsurePako(function(){ cb(true); }); return; }
+    _cbLibsCbs.push(cb);
+    if (_cbLibsLoading) return;
+    _cbLibsLoading = true;
     if (!document.getElementById('rrwebCss')) {
       var l = document.createElement('link'); l.id = 'rrwebCss'; l.rel = 'stylesheet';
       l.href = 'https://cdn.jsdelivr.net/npm/rrweb@1.1.3/dist/rrweb.min.css';
@@ -5490,8 +5557,22 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     var s = document.createElement('script');
     s.src = 'https://cdn.jsdelivr.net/npm/rrweb@1.1.3/dist/rrweb.min.js';
     s.async = true;
-    s.onload  = function(){ _cbRrwebLoading = false; var c = _cbRrwebCbs; _cbRrwebCbs = []; c.forEach(function(f){ try { f(true);  } catch(e){} }); };
-    s.onerror = function(){ _cbRrwebLoading = false; var c = _cbRrwebCbs; _cbRrwebCbs = []; c.forEach(function(f){ try { f(false); } catch(e){} }); };
+    s.onload  = function(){ _cbLibsLoading = false; var c = _cbLibsCbs; _cbLibsCbs = []; c.forEach(function(f){ _cobrowseEnsurePako(function(){ try { f(true);  } catch(e){} }); }); };
+    s.onerror = function(){ _cbLibsLoading = false; var c = _cbLibsCbs; _cbLibsCbs = []; c.forEach(function(f){ try { f(false); } catch(e){} }); };
+    document.head.appendChild(s);
+  }
+  var _cbPakoLoading = false, _cbPakoCbs = [];
+  function _cobrowseEnsurePako(cb) {
+    if (window.pako && window.pako.inflate) return cb();
+    _cbPakoCbs.push(cb);
+    if (_cbPakoLoading) return;
+    _cbPakoLoading = true;
+    var s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js';
+    s.async = true;
+    var done = function(){ _cbPakoLoading = false; var c = _cbPakoCbs; _cbPakoCbs = []; c.forEach(function(f){ try { f(); } catch(e){} }); };
+    s.onload = done;
+    s.onerror = function(){ console.warn('co-browse: pako unavailable; viewing uncompressed'); done(); };  // not fatal
     document.head.appendChild(s);
   }
 
