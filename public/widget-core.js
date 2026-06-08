@@ -1613,6 +1613,8 @@ var chatChannel = null;
 var agentsChannel = null;
 var cobrowseChannel = null;
 var cobrowseState = "idle"; // idle | asked | sharing  (view-only screen share, consent-gated)
+var cobrowseStopFn = null;  // rrweb.record() stop handle, set while sharing
+var cobrowseSeq = 0;        // monotonic frame sequence for ordered reassembly
 var visitorCountry = "";
 var visitorId = "";
 var autoTriggerTimer = null;
@@ -3557,6 +3559,7 @@ function initAbly() {
   agentsChannel = ably.channels.get(ch("agents"));
   cobrowseChannel = ably.channels.get(ch("cobrowse"));
   cobrowseChannel.subscribe("cb-request", function(){ onCobrowseRequest(); });
+  cobrowseChannel.subscribe("cb-ready", function(){ startCobrowseRecording(); });
   cobrowseChannel.subscribe("cb-stop", function(){ stopCobrowse("agent"); });
 
   /* Attach to the agents presence channel up front. A channel obtained via
@@ -3846,7 +3849,7 @@ function showCobrowseConsent() {
       cobrowseState = "sharing";
       ov.remove();
       startCobrowseSharing();
-      /* Stage 2: begin rrweb recording here and publish cb-frame events. */
+      /* recording starts when the agent's viewer signals cb-ready (race-free). */
     });
     if (decline) decline.addEventListener("click", function(){
       if (cobrowseChannel) cobrowseChannel.publish("cb-decline", {});
@@ -3890,9 +3893,56 @@ function stopCobrowse(by) {
   if (by === "visitor" && cobrowseChannel && cobrowseState === "sharing") {
     cobrowseChannel.publish("cb-stop", {});
   }
-  /* Stage 2: stop rrweb recording here. */
+  if (cobrowseStopFn) { try { cobrowseStopFn(); } catch (e) {} cobrowseStopFn = null; }
   teardownCobrowseUI();
   cobrowseState = "idle";
+}
+
+/* ─── CO-BROWSE STAGE 2: record the page and stream it (consent already given) ─── */
+var _rrwebLoading = false, _rrwebCbs = [];
+function loadRrweb(cb) {
+  if (window.rrweb && window.rrweb.record) return cb();
+  _rrwebCbs.push(cb);
+  if (_rrwebLoading) return;
+  _rrwebLoading = true;
+  var s = document.createElement("script");
+  s.src = "https://cdn.jsdelivr.net/npm/rrweb@1.1.3/dist/rrweb.min.js";
+  s.async = true;
+  s.onload = function(){ _rrwebLoading = false; var cbs = _rrwebCbs; _rrwebCbs = []; cbs.forEach(function(f){ try { f(); } catch (e) {} }); };
+  s.onerror = function(){ _rrwebLoading = false; _rrwebCbs = []; console.error("Luna widget: rrweb failed to load"); };
+  document.head.appendChild(s);
+}
+
+function startCobrowseRecording() {
+  if (cobrowseState !== "sharing") return;   // only after the visitor allowed
+  if (cobrowseStopFn) return;                 // already recording
+  loadRrweb(function(){
+    if (!window.rrweb || !window.rrweb.record || !cobrowseChannel || cobrowseState !== "sharing") return;
+    cobrowseSeq = 0;
+    try {
+      cobrowseStopFn = window.rrweb.record({
+        emit: function(event){ publishCobrowseFrame(event); },
+        maskAllInputs: true,                 // GDPR: never transmit typed values (passwords, card numbers, anything entered)
+        maskInputOptions: { password: true },
+        inlineStylesheet: true,
+        recordCanvas: false,
+        collectFonts: false,
+        sampling: { mousemove: 50, scroll: 100, input: "last", media: 800 }
+      });
+    } catch (e) { console.warn("Luna widget: rrweb record failed:", e.message); }
+  });
+}
+
+function publishCobrowseFrame(event) {
+  if (!cobrowseChannel || cobrowseState !== "sharing") return;
+  var json;
+  try { json = JSON.stringify(event); } catch (e) { return; }
+  var CHUNK = 30000;                          // keep each Ably message well under the 64KB limit
+  var seq = cobrowseSeq++;
+  var total = Math.ceil(json.length / CHUNK) || 1;
+  for (var k = 0; k < total; k++) {
+    cobrowseChannel.publish("cb-frame", { i: seq, c: total, k: k, d: json.slice(k * CHUNK, (k + 1) * CHUNK) });
+  }
 }
 
 function showRatingOverlay(ratingChannel) {
