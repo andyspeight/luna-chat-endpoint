@@ -3477,13 +3477,22 @@ function detectEscalation(aiReply, visitorMessage) {
     if (visitorLower.includes(pattern)) return true;
   }
 
+  // Precise signal: the AI renders a human_handoff_card block ONLY when it is
+  // genuinely escalating (explicit request, or a question it can't answer). That
+  // block survives in the reply text (the widget renders it), so detect it directly.
+  if (replyLower.includes('human_handoff_card')) return true;
+
+  // Committed handoff language only. Deliberately NOT matching polite offers
+  // ("I can connect you with one of the team") or bare noun phrases
+  // ("one of the team" / "member of our team" / "book a demo") — those appear in
+  // ordinary friendly greetings and were causing escalation on a plain "hi".
+  // A real handoff uses the committed forms below and/or the card above.
   const escalationPhrases = [
-    'connect you with', 'connecting you with',
-    'pass you over to', 'passing you over',
-    'one of our team', 'one of the team',
-    'someone will be with you', 'agent will be',
-    'let me get someone', 'get someone to help',
-    'member of our team', 'book a demo'
+    'connecting you with',
+    'passing you over',
+    'someone will be with you',
+    'agent will be',
+    'let me get someone'
   ];
 
   for (const phrase of escalationPhrases) {
