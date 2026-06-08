@@ -358,8 +358,8 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST')    return send(res, 405, { ok: false, error: 'Method not allowed' });
   if (!corsOk)                  return send(res, 403, { ok: false, error: 'Origin not allowed' });
 
-  if (!process.env.ANTHROPIC_API_KEY || !process.env.AIRTABLE_PAT) {
-    console.error('luna-copilot: missing ANTHROPIC_API_KEY or AIRTABLE_PAT');
+  if (!process.env.ANTHROPIC_API_KEY || !AT_KEY) {
+    console.error('luna-copilot: missing ANTHROPIC_API_KEY or Airtable key (AIRTABLE_KEY / AIRTABLE_PAT)');
     return send(res, 500, { ok: false, error: 'Copilot is not configured' });
   }
 
