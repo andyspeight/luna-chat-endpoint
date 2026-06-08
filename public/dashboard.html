@@ -152,6 +152,13 @@
 
   .topbar-controls { display:flex; align-items:center; gap:var(--space-2); }
 
+  .topbar-lang { display:flex; align-items:center; gap:6px; height:36px; padding:0 8px 0 10px; border-radius:var(--radius-md); border:1px solid var(--border); color:var(--text-muted); }
+  .topbar-lang:hover { color:var(--text); }
+  .topbar-lang svg { flex:none; }
+  .topbar-lang select { appearance:none; -webkit-appearance:none; background:transparent; border:none; color:var(--text); font:inherit; font-size:13px; font-weight:600; cursor:pointer; padding:0 2px; outline:none; }
+  .topbar-lang select:focus-visible { outline:2px solid var(--teal); outline-offset:2px; border-radius:4px; }
+  .topbar-lang option { background:var(--navy, #1B2B5B); color:var(--text); }
+
   .topbar-icon-btn {
     width:36px; height:36px; border-radius:var(--radius-md); border:1px solid var(--border);
     background:transparent; color:var(--text-muted); cursor:pointer;
@@ -1838,6 +1845,10 @@
     <div class="topbar-controls">
       <button class="topbar-icon-btn active" id="btnSound" onclick="window._toggleSound()" title="Toggle sound" aria-label="Toggle sound notifications"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></button>
       <button class="topbar-icon-btn" id="btnDesktop" onclick="window._toggleDesktopNotifs()" title="Desktop notifications" aria-label="Toggle desktop notifications"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button>
+      <label class="topbar-lang" title="Language you read incoming messages in">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 0 20 15.3 15.3 0 0 1 0-20"/></svg>
+        <select id="dashLangSelect" aria-label="Dashboard language"><option value="English">English</option></select>
+      </label>
     </div>
     <!-- Agents online pill — click to see list of all signed-in agents -->
     <div class="agents-pill-wrap">
@@ -2420,7 +2431,8 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     PRESENCE_CHANNEL: 'luna-agents',
     DASHBOARD_CHANNEL: 'luna-dashboard',
     PASSWORD: '',
-    CLIENT_NAME: ''
+    CLIENT_NAME: '',
+    DASHBOARD_LANG: '' // optional per-client default served by auth-session (Stage 2). Empty = English.
   };
 
   let ably = null;
@@ -2626,6 +2638,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     document.getElementById('agentInitials').textContent = CONFIG.AGENT_NAME.split(' ').map(function (w) { return w[0]; }).join('').toUpperCase().slice(0, 2);
     var _nameEl = document.getElementById('agentNameLabel');
     if (_nameEl) _nameEl.textContent = CONFIG.AGENT_NAME;
+    initDashLangSelect(); // populate the dashboard-language picker (respects any per-client default)
 
     STORAGE_PREFIX = 'luna_' + (CONFIG.CLIENT_NAME || 'default').toLowerCase().replace(/[^a-z0-9]/g, '_') + '_';
 
@@ -2911,23 +2924,32 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     // is not yet established, detect it from the message CONTENT (one translate
     // call per conversation), then translate this and every later foreign message.
     if ((data.from === 'visitor' || data.from === 'ai') && !data.translated && !data._langChecked) {
+      var dashLang = getDashboardLang();
+      var isEnglishDash = (dashLang === 'English');
+      // English dashboard keeps the cheap path: stop probing once the
+      // conversation is known to be English. A non-English dashboard probes
+      // every visitor/AI message, so English (and any other) content is turned
+      // into the agent's language — not just the first message of the chat.
       var knownForeign = conv.lang && conv.lang !== 'English';
-      if (knownForeign || !conv._langResolved) {
+      var shouldProbe = isEnglishDash ? (knownForeign || !conv._langResolved) : true;
+      if (shouldProbe) {
         data._langChecked = true; // probe each message at most once
         translateForAgent(data.text).then(function(result) {
           if (!result) return;
-          conv._langResolved = true; // language now established (English or not) -> stop probing English chats
+          conv._langResolved = true; // language established -> stop probing English chats on English dashboards
           var detected = result.detectedLanguage || conv.lang;
-          if (detected && detected !== 'English') {
-            conv.lang = detected;
-            if (result.translation && result.translation !== data.text) {
-              data.translated = result.translation;
-              data.lang = detected;
-              if (convId === activeConvId) {
-                renderMessages(conv);
-                scrollChat();
-                showVisitorInfo(conv); // reflect newly-detected language in the Intel panel
-              }
+          // conv.lang always tracks the VISITOR's own language (drives the Intel
+          // panel and reply-back translation) — never the dashboard language.
+          if (detected && detected !== 'English') conv.lang = detected;
+          // Show a translation only when the message isn't already in the
+          // agent's chosen language.
+          if (detected && detected !== dashLang && result.translation && result.translation !== data.text) {
+            data.translated = result.translation;
+            data.lang = detected;
+            if (convId === activeConvId) {
+              renderMessages(conv);
+              scrollChat();
+              showVisitorInfo(conv); // reflect newly-detected language in the Intel panel
             }
           }
         });
@@ -3100,13 +3122,71 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     }
   };
 
+  // ─── DASHBOARD LANGUAGE (what the AGENT reads) ───
+  // The visitor experience is already fully multilingual. This lets each agent
+  // read incoming messages in their own language. The choice is stored per
+  // browser; it falls back to an optional per-client default
+  // (CONFIG.DASHBOARD_LANG, served by auth-session — Stage 2) then to English.
+  // conv.lang is never touched here: the agent's own replies still translate
+  // back into the visitor's language.
+  var DASH_LANG_KEY = 'luna_dashboard_lang';
+  var DASHBOARD_LANGUAGES = ['English','Romanian','French','German','Spanish','Italian','Portuguese','Dutch','Polish','Greek','Turkish','Arabic','Hungarian','Czech','Bulgarian','Ukrainian','Russian','Chinese','Hindi'];
+  function getDashboardLang() {
+    try { var saved = localStorage.getItem(DASH_LANG_KEY); if (saved) return saved; } catch (e) {}
+    return CONFIG.DASHBOARD_LANG || 'English';
+  }
+  function setDashboardLang(lang) {
+    if (!lang) return;
+    try { localStorage.setItem(DASH_LANG_KEY, lang); } catch (e) {}
+    var sel = document.getElementById('dashLangSelect');
+    if (sel && sel.value !== lang) sel.value = lang;
+    retranslateActiveConversation();
+  }
+  // Apply a language switch to the conversation already on screen, so the change
+  // is immediate rather than only affecting future messages.
+  function retranslateActiveConversation() {
+    var conv = conversations[activeConvId];
+    if (!conv || !conv.messages) return;
+    var dashLang = getDashboardLang();
+    conv._langResolved = false;
+    conv.messages.forEach(function(m) {
+      if (m.from === 'visitor' || m.from === 'ai') { m._langChecked = false; m.translated = null; }
+    });
+    renderMessages(conv);
+    conv.messages.forEach(function(m) {
+      if ((m.from === 'visitor' || m.from === 'ai') && m.text && !m._langChecked) {
+        m._langChecked = true;
+        translateForAgent(m.text).then(function(result) {
+          if (!result) return;
+          var detected = result.detectedLanguage || conv.lang;
+          if (detected && detected !== dashLang && result.translation && result.translation !== m.text) {
+            m.translated = result.translation;
+            m.lang = detected;
+            if (conv.id === activeConvId) renderMessages(conv);
+          }
+        });
+      }
+    });
+  }
+  function initDashLangSelect() {
+    var sel = document.getElementById('dashLangSelect');
+    if (!sel) return;
+    var current = getDashboardLang();
+    if (DASHBOARD_LANGUAGES.indexOf(current) === -1) DASHBOARD_LANGUAGES.splice(1, 0, current);
+    sel.innerHTML = DASHBOARD_LANGUAGES.map(function(l) {
+      return '<option value="' + esc(l) + '"' + (l === current ? ' selected' : '') + '>' + esc(l) + '</option>';
+    }).join('');
+    sel.onchange = function() { setDashboardLang(sel.value); };
+  }
+  window._setDashboardLang = setDashboardLang;
+
   // ─── TRANSLATION ───
   async function translateForAgent(text) {
     try {
       var res = await fetch('https://luna-chat-endpoint.vercel.app/api/translate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: text, targetLang: 'English' })
+        body: JSON.stringify({ text: text, targetLang: getDashboardLang() })
       });
       if (!res.ok) return null;
       var data = await res.json();
