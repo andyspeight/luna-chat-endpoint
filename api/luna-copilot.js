@@ -47,7 +47,7 @@ const MAX_MSG_CHARS  = 700;
 const MAX_DRAFT_CHARS = 2500;
 const MAX_KNOWLEDGE  = 18;
 const MAX_SCANNED_CHARS = 3500;
-const ACTIONS = new Set(['suggest', 'rephrase', 'summarise', 'translate', 'handover']);
+const ACTIONS = new Set(['suggest', 'rephrase', 'summarise', 'translate', 'handover', 'draftProfile']);
 const STYLES  = new Set(['improve', 'friendlier', 'shorter', 'detailed', 'professional']);
 
 const BASE_ALLOWED = [
@@ -241,7 +241,7 @@ function systemPrompt(botName) {
   return [
     `You are Luna Copilot, a private assistant for a human travel agent who is replying to a customer in a live chat. You write on behalf of "${botName}" and the agent's travel business.`,
     '',
-    'YOUR JOB: help the agent reply faster and better. You never speak to the customer directly. Your output is only ever seen by the agent, who decides whether to use it.',
+    'YOUR JOB: help the agent work faster and better — drafting replies, summaries, and their own business profile copy. You never speak to the customer directly. Your output is only ever seen by the agent, who decides whether to use it.',
     '',
     'HARD RULES (breaking any one means your output is wrong):',
     '1. Ground everything in the SUPPLIED knowledge and the conversation. Never invent facts. Do NOT state prices, availability, dates, booking references, discounts, offers, or specific ATOL/ABTA/bonding detail unless they appear in the supplied context or the conversation. If a fact is needed but missing, write the reply so the agent fills it in, using a clearly bracketed placeholder like [check price] or [confirm dates]. Never guess a number.',
@@ -304,6 +304,16 @@ function actionInstruction(action, payload, langs) {
       'JSON shape: {"summary":"...","preferences":{"destination":"","dates":"","passengers":"","budget":"","board":"","wants":[],"avoids":[]},"opener":"..."}'
     ].join('\n');
   }
+  if (action === 'draftProfile') {
+    const seed = clamp(payload.seed, MAX_DRAFT_CHARS).trim();
+    return [
+      'TASK: The agent is setting up their Luna profile. Write the "About your business" description that Luna will use to answer visitor questions about this travel business. This is the agent\'s own profile copy, seen and edited by the agent before it is saved, not a message to a customer.',
+      'Use ONLY the BUSINESS CONTEXT above and the agent\'s notes below. Cover, in flowing prose (no bullet points, no headings): what the business is and who it serves, its specialisms and key destinations, financial protection, payment and finance options, booking fees, and one or two genuine selling points, but ONLY where the fact is actually supported. NEVER invent an ATOL or ABTA number, an award, a year established, or any specific figure. Where a useful fact is clearly expected but missing, leave a short bracketed placeholder for the agent to complete, for example "[Add your ATOL number]" or "[Confirm your cancellation terms]". Do not include the phone number, address or opening hours, those are captured separately. Do not pad with empty marketing language.',
+      'Write 120 to 220 words, in the business voice, first person plural ("we"). Three or four short paragraphs. No greeting, no sign-off.',
+      seed ? ('AGENT\'S CURRENT NOTES (improve and build on these, keep anything factual they wrote):\n"""' + seed + '"""') : 'The agent has not written anything yet, so draft from the business context.',
+      'JSON shape: {"result":"the description text"}'
+    ].join('\n');
+  }
   return '';
 }
 
@@ -313,6 +323,7 @@ async function callAnthropic(system, userContent, action) {
     : action === 'summarise' ? 0.2
     : action === 'handover' ? 0.2
     : action === 'translate' ? 0.1
+    : action === 'draftProfile' ? 0.5
     : 0.4;
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
