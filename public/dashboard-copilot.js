@@ -416,7 +416,13 @@
     [suggest, improve, friend, shorter, detail, summary, menu].forEach(function (n) { bar.appendChild(n); });
 
     wrap.appendChild(panel); wrap.appendChild(bar);
-    ta.parentNode.insertBefore(wrap, ta);
+    // Mount the Copilot bar ABOVE the input row. ta.parentNode is the
+    // .chat-input-area flex row (textarea + Send); inserting the bar INTO that
+    // row makes it compete for width and collapse the textarea to ~1ch. Place
+    // it as the previous sibling of the whole row so it spans full width.
+    var inputRow = ta.parentNode;
+    if (inputRow && inputRow.parentNode) inputRow.parentNode.insertBefore(wrap, inputRow);
+    else ta.parentNode.insertBefore(wrap, ta); // fallback: original behaviour if shape differs
 
     ui.panel = panel;
     ui.buttons = [suggest, improve, friend, shorter, detail, summary, translate];
