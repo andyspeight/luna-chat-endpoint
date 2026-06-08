@@ -2008,6 +2008,61 @@
   
 
   <!-- SETTINGS OVERLAY -->
+  <style id="spHero1">
+  /* Settings Hero 1 — Luna Readiness ring + live preview. All classes scoped sp-*. Inherits dashboard tokens (light + [data-theme=dark]). */
+  .sp-grid{ display:grid; grid-template-columns:minmax(0,1fr) 360px; gap:var(--space-8); align-items:start; }
+  .sp-main{ min-width:0; }
+  .sp-aside{ position:sticky; top:var(--space-2); display:flex; flex-direction:column; gap:var(--space-5); }
+  @media (max-width:1023px){ .sp-grid{ grid-template-columns:1fr; gap:var(--space-6); } .sp-aside{ position:static; } }
+  .sp-card{ background:var(--navy); border:1px solid var(--border); border-radius:var(--radius-xl); padding:var(--space-6); box-shadow:0 18px 36px -18px rgba(27,43,91,0.18); }
+  .sp-readiness{ text-align:center; }
+  .sp-ring-wrap{ position:relative; width:132px; height:132px; margin:var(--space-1) auto var(--space-4); }
+  .sp-ring{ width:132px; height:132px; transform:rotate(-90deg); }
+  .sp-ring-track{ fill:none; stroke:var(--navy-mid); stroke-width:9; }
+  .sp-ring-fill{ fill:none; stroke:var(--teal); stroke-width:9; stroke-linecap:round; stroke-dasharray:326.726; stroke-dashoffset:326.726; transition:stroke-dashoffset .6s cubic-bezier(.16,1,.3,1), stroke .4s ease; }
+  .sp-ring-num{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-weight:700; color:var(--text); font-size:var(--text-3xl); letter-spacing:-.02em; }
+  .sp-ring-num i{ font-style:normal; font-size:var(--text-lg); color:var(--text-muted); margin-left:2px; align-self:flex-start; margin-top:10px; }
+  .sp-ready-label{ font-size:var(--text-md); font-weight:600; color:var(--text); margin-bottom:2px; }
+  .sp-ready-sub{ font-size:var(--text-sm); color:var(--text-muted); margin-bottom:var(--space-4); }
+  .sp-checklist{ list-style:none; margin:0; padding:0; text-align:left; display:flex; flex-direction:column; gap:2px; }
+  .sp-check-btn{ width:100%; display:flex; align-items:flex-start; gap:var(--space-2); background:transparent; border:0; padding:var(--space-2); border-radius:var(--radius-md); cursor:pointer; color:var(--text-dim); font-size:var(--text-sm); text-align:left; line-height:1.4; transition:background .15s ease,color .15s ease; font-family:inherit; }
+  .sp-check-btn:hover{ background:var(--navy-light); color:var(--text); }
+  .sp-check-btn:focus-visible{ outline:2px solid var(--teal); outline-offset:2px; }
+  .sp-check-btn svg{ flex:none; margin-top:1px; color:var(--text-muted); }
+  .sp-check-done{ display:flex; align-items:center; gap:var(--space-2); padding:var(--space-2); color:var(--text-dim); font-size:var(--text-sm); }
+  .sp-check-done svg{ color:#10B981; flex:none; }
+  .sp-preview{ padding:var(--space-5); }
+  .sp-preview-head{ display:flex; align-items:baseline; justify-content:space-between; gap:var(--space-2); margin-bottom:var(--space-3); }
+  .sp-preview-title{ font-size:var(--text-md); font-weight:600; color:var(--text); }
+  .sp-preview-sub{ font-size:var(--text-xs); color:var(--text-muted); }
+  .sp-chips{ display:flex; flex-wrap:wrap; gap:var(--space-2); margin-bottom:var(--space-3); }
+  .sp-chip{ font-family:inherit; font-size:var(--text-xs); color:var(--text-dim); background:var(--navy-light); border:1px solid var(--border); border-radius:var(--radius-full); padding:6px 12px; cursor:pointer; transition:border-color .15s ease,color .15s ease,transform .1s ease; }
+  .sp-chip:hover{ border-color:var(--teal); color:var(--text); }
+  .sp-chip:active{ transform:scale(.97); }
+  .sp-chip:focus-visible{ outline:2px solid var(--teal); outline-offset:2px; }
+  .sp-chip:disabled{ opacity:.5; cursor:default; }
+  .sp-chat{ display:flex; flex-direction:column; gap:var(--space-2); min-height:96px; max-height:260px; overflow-y:auto; padding:var(--space-2); background:var(--navy-light); border-radius:var(--radius-lg); margin-bottom:var(--space-3); }
+  .sp-empty{ margin:auto; text-align:center; color:var(--text-muted); font-size:var(--text-sm); padding:var(--space-4) var(--space-2); line-height:1.5; }
+  .sp-msg{ max-width:86%; padding:8px 12px; border-radius:14px; font-size:var(--text-sm); line-height:1.5; white-space:pre-wrap; word-wrap:break-word; }
+  .sp-msg-user{ align-self:flex-end; background:var(--teal); color:#fff; border-bottom-right-radius:4px; }
+  .sp-msg-bot{ align-self:flex-start; background:var(--navy); border:1px solid var(--border); color:var(--text); border-bottom-left-radius:4px; }
+  .sp-msg-error{ border-color:#F59E0B; color:var(--text-dim); }
+  .sp-typing{ display:flex; gap:4px; align-items:center; }
+  .sp-typing span{ width:6px; height:6px; border-radius:50%; background:var(--text-muted); animation:spBlink 1.2s infinite ease-in-out; }
+  .sp-typing span:nth-child(2){ animation-delay:.2s; } .sp-typing span:nth-child(3){ animation-delay:.4s; }
+  @keyframes spBlink{ 0%,80%,100%{ opacity:.3; transform:translateY(0);} 40%{ opacity:1; transform:translateY(-2px);} }
+  .sp-ask{ display:flex; gap:var(--space-2); }
+  .sp-ask input{ flex:1; height:40px; border:1px solid var(--border); border-radius:var(--radius-md); background:var(--navy); color:var(--text); padding:0 var(--space-3); font-size:var(--text-sm); font-family:inherit; }
+  .sp-ask input:focus{ outline:none; border-color:var(--teal); box-shadow:0 0 0 3px var(--teal-glow); }
+  .sp-ask button{ flex:none; width:40px; height:40px; display:flex; align-items:center; justify-content:center; background:var(--teal); color:#fff; border:0; border-radius:var(--radius-md); cursor:pointer; transition:background .15s ease,transform .1s ease; }
+  .sp-ask button:hover{ background:var(--teal-dark); } .sp-ask button:active{ transform:scale(.96); }
+  .sp-ask button:focus-visible{ outline:2px solid var(--teal); outline-offset:2px; }
+  .sp-ask button:disabled{ opacity:.5; cursor:default; }
+  .sp-dirty{ font-size:var(--text-xs); color:#B45309; margin-top:var(--space-2); display:flex; align-items:center; gap:6px; line-height:1.4; }
+  [data-theme="dark"] .sp-dirty{ color:#F59E0B; }
+  .sp-vis-hidden{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); border:0; }
+  @media (prefers-reduced-motion:reduce){ .sp-ring-fill{ transition:none; } .sp-typing span{ animation:none; } .sp-chip:active,.sp-ask button:active{ transform:none; } }
+  </style>
   <div class="settings-overlay" id="settingsPanel">
     <!-- Settings tab bar -->
     <div class="settings-tabs">
@@ -2026,6 +2081,8 @@
     <div class="settings-title">Business Profile</div>
     <div class="settings-sub">Tell Luna about your business. The more she knows, the better she can help your website visitors. Just write naturally — Luna reads everything and uses it to answer questions.</div>
 
+    <div class="sp-grid">
+    <div class="sp-main">
     <!-- Embed code — top of Settings, first thing the user sees -->
     <div class="settings-section" id="embedCodeSection">
       <h4>Embed Luna on your website</h4>
@@ -2083,6 +2140,49 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
       <button class="settings-save" id="settingsSaveBtn" onclick="window._saveSettings()">Save Profile</button>
       <span class="settings-saved" id="settingsSaved">Saved!</span>
     </div>
+    </div><!-- /sp-main -->
+
+    <aside class="sp-aside" id="spAside">
+      <div class="sp-card sp-readiness">
+        <div class="sp-ring-wrap">
+          <svg class="sp-ring" viewBox="0 0 120 120" role="img" aria-label="Luna readiness 0 percent">
+            <circle class="sp-ring-track" cx="60" cy="60" r="52"></circle>
+            <circle class="sp-ring-fill" id="spRingFill" cx="60" cy="60" r="52"></circle>
+          </svg>
+          <div class="sp-ring-num"><span id="spPct">0</span><i>%</i></div>
+        </div>
+        <div class="sp-ready-label" id="spLabel">Just getting started</div>
+        <div class="sp-ready-sub">How ready Luna is to help your visitors</div>
+        <ul class="sp-checklist" id="spChecklist"></ul>
+      </div>
+
+      <div class="sp-card sp-preview">
+        <div class="sp-preview-head">
+          <span class="sp-preview-title">Live preview</span>
+          <span class="sp-preview-sub">What your visitors see</span>
+        </div>
+        <div class="sp-chips" id="spChips">
+          <button type="button" class="sp-chip" data-q="How can I contact you?">How can I contact you?</button>
+          <button type="button" class="sp-chip" data-q="Are my bookings financially protected?">Financial protection?</button>
+          <button type="button" class="sp-chip" data-q="What do you specialise in?">What do you specialise in?</button>
+        </div>
+        <div class="sp-chat" id="spChat" aria-live="polite">
+          <div class="sp-empty" id="spEmpty">Tap a question to see how Luna answers using your profile.</div>
+        </div>
+        <div class="sp-ask">
+          <label class="sp-vis-hidden" for="spAskInput">Ask Luna a question</label>
+          <input id="spAskInput" type="text" placeholder="Ask Luna something..." autocomplete="off">
+          <button type="button" id="spAskBtn" aria-label="Send question">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+          </button>
+        </div>
+        <div class="sp-dirty" id="spDirty" style="display:none">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"></path><path d="M12 17h.01"></path><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path></svg>
+          <span>Profile changed — save to refresh the preview</span>
+        </div>
+      </div>
+    </aside>
+    </div><!-- /sp-grid -->
 
     <hr style="border:none;border-top:1px solid var(--border);margin:32px 0">
 
@@ -7718,5 +7818,164 @@ setTimeout(function () {
 <script>window.LUNA_COPILOT_ENDPOINT = '/api/luna-copilot';</script>
 <script src="/dashboard-copilot.js"></script>
 
+<script>
+/* Settings Hero 1 — readiness ring + live preview. Self-contained IIFE, no deps. */
+(function(){
+  var C = 2 * Math.PI * 52; /* ring circumference (r=52) */
+  function $(id){ return document.getElementById(id); }
+  function val(id){ var e = $(id); return e ? (e.value || '').trim() : ''; }
+  function clientName(){ return window.LUNA_CLIENT_NAME || (window.CONFIG && window.CONFIG.CLIENT_NAME) || ''; }
+
+  function trainUrlCount(){ var t = val('setTrainUrls'); if(!t) return 0; return t.split(/\n+/).map(function(s){return s.trim();}).filter(Boolean).length; }
+  function scannedCount(){
+    var sec = $('trainResultsSection');
+    if(sec && sec.style.display !== 'none'){ var n = $('trainResults'); if(n && n.children) return n.children.length; }
+    return 0;
+  }
+  function criteria(){
+    var d = val('setDescription');
+    return [
+      { ok: d.length >= 40,  w: 20, label: 'Add a description of your business', focus: 'setDescription' },
+      { ok: d.length >= 200, w: 15, label: 'Add more detail — what you sell, specialisms, financial protection', focus: 'setDescription' },
+      { ok: !!val('setPhone'),   w: 10, label: 'Add your phone number', focus: 'setPhone' },
+      { ok: !!val('setWebsite'), w: 10, label: 'Add your website', focus: 'setWebsite' },
+      { ok: !!val('setAddress'), w: 10, label: 'Add your business address', focus: 'setAddress' },
+      { ok: !!val('setHours'),   w: 10, label: 'Add your opening hours', focus: 'setHours' },
+      { ok: trainUrlCount() >= 1, w: 10, label: 'Add at least one website page for Luna to learn from', focus: 'setTrainUrls' },
+      { ok: scannedCount() >= 1,  w: 15, label: 'Scan your pages so Luna learns your content', focus: 'setTrainUrls' }
+    ];
+  }
+  function band(p){
+    if(p >= 85) return { c: '#10B981', t: 'Luna is ready to shine' };
+    if(p >= 60) return { c: 'var(--teal)', t: 'Coming together nicely' };
+    if(p >= 30) return { c: '#F59E0B', t: 'Good start — keep going' };
+    return { c: '#F59E0B', t: 'Just getting started' };
+  }
+  var DOT = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"></circle></svg>';
+  var TICK = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+
+  function render(){
+    var cs = criteria(), got = 0, tot = 0;
+    cs.forEach(function(c){ tot += c.w; if(c.ok) got += c.w; });
+    var pct = tot ? Math.round(got / tot * 100) : 0;
+    var b = band(pct);
+    var fill = $('spRingFill');
+    if(fill){ fill.style.strokeDashoffset = String(C * (1 - pct / 100)); fill.style.stroke = b.c; }
+    var num = $('spPct'); if(num) num.textContent = String(pct);
+    var lab = $('spLabel'); if(lab) lab.textContent = b.t;
+    var svg = document.querySelector('.sp-ring'); if(svg) svg.setAttribute('aria-label', 'Luna readiness ' + pct + ' percent');
+    var ul = $('spChecklist');
+    if(ul){
+      ul.innerHTML = '';
+      var todo = cs.filter(function(c){ return !c.ok; });
+      if(!todo.length){
+        var done = document.createElement('li');
+        done.className = 'sp-check-done';
+        done.innerHTML = TICK + '<span>Everything Luna needs is in place.</span>';
+        ul.appendChild(done);
+      } else {
+        todo.slice(0, 4).forEach(function(c){
+          var li = document.createElement('li');
+          var btn = document.createElement('button');
+          btn.type = 'button'; btn.className = 'sp-check-btn';
+          btn.innerHTML = DOT + '<span>' + c.label + '</span>';
+          btn.addEventListener('click', function(){
+            var f = $(c.focus);
+            if(f){ f.scrollIntoView({ behavior: 'smooth', block: 'center' }); try{ f.focus({ preventScroll: true }); }catch(e){ f.focus(); } }
+          });
+          li.appendChild(btn);
+          ul.appendChild(li);
+        });
+      }
+    }
+  }
+
+  /* ---- live preview ---- */
+  var inFlight = false, lastQ = '', previewUsed = false, dirty = false;
+  function markDirty(){ if(previewUsed && !dirty){ dirty = true; var h = $('spDirty'); if(h) h.style.display = ''; } }
+  function strip(t){
+    return (t || '')
+      .replace(/\[BLOCK\][\s\S]*?\[\/BLOCK\]/g, '')
+      .replace(/\[FQ\][^\n]*/g, '')
+      .replace(/\[BOOKING_LOOKUP:[^\]]*\]/g, '')
+      .replace(/\[SEARCH:[^\]]*\]/g, '')
+      .replace(/<\s*(blank_line|break|newline|br)\s*\/?\s*>/gi, '\n')
+      .replace(/\n{3,}/g, '\n\n').trim();
+  }
+  function setBusy(b){
+    var inp = $('spAskInput'), btn = $('spAskBtn');
+    if(inp) inp.disabled = b; if(btn) btn.disabled = b;
+    document.querySelectorAll('.sp-chip').forEach(function(c){ c.disabled = b; });
+  }
+  function bubble(role, text, typing){
+    var chat = $('spChat'); if(!chat) return null;
+    var empty = $('spEmpty'); if(empty) empty.remove();
+    var d = document.createElement('div');
+    d.className = 'sp-msg sp-msg-' + role;
+    if(typing){ d.classList.add('sp-typing'); d.innerHTML = '<span></span><span></span><span></span>'; }
+    else { d.textContent = text; }
+    chat.appendChild(d); chat.scrollTop = chat.scrollHeight;
+    return d;
+  }
+  function ask(q){
+    if(inFlight || !q) return;
+    var cn = clientName();
+    if(!cn){ bubble('bot', 'The preview will work once your account finishes loading — give it a moment and try again.'); return; }
+    inFlight = true; previewUsed = true; lastQ = q; setBusy(true);
+    bubble('user', q);
+    var typing = bubble('bot', '', true);
+    fetch('/api/luna-chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientName: cn, message: q, history: [] })
+    })
+    .then(function(r){ if(!r.ok) throw new Error('http ' + r.status); return r.json(); })
+    .then(function(j){
+      if(typing) typing.remove();
+      var txt = strip(j && j.reply);
+      if(!txt) txt = "I couldn't find that in your profile yet — add it on the left and I'll know next time.";
+      bubble('bot', txt);
+    })
+    .catch(function(){
+      if(typing) typing.remove();
+      var e = bubble('bot', "Couldn't reach Luna just now. Try again in a moment.");
+      if(e) e.classList.add('sp-msg-error');
+    })
+    .finally(function(){
+      inFlight = false; setBusy(false);
+      dirty = false; var h = $('spDirty'); if(h) h.style.display = 'none';
+    });
+  }
+
+  /* ---- wiring ---- */
+  var dt;
+  function schedule(){ clearTimeout(dt); dt = setTimeout(render, 200); }
+  ['setDescription','setPhone','setWebsite','setAddress','setHours','setTrainUrls'].forEach(function(id){
+    var e = $(id); if(e) e.addEventListener('input', function(){ schedule(); markDirty(); });
+  });
+  document.querySelectorAll('.sp-chip').forEach(function(c){
+    c.addEventListener('click', function(){ ask(c.getAttribute('data-q')); });
+  });
+  (function(){
+    var inp = $('spAskInput'), btn = $('spAskBtn');
+    if(btn) btn.addEventListener('click', function(){ var q = inp ? inp.value.trim() : ''; if(q){ inp.value = ''; ask(q); } });
+    if(inp) inp.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); var q = inp.value.trim(); if(q){ inp.value = ''; ask(q); } } });
+  })();
+  /* refresh after a profile save (save button lives in .sp-main) */
+  document.addEventListener('click', function(e){
+    var t = e.target.closest && e.target.closest('#settingsSaveBtn');
+    if(t){ setTimeout(function(){ render(); if(previewUsed && lastQ) ask(lastQ); }, 1700); }
+  });
+  /* recompute when the settings panel opens (profile loads async, so sample a few times) */
+  var panel = $('settingsPanel');
+  if(panel && 'MutationObserver' in window){
+    var mo = new MutationObserver(function(){
+      if(panel.classList.contains('active')){ render(); setTimeout(render, 700); setTimeout(render, 1600); }
+    });
+    mo.observe(panel, { attributes: true, attributeFilter: ['class'] });
+  }
+  render();
+})();
+</script>
 </body>
 </html>
