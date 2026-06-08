@@ -1343,6 +1343,10 @@ function rebuildConfig(apiConfig) {
   Object.keys(D).forEach(function(k) {
     C[k] = A[k] !== undefined ? A[k] : (W[k] !== undefined ? W[k] : (attr(k) || D[k]));
   });
+  /* Security: the widget holds NO Airtable credential — conversation
+     persistence is server-side via /api/conversation. Scrub these even if a
+     stale config source still supplies them, so no token can linger client-side. */
+  C.airtableKey = ""; C.airtableBase = ""; C.convTable = "";
   /* Map API theme fields (backwards compat with old colour-by-colour config) */
   if (A.theme && typeof A.theme === "object") {
     if (A.theme.brandColor) C.brandColor = A.theme.brandColor;
@@ -3662,18 +3666,8 @@ function ensureConversationStarted() {
     messages: msgs.filter(function(m){return m.role !== "widget";}).map(function(m){ return {from: m.role === "user" ? "visitor" : m.role, text: m.content, timestamp: new Date(m.ts).toISOString()}; })
   });
 
-  if (C.airtableKey && C.airtableBase && C.convTable) {
-    var botHistory = msgs.filter(function(m){return m.role!=="system" && m.role!=="widget";}).map(function(m){return m.role+": "+m.content;}).join("\n");
-    fetch("https://api.airtable.com/v0/"+C.airtableBase+"/"+C.convTable, {
-      method:"POST",
-      headers:{"Authorization":"Bearer "+C.airtableKey,"Content-Type":"application/json"},
-      body:JSON.stringify({records:[{fields:{
-        "fldgQj90mYwsVO4yK":convId,"fldqx6k7WvrqE8BW1":userName||"Anonymous",
-        "fldYdZq59FCpKQ7Hf":"Bot","fldSoy7BMqyzVb5pp":now,"fld1GghMiUnAmdtow":now,
-        "fldZ38GYN4XbHGl03":botHistory
-      }}],typecast:true})
-    }).catch(function(e){ console.warn("Airtable conv create error:", e); });
-  }
+  var botHistory = msgs.filter(function(m){return m.role!=="system" && m.role!=="widget";}).map(function(m){return m.role+": "+m.content;}).join("\n");
+  persistConversation({ visitorName: userName || "Anonymous", handler: "Bot", startedAt: now, history: botHistory });
 }
 
 /* ─── TRANSLATION ────────────────────────────────────────── */
@@ -3687,6 +3681,22 @@ async function translateText(text, targetLang) {
     if (res.ok) { var data = await res.json(); return data.translated || data.text || text; }
   } catch(e) { console.warn("Luna widget: translation failed:", e.message); }
   return text;
+}
+
+/* ─── PERSIST CONVERSATION (server proxy — widget never touches Airtable) ── */
+function persistConversation(payload) {
+  // Conversation create/update goes through our server, which holds the
+  // Airtable key. The widget carries no Airtable credential of any kind.
+  try {
+    var url = C.endpoint.replace("/api/luna-chat", "/api/conversation");
+    var data = { convId: convId, clientName: C.clientName || "" };
+    if (payload) { for (var k in payload) { if (payload[k] !== undefined && payload[k] !== null) data[k] = payload[k]; } }
+    return fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data)
+    }).catch(function(e){ console.warn("Luna widget: conversation persist failed:", e.message); });
+  } catch (e) { console.warn("Luna widget: conversation persist error:", e.message); }
 }
 
 function publishMessage(from, text) {
@@ -3788,18 +3798,8 @@ function doLeaveMessage() {
       messages: [{from: "visitor", text: "[Left a message] " + message, timestamp: now}]
     });
   }
-  if (C.airtableKey && C.airtableBase && C.convTable) {
-    var botHistory = msgs.filter(function(m){return m.role!=="system" && m.role!=="widget";}).map(function(m){return m.role+": "+m.content;}).join("\n");
-    fetch("https://api.airtable.com/v0/"+C.airtableBase+"/"+C.convTable, {
-      method:"POST",
-      headers:{"Authorization":"Bearer "+C.airtableKey,"Content-Type":"application/json"},
-      body:JSON.stringify({records:[{fields:{
-        "fldgQj90mYwsVO4yK":convId,"fldqx6k7WvrqE8BW1":userName||"Anonymous","fldZXcvl7k3FS5Gu7":email,
-        "fldYdZq59FCpKQ7Hf":"Closed","fldSoy7BMqyzVb5pp":now,"fld1GghMiUnAmdtow":now,
-        "fldZ38GYN4XbHGl03":"[Left a message] "+message+"\n\n--- Bot history ---\n"+botHistory
-      }}],typecast:true})
-    }).catch(function(e){ console.warn("Airtable leave-msg error:", e); });
-  }
+  var botHistory = msgs.filter(function(m){return m.role!=="system" && m.role!=="widget";}).map(function(m){return m.role+": "+m.content;}).join("\n");
+  persistConversation({ visitorName: userName || "Anonymous", email: email, handler: "Closed", startedAt: now, history: "[Left a message] "+message+"\n\n--- Bot history ---\n"+botHistory });
   if (ov) ov.remove();
   sysMsg("Message sent! We'll be in touch soon.");
 }
@@ -4492,20 +4492,7 @@ async function escalateToHuman() {
     ensureConversationStarted();
     publishHandlerChange("waiting");
 
-    if (C.airtableKey && C.airtableBase && C.convTable) {
-      try {
-        var searchUrl = "https://api.airtable.com/v0/"+C.airtableBase+"/"+C.convTable+"?filterByFormula="+encodeURIComponent("{ConversationID}='"+convId+"'")+"&maxRecords=1";
-        var sRes = await fetch(searchUrl, {headers:{"Authorization":"Bearer "+C.airtableKey}});
-        var sData = await sRes.json();
-        if (sData.records && sData.records.length > 0) {
-          await fetch("https://api.airtable.com/v0/"+C.airtableBase+"/"+C.convTable+"/"+sData.records[0].id, {
-            method:"PATCH",
-            headers:{"Authorization":"Bearer "+C.airtableKey,"Content-Type":"application/json"},
-            body:JSON.stringify({fields:{"fldYdZq59FCpKQ7Hf":"Waiting"},typecast:true})
-          });
-        }
-      } catch(e) { console.warn("Airtable escalation error:", e); }
-    }
+    persistConversation({ handler: "Waiting" });
 
     liveMode = true;
     $escBar.classList.remove("active");
