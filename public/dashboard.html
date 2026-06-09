@@ -6206,6 +6206,45 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     }).join('');
   };
 
+  // Rebuild the per-page Knowledge Sources list from previously-saved profile data,
+  // so the living list (with per-page Rescan/Remove) shows on load, not just a summary.
+  // Primary path parses the saved knowledge blob (so every row keeps its real content,
+  // which keeps Save/Remove safe). Falls back to a URL-only list for older saves.
+  window._restoreKnowledgeSources = function(p) {
+    if (!p) return 0;
+    var entries = [];
+    var raw = String(p.scannedKnowledge || '').trim();
+    if (raw) {
+      if (raw.indexOf('--- PAGE: ') === 0) raw = raw.slice('--- PAGE: '.length);
+      raw.split('\n\n--- PAGE: ').forEach(function(block) {
+        var m = block.match(/^([\s\S]*?) ---\nURL: ([^\n]*)\n([\s\S]*)$/);
+        if (!m) return;
+        var content = m[3] || '';
+        entries.push({
+          url: (m[2] || '').trim() || (m[1] || '').trim(),
+          title: (m[1] || '').trim(),
+          content: content,
+          charCount: content.length,
+          wordCount: content.trim() ? content.trim().split(/\s+/).length : 0,
+          scannedAt: p.scannedAt || null,
+          status: 'success'
+        });
+      });
+    }
+    if (!entries.length && p.scannedUrls) {
+      String(p.scannedUrls).split(/\n+/).map(function(s){ return s.trim(); }).filter(Boolean).forEach(function(u) {
+        entries.push({ url: u, title: u, content: '', charCount: 0, wordCount: 0, scannedAt: p.scannedAt || null, status: 'success', restored: true });
+      });
+    }
+    if (entries.length) {
+      scannedPages = entries;
+      var sec = document.getElementById('trainResultsSection');
+      if (sec) sec.style.display = 'block';
+      window._renderScannedPages();
+    }
+    return entries.length;
+  };
+
   window._saveScannedContent = async function() {
     var successPages = scannedPages.filter(function(p) { return p.status === 'success'; });
     // Build a combined knowledge text from all scanned pages
@@ -6266,6 +6305,9 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
         if (summaryDate && p.scannedAt) summaryDate.textContent = 'Last scan: ' + new Date(p.scannedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
         if (summaryChars && p.scannedKnowledge) summaryChars.textContent = (p.scannedKnowledge.length / 1024).toFixed(1) + ' KB of knowledge';
         document.getElementById('trainSummaryBar').style.display = 'flex';
+        // Rebuild the per-page Knowledge Sources list from saved data so it shows on load,
+        // not just the aggregate summary. Each row regains its content, Rescan and Remove.
+        try { window._restoreKnowledgeSources(p); } catch(e) {}
       }
 
       // Auto-rescan checkbox
