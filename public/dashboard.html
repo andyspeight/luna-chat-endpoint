@@ -2097,6 +2097,44 @@
   .sp2-topic .tx i{ font-style:normal; color:var(--text-muted); }
   @media (prefers-reduced-motion:reduce){ .sp2-draft.is-loading svg{ animation:none; } .sp2-draft:active{ transform:none; } }
   </style>
+  <style id="sp3css">
+  /* Settings Hero 3 + 4 — install status pill, platform install panels, knowledge-source rescan. */
+  .sp3-pill{ display:inline-flex; align-items:center; gap:8px; font-size:var(--text-xs); font-weight:600; padding:6px 12px; border-radius:var(--radius-full); border:1px solid var(--border); margin-bottom:var(--space-2); }
+  .sp3-pill .dot{ width:8px; height:8px; border-radius:50%; flex:none; }
+  .sp3-pill.is-live{ color:var(--green); background:var(--green-glow); border-color:var(--green); }
+  .sp3-pill.is-live .dot{ background:var(--green); animation:sp3pulse 2s infinite; }
+  .sp3-pill.is-idle{ color:#B45309; background:rgba(245,158,11,0.12); border-color:#F59E0B; }
+  [data-theme="dark"] .sp3-pill.is-idle{ color:#F59E0B; }
+  .sp3-pill.is-idle .dot{ background:#F59E0B; }
+  @keyframes sp3pulse{ 0%,100%{ opacity:1; } 50%{ opacity:.35; } }
+  .sp3-pill-sub{ display:block; font-size:var(--text-xs); color:var(--text-muted); margin:0 0 var(--space-3) 2px; line-height:1.5; }
+  .sp3-install{ margin-top:var(--space-4); border-top:1px solid var(--border); padding-top:var(--space-4); }
+  .sp3-install-title{ font-size:var(--text-sm); font-weight:600; color:var(--text); margin-bottom:var(--space-3); }
+  .sp3-tabs{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:var(--space-3); }
+  .sp3-tab{ font-family:inherit; font-size:var(--text-xs); font-weight:600; color:var(--text-dim); background:var(--navy-light); border:1px solid var(--border); border-radius:var(--radius-full); padding:6px 12px; cursor:pointer; transition:background .15s ease,color .15s ease,border-color .15s ease; }
+  .sp3-tab:hover{ color:var(--text); }
+  .sp3-tab.active{ background:var(--teal-glow); border-color:var(--teal); color:var(--teal-dark); }
+  [data-theme="dark"] .sp3-tab.active{ color:var(--teal); }
+  .sp3-tab:focus-visible{ outline:2px solid var(--teal); outline-offset:2px; }
+  .sp3-panel{ display:none; } .sp3-panel.active{ display:block; }
+  .sp3-steps{ margin:0 0 var(--space-3) 0; padding-left:var(--space-5); display:flex; flex-direction:column; gap:6px; }
+  .sp3-steps li{ font-size:var(--text-sm); color:var(--text-dim); line-height:1.5; }
+  .sp3-steps code{ background:var(--navy-light); border:1px solid var(--border); padding:1px 5px; border-radius:4px; font-family:var(--mono); font-size:var(--text-xs); color:var(--text); }
+  .sp3-codewrap{ position:relative; }
+  .sp3-code{ background:var(--navy-light); border:1px solid var(--border); border-radius:var(--radius-md); padding:var(--space-3) 70px var(--space-3) var(--space-3); font-family:var(--mono); font-size:var(--text-xs); color:var(--text); white-space:pre-wrap; word-break:break-all; margin:0; line-height:1.5; }
+  .sp3-copy{ position:absolute; top:8px; right:8px; font-family:inherit; font-size:var(--text-xs); font-weight:600; color:#fff; background:var(--teal); border:0; border-radius:var(--radius-sm); padding:5px 10px; cursor:pointer; transition:background .15s ease,transform .1s ease; }
+  .sp3-copy:hover{ background:var(--teal-dark); } .sp3-copy:active{ transform:scale(.96); }
+  .sp3-copy:focus-visible{ outline:2px solid var(--teal); outline-offset:2px; }
+  .sp3-copy.copied{ background:var(--green); }
+  .scan-page-actions{ display:flex; gap:2px; flex-shrink:0; }
+  .scan-page-rescan{ background:none; border:none; color:var(--text-muted); cursor:pointer; padding:var(--space-1); border-radius:var(--radius-sm); transition:color .15s,background .15s; flex-shrink:0; }
+  .scan-page-rescan:hover{ color:var(--teal); background:var(--teal-glow); }
+  .scan-page-rescan svg{ display:block; }
+  .scan-page-rescan:focus-visible,.scan-page-remove:focus-visible{ outline:2px solid var(--teal); outline-offset:1px; }
+  .scan-page-tag{ font-size:var(--text-xs); font-weight:600; }
+  .scan-page-tag.success{ color:var(--green); } .scan-page-tag.error{ color:var(--red); } .scan-page-tag.scanning{ color:var(--teal); }
+  @media (prefers-reduced-motion:reduce){ .sp3-pill.is-live .dot{ animation:none; } .sp3-tab:active,.sp3-copy:active{ transform:none; } }
+  </style>
   <div class="settings-overlay" id="settingsPanel">
     <!-- Settings tab bar -->
     <div class="settings-tabs">
@@ -2119,6 +2157,8 @@
     <div class="sp-main">
     <!-- Embed code — top of Settings, first thing the user sees -->
     <div class="settings-section" id="embedCodeSection">
+      <span class="sp3-pill is-idle" id="sp3Pill"><span class="dot"></span><span id="sp3PillText">Checking…</span></span>
+      <span class="sp3-pill-sub" id="sp3PillSub"></span>
       <h4>Embed Luna on your website</h4>
       <div class="settings-hint" style="margin-top:-4px;margin-bottom:12px">Copy this one line and paste it into your website, just before the closing &lt;/body&gt; tag. Luna will start working on every page automatically.</div>
       <div class="embed-codewrap">
@@ -2126,6 +2166,17 @@
         <button type="button" class="embed-copy" id="embedCopyBtn" onclick="window._copyEmbedSnippetInline(this)">Copy</button>
       </div>
       <div class="settings-hint" style="margin-top:10px">Need to test it first? Add <code style="background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:4px;font-size:11px">?lunaTest=1</code> to any page on your site to verify Luna loads before going live.</div>
+      <div class="sp3-install">
+        <div class="sp3-install-title">How to add it to your site</div>
+        <div class="sp3-tabs" id="sp3Tabs" role="tablist">
+          <button type="button" class="sp3-tab active" data-p="generic">Any website</button>
+          <button type="button" class="sp3-tab" data-p="wordpress">WordPress</button>
+          <button type="button" class="sp3-tab" data-p="wix">Wix</button>
+          <button type="button" class="sp3-tab" data-p="shopify">Shopify</button>
+          <button type="button" class="sp3-tab" data-p="duda">Duda</button>
+        </div>
+        <div id="sp3Panels"></div>
+      </div>
     </div>
 
     <div class="settings-section">
@@ -2256,7 +2307,8 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     </div>
 
     <div class="settings-section" id="trainResultsSection" style="display:none">
-      <h4>Scanned Pages</h4>
+      <h4>Knowledge Sources</h4>
+      <div class="settings-hint" style="margin-top:-4px;margin-bottom:12px">Each page Luna has learned from. Rescan one if its content has changed, or remove pages you no longer want her to use.</div>
       <div id="trainResults"></div>
       <div style="margin-top:var(--space-3);padding:var(--space-3);border-radius:var(--radius-md);background:var(--navy-light);display:flex;align-items:center;gap:var(--space-3)" id="trainSummaryBar" style="display:none">
         <div style="flex:1">
@@ -6069,17 +6121,8 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     var progressEl = document.querySelector('.scan-progress');
     if (progressEl) progressEl.remove();
 
-    // Add remove buttons
-    document.querySelectorAll('.scan-page-item').forEach(function(item, idx) {
-      if (!item.querySelector('.scan-page-remove')) {
-        var removeBtn = document.createElement('button');
-        removeBtn.className = 'scan-page-remove';
-        removeBtn.title = 'Remove';
-        removeBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-        removeBtn.onclick = function() { window._removeScanPage(idx); };
-        item.appendChild(removeBtn);
-      }
-    });
+    // Normalise the list from the scannedPages array (status tags, per-row rescan + remove)
+    window._renderScannedPages();
 
     // Save scanned content to server
     window._saveScannedContent();
@@ -6097,6 +6140,32 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     window._saveScannedContent();
   };
 
+  window._rescanOne = async function(idx) {
+    var p = scannedPages[idx];
+    if (!p || !p.url) return;
+    var url = p.url;
+    scannedPages[idx] = { url: url, status: 'scanning', scannedAt: new Date().toISOString() };
+    window._renderScannedPages();
+    try {
+      var res = await fetch('https://luna-chat-endpoint.vercel.app/api/scan-page', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Client-Name': CONFIG.CLIENT_NAME },
+        body: JSON.stringify({ url: url })
+      });
+      var data = await res.json();
+      if (res.ok && data.success) {
+        var content = data.content || '';
+        scannedPages[idx] = { url: url, title: data.title || url, content: content, charCount: content.length, wordCount: content.split(/\s+/).length, scannedAt: new Date().toISOString(), status: 'success' };
+      } else {
+        throw new Error(data.error || 'Scan failed');
+      }
+    } catch (e) {
+      scannedPages[idx] = { url: url, status: 'error', error: e.message, scannedAt: new Date().toISOString() };
+    }
+    window._renderScannedPages();
+    window._saveScannedContent();
+  };
+
   window._renderScannedPages = function() {
     var resultsEl = document.getElementById('trainResults');
     if (scannedPages.length === 0) {
@@ -6104,22 +6173,35 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       return;
     }
     resultsEl.innerHTML = scannedPages.map(function(p, i) {
-      var isOk = p.status === 'success';
-      var statusClass = isOk ? 'success' : 'error';
-      var icon = isOk
+      var st = p.status === 'success' ? 'success' : (p.status === 'scanning' ? 'scanning' : 'error');
+      var isOk = st === 'success';
+      var icon = st === 'success'
         ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>'
+        : st === 'scanning'
+        ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.2-8.6"/></svg>'
         : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-      var preview = isOk ? (p.content || '').slice(0, 200).replace(/\s+/g, ' ') : (p.error || 'Failed');
+      var tag = st === 'success' ? 'Scanned' : (st === 'scanning' ? 'Rescanning…' : 'Failed');
+      var when = '';
+      try { if (p.scannedAt) when = new Date(p.scannedAt).toLocaleDateString('en-GB', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }); } catch(e) {}
+      var preview = isOk ? (p.content || '').slice(0, 200).replace(/\s+/g, ' ') : (st === 'error' ? (p.error || 'Failed to scan') : '');
+      var actions = (st === 'scanning') ? '' :
+        '<div class="scan-page-actions">'
+        + '<button class="scan-page-rescan" title="Rescan this page" aria-label="Rescan this page" onclick="window._rescanOne(' + i + ')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>'
+        + '<button class="scan-page-remove" title="Remove" aria-label="Remove this page" onclick="window._removeScanPage(' + i + ')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>'
+        + '</div>';
       return '<div class="scan-page-item">'
-        + '<div class="scan-page-status ' + statusClass + '">' + icon + '</div>'
+        + '<div class="scan-page-status ' + st + '">' + icon + '</div>'
         + '<div class="scan-page-info">'
         + '<div class="scan-page-url">' + esc(p.title || p.url) + '</div>'
-        + '<div class="scan-page-meta"><span>' + esc(p.url.replace(/^https?:\/\//, '').slice(0, 60)) + '</span>'
+        + '<div class="scan-page-meta">'
+        + '<span class="scan-page-tag ' + st + '">' + tag + '</span>'
+        + '<span>' + esc(p.url.replace(/^https?:\/\//, '').slice(0, 60)) + '</span>'
         + (isOk ? '<span>' + (p.wordCount || 0).toLocaleString() + ' words</span>' : '')
+        + (when ? '<span>' + when + '</span>' : '')
         + '</div>'
         + (preview ? '<div class="scan-page-preview">' + esc(preview) + (isOk ? '...' : '') + '</div>' : '')
         + '</div>'
-        + '<button class="scan-page-remove" title="Remove" onclick="window._removeScanPage(' + i + ')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>'
+        + actions
         + '</div>';
     }).join('');
   };
@@ -8117,6 +8199,78 @@ setTimeout(function () {
     mo.observe(panel, { attributes:true, attributeFilter:['class'] });
   }
   renderTopics();
+})();
+</script>
+<script>
+/* Settings Hero 3 — install status pill (real activity) + platform install panels. Self-contained IIFE. */
+(function(){
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+
+  function snippet(){
+    var el = $('embedCodeSnippet');
+    var t = el && el.textContent ? el.textContent.trim() : '';
+    if(t) return t;
+    var name = window.LUNA_CLIENT_NAME || '';
+    return '<scr' + 'ipt src="https://chat.travelify.io/widget-core.js" data-clientName="' + name + '" async><\/scr' + 'ipt>';
+  }
+
+  function renderPill(){
+    var pill = $('sp3Pill'), txt = $('sp3PillText'), sub = $('sp3PillSub');
+    if(!pill) return;
+    var n = 0; try { n = Object.keys(window.conversations || {}).length; } catch(e){}
+    if(n > 0){
+      pill.className = 'sp3-pill is-live';
+      if(txt) txt.textContent = 'Luna is live on your site';
+      if(sub) sub.textContent = 'She has handled ' + n.toLocaleString() + ' conversation' + (n === 1 ? '' : 's') + ' from your website.';
+    } else {
+      pill.className = 'sp3-pill is-idle';
+      if(txt) txt.textContent = 'No activity yet';
+      if(sub) sub.textContent = 'Paste the code below on your site. This turns green once Luna handles her first chat. Tip: add ?lunaTest=1 to any page to check she loads.';
+    }
+  }
+
+  var PLATFORMS = [
+    { id:'generic',   steps:['Open your site\u2019s HTML, or your theme\u2019s footer file.','Paste the line just before the closing &lt;/body&gt; tag.','Save and publish. Luna then works on every page.'] },
+    { id:'wordpress', steps:['Go to Appearance \u2192 Theme File Editor \u2192 <code>footer.php</code> and paste it before &lt;/body&gt;.','Or, simpler: install a header &amp; footer plugin (such as WPCode) and paste the line into the Footer / Body section.','Update the file, or save the plugin snippet.'] },
+    { id:'wix',       steps:['In your Wix dashboard, open Settings \u2192 Custom Code.','Click + Add Custom Code and paste the line.','Set it to load on All pages, place it at End of Body, then apply.'] },
+    { id:'shopify',   steps:['In Shopify admin, go to Online Store \u2192 Themes.','Click \u22ef \u2192 Edit code, then open <code>theme.liquid</code>.','Paste the line just before &lt;/body&gt; and Save.'] },
+    { id:'duda',      steps:['In the Duda editor, open Site \u2192 Settings (or Developer Mode).','Paste the line into Head HTML, or the body-close section.','Save and republish your site.'] }
+  ];
+  function renderPanels(){
+    var host = $('sp3Panels'); if(!host) return;
+    var code = snippet();
+    host.innerHTML = PLATFORMS.map(function(p, i){
+      var steps = '<ol class="sp3-steps">' + p.steps.map(function(s){ return '<li>' + s + '</li>'; }).join('') + '</ol>';
+      var box = '<div class="sp3-codewrap"><pre class="sp3-code">' + esc(code) + '</pre><button type="button" class="sp3-copy">Copy</button></div>';
+      return '<div class="sp3-panel' + (i === 0 ? ' active' : '') + '" data-panel="' + p.id + '">' + steps + box + '</div>';
+    }).join('');
+    host.querySelectorAll('.sp3-copy').forEach(function(btn){ btn.addEventListener('click', function(){ copy(code, btn); }); });
+  }
+  function copy(text, btn){
+    function done(){ var o = btn.textContent; btn.textContent = 'Copied!'; btn.classList.add('copied'); setTimeout(function(){ btn.textContent = o; btn.classList.remove('copied'); }, 1500); }
+    if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(done).catch(function(){ fallback(text); done(); }); }
+    else { fallback(text); done(); }
+  }
+  function fallback(text){ try{ var ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }catch(e){} }
+
+  var tabs = $('sp3Tabs');
+  if(tabs){
+    tabs.addEventListener('click', function(e){
+      var t = e.target.closest ? e.target.closest('.sp3-tab') : null; if(!t) return;
+      var p = t.getAttribute('data-p');
+      tabs.querySelectorAll('.sp3-tab').forEach(function(x){ x.classList.toggle('active', x === t); });
+      var host = $('sp3Panels'); if(host) host.querySelectorAll('.sp3-panel').forEach(function(pan){ pan.classList.toggle('active', pan.getAttribute('data-panel') === p); });
+    });
+  }
+
+  function refresh(){ renderPill(); renderPanels(); }
+  var panel = $('settingsPanel');
+  if(panel && 'MutationObserver' in window){
+    var mo = new MutationObserver(function(){ if(panel.classList.contains('active')){ refresh(); setTimeout(refresh, 800); } });
+    mo.observe(panel, { attributes:true, attributeFilter:['class'] });
+  }
+  refresh();
 })();
 </script>
 </body>
