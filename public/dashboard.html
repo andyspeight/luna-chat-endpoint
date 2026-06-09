@@ -2126,10 +2126,23 @@
   .sp3-copy:hover{ background:var(--teal-dark); } .sp3-copy:active{ transform:scale(.96); }
   .sp3-copy:focus-visible{ outline:2px solid var(--teal); outline-offset:2px; }
   .sp3-copy.copied{ background:var(--green); }
-  .scan-page-actions{ display:flex; gap:2px; flex-shrink:0; }
-  .scan-page-rescan{ background:none; border:none; color:var(--text-muted); cursor:pointer; padding:var(--space-1); border-radius:var(--radius-sm); transition:color .15s,background .15s; flex-shrink:0; }
-  .scan-page-rescan:hover{ color:var(--teal); background:var(--teal-glow); }
+  .scan-page-actions{ display:flex; gap:6px; flex-shrink:0; align-items:flex-start; }
+  .scan-page-rescan{ display:inline-flex; align-items:center; gap:5px; font-family:inherit; font-size:var(--text-xs); font-weight:600; color:var(--text-dim); background:var(--navy-light); border:1px solid var(--border); cursor:pointer; padding:5px 10px; border-radius:var(--radius-sm); transition:color .15s,background .15s,border-color .15s; flex-shrink:0; white-space:nowrap; }
+  .scan-page-rescan:hover{ color:var(--teal-dark); background:var(--teal-glow); border-color:var(--teal); }
+  [data-theme="dark"] .scan-page-rescan:hover{ color:var(--teal); }
   .scan-page-rescan svg{ display:block; }
+  .scan-page-rescan[disabled]{ opacity:.55; cursor:default; }
+  .scan-page-toggle{ margin-top:var(--space-2); display:inline-flex; align-items:center; gap:4px; background:none; border:none; padding:0; font-family:inherit; font-size:var(--text-xs); font-weight:600; color:var(--teal-dark); cursor:pointer; }
+  [data-theme="dark"] .scan-page-toggle{ color:var(--teal); }
+  .scan-page-toggle:hover .lbl{ text-decoration:underline; }
+  .scan-page-toggle:focus-visible{ outline:2px solid var(--teal); outline-offset:2px; }
+  .scan-page-toggle .chev{ transition:transform .15s ease; }
+  .scan-page-toggle[aria-expanded="true"] .chev{ transform:rotate(180deg); }
+  .scan-page-detail[hidden]{ display:none; }
+  .scan-page-detail{ margin-top:var(--space-2); border-top:1px dashed var(--border); padding-top:var(--space-2); }
+  .scan-page-detail-meta{ font-size:var(--text-xs); color:var(--text-muted); margin-bottom:var(--space-2); display:flex; gap:var(--space-3); flex-wrap:wrap; }
+  .scan-page-detail-text{ font-size:var(--text-xs); line-height:1.6; color:var(--text-dim); white-space:pre-wrap; word-break:break-word; max-height:260px; overflow:auto; background:var(--navy-light); border:1px solid var(--border); border-radius:var(--radius-md); padding:var(--space-3); margin:0; font-family:inherit; }
+  @media (prefers-reduced-motion:reduce){ .scan-page-toggle .chev{ transition:none; } }
   .scan-page-rescan:focus-visible,.scan-page-remove:focus-visible{ outline:2px solid var(--teal); outline-offset:1px; }
   .scan-page-tag{ font-size:var(--text-xs); font-weight:600; }
   .scan-page-tag.success{ color:var(--green); } .scan-page-tag.error{ color:var(--red); } .scan-page-tag.scanning{ color:var(--teal); }
@@ -5994,6 +6007,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
 
   // ═══ WEBSITE SCANNING ═══
   let scannedPages = [];
+  var openDetails = {}; // urls whose full-text detail panel is expanded (survives re-render)
 
   window._startWebsiteScan = async function() {
     var textarea = document.getElementById('setTrainUrls');
@@ -6186,8 +6200,16 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       var preview = isOk ? (p.content || '').slice(0, 200).replace(/\s+/g, ' ') : (st === 'error' ? (p.error || 'Failed to scan') : '');
       var actions = (st === 'scanning') ? '' :
         '<div class="scan-page-actions">'
-        + '<button class="scan-page-rescan" title="Rescan this page" aria-label="Rescan this page" onclick="window._rescanOne(' + i + ')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>'
+        + '<button class="scan-page-rescan" aria-label="Rescan this page" onclick="window._rescanOne(' + i + ')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg><span>Rescan</span></button>'
         + '<button class="scan-page-remove" title="Remove" aria-label="Remove this page" onclick="window._removeScanPage(' + i + ')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>'
+        + '</div>';
+      var hasContent = isOk && (p.content || '').trim().length > 0;
+      var open = hasContent && !!openDetails[p.url];
+      var details = !hasContent ? '' :
+        '<button class="scan-page-toggle" id="scanToggle' + i + '" aria-expanded="' + (open ? 'true' : 'false') + '" onclick="window._toggleScanDetails(' + i + ')"><span class="lbl">' + (open ? 'Hide details' : 'See details') + '</span><svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>'
+        + '<div class="scan-page-detail" id="scanDetail' + i + '"' + (open ? '' : ' hidden') + '>'
+        + '<div class="scan-page-detail-meta"><span>' + (p.charCount || (p.content || '').length).toLocaleString() + ' characters</span><span>' + (p.wordCount || 0).toLocaleString() + ' words</span>' + (when ? '<span>scanned ' + when + '</span>' : '') + '</div>'
+        + '<pre class="scan-page-detail-text">' + esc(p.content || '') + '</pre>'
         + '</div>';
       return '<div class="scan-page-item">'
         + '<div class="scan-page-status ' + st + '">' + icon + '</div>'
@@ -6200,6 +6222,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
         + (when ? '<span>' + when + '</span>' : '')
         + '</div>'
         + (preview ? '<div class="scan-page-preview">' + esc(preview) + (isOk ? '...' : '') + '</div>' : '')
+        + details
         + '</div>'
         + actions
         + '</div>';
@@ -6243,6 +6266,17 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       window._renderScannedPages();
     }
     return entries.length;
+  };
+
+  window._toggleScanDetails = function(i) {
+    var p = scannedPages[i]; if (!p) return;
+    var d = document.getElementById('scanDetail' + i);
+    var b = document.getElementById('scanToggle' + i);
+    if (!d) return;
+    var willOpen = d.hasAttribute('hidden');
+    if (willOpen) { d.removeAttribute('hidden'); openDetails[p.url] = true; }
+    else { d.setAttribute('hidden', ''); delete openDetails[p.url]; }
+    if (b) { b.setAttribute('aria-expanded', willOpen ? 'true' : 'false'); var l = b.querySelector('.lbl'); if (l) l.textContent = willOpen ? 'Hide details' : 'See details'; }
   };
 
   window._saveScannedContent = async function() {
