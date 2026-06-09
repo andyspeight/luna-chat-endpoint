@@ -1844,6 +1844,7 @@
     <button class="topbar-stats-btn" id="logoutBtn" onclick="window._logout()" title="Sign out" aria-label="Sign out" style="color:var(--red)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>
     <div class="topbar-controls">
       <button class="topbar-icon-btn active" id="btnSound" onclick="window._toggleSound()" title="Toggle sound" aria-label="Toggle sound notifications"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></button>
+      <button class="topbar-stats-btn" id="btnAlerts" onclick="window._alertsPillClick()" aria-label="Lead alert status"><span class="al-dot"></span><span class="al-txt">Alerts</span></button>
       <button class="topbar-icon-btn" id="btnDesktop" onclick="window._toggleDesktopNotifs()" title="Desktop notifications" aria-label="Toggle desktop notifications"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button>
       <label class="topbar-lang" title="Language you read incoming messages in">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 0 20 15.3 15.3 0 0 1 0-20"/></svg>
@@ -3107,8 +3108,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     conversations[convId] = conv;
     renderConvList();
     if (!data._silent) {
-      playNotificationSound();
-      showDesktopNotification('New chat — ' + conv.visitor.name, conv.visitor.page || 'New visitor');
+      lunaAlertSignal('newchat', conv.visitor.name, conv.visitor.page || 'New visitor');
     }
   }
 
@@ -3123,8 +3123,8 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     conv.messages.push(data);
     if (convId !== activeConvId) {
       conv.unread = true;
-      playNotificationSound();
-      if (data.from === 'visitor') showDesktopNotification(conv.visitor.name, data.text?.slice(0,80) || 'New message');
+      if (data.from === 'visitor') lunaAlertSignal('message', conv.visitor.name, data.text?.slice(0,80) || 'New message');
+      else { playNotificationSound('message'); if (document.hidden || !document.hasFocus()) startTitleFlash('message'); }
     }
     renderConvList();
     if (convId === activeConvId) {
@@ -4034,14 +4034,136 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     btn.title = desktopNotifsEnabled ? 'Desktop notifications on' : 'Desktop notifications off';
   }
 
-  function showDesktopNotification(title, body) {
-    if (!desktopNotifsEnabled || Notification.permission !== 'granted') return;
+  function showDesktopNotification(title, body, sticky) {
+    if (!desktopNotifsEnabled || !('Notification' in window) || Notification.permission !== 'granted') return;
     try {
-      const n = new Notification(title, { body: body, icon: '', tag: 'luna-chat', requireInteraction: false });
-      setTimeout(() => n.close(), 6000);
-      n.onclick = () => { window.focus(); n.close(); };
+      const n = new Notification(title, { body: body || '', icon: _favBase || '', tag: 'luna-chat', renotify: true, requireInteraction: !!sticky });
+      if (!sticky) setTimeout(() => { try { n.close(); } catch(e){} }, 8000);
+      n.onclick = () => { window.focus(); clearAlerts(); try { n.close(); } catch(e){} };
     } catch(e) {}
   }
+
+  // ─── STAGE 1 LEAD ALERTS: tab-title flash, favicon badge, status pill ───
+  // A backgrounded tab used to give no signal (desktop notifs default off, single
+  // quiet beep, static title). This makes a new lead impossible to miss while the
+  // dashboard is open in any tab. No backend, no new dependency.
+  let _flashTimer = null, _savedTitle = '', _unread = 0, _flashOn = false, _flashLabel = 'New chat';
+  let _favLink = null, _favBase = null;
+
+  function _roundRect(x, a, b, w, h, r) { x.beginPath(); x.moveTo(a + r, b); x.arcTo(a + w, b, a + w, b + h, r); x.arcTo(a + w, b + h, a, b + h, r); x.arcTo(a, b + h, a, b, r); x.arcTo(a, b, a + w, b, r); x.closePath(); }
+  function _drawFav(badged, count) {
+    try {
+      const c = document.createElement('canvas'); c.width = c.height = 32; const x = c.getContext('2d');
+      const cs = getComputedStyle(document.documentElement);
+      const navy = (cs.getPropertyValue('--navy') || '').trim() || '#0B1B33';
+      const teal = (cs.getPropertyValue('--teal') || '').trim() || '#14B8A6';
+      x.fillStyle = navy; _roundRect(x, 0, 0, 32, 32, 7); x.fill();
+      x.fillStyle = teal; x.font = 'bold 20px Inter, Arial, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('L', 16, 17);
+      if (badged) {
+        x.fillStyle = '#EF4444'; x.beginPath(); x.arc(24, 8, 8, 0, 2 * Math.PI); x.fill();
+        x.fillStyle = '#fff'; x.font = 'bold 11px Inter, Arial, sans-serif'; x.fillText(count > 9 ? '9+' : String(count), 24, 9);
+      }
+      return c.toDataURL('image/png');
+    } catch (e) { return _favBase || ''; }
+  }
+  function _ensureFav() {
+    if (_favLink) return;
+    _favLink = document.querySelector('link[rel="icon"]');
+    if (!_favLink) { _favLink = document.createElement('link'); _favLink.rel = 'icon'; document.head.appendChild(_favLink); }
+    _favBase = _drawFav(false, 0);
+    _favLink.href = _favBase;
+  }
+  function _setFavBadge(on) {
+    _ensureFav(); if (!_favLink) return;
+    _favLink.href = on ? _drawFav(true, _unread || 1) : (_favBase || _drawFav(false, 0));
+  }
+
+  function startTitleFlash(kind) {
+    _unread++;
+    _flashLabel = (kind === 'newchat') ? 'New chat!' : 'New message';
+    if (_unread > 1) _flashLabel = 'New activity';
+    if (_flashTimer) { _setFavBadge(true); return; }
+    _savedTitle = document.title;
+    _setFavBadge(true);
+    _flashTimer = setInterval(function () {
+      _flashOn = !_flashOn;
+      document.title = _flashOn ? ('🔴 (' + _unread + ') ' + _flashLabel) : _savedTitle;
+    }, 1000);
+  }
+  function clearAlerts() {
+    if (_flashTimer) { clearInterval(_flashTimer); _flashTimer = null; }
+    if (_savedTitle) { document.title = _savedTitle; }
+    _unread = 0; _flashOn = false;
+    _setFavBadge(false);
+    stopSoundRepeat();
+  }
+
+  // Unified alert entry point. kind: 'newchat' (strong + sticky + repeat) | 'message' (single ding).
+  function lunaAlertSignal(kind, name, body) {
+    const sticky = (kind === 'newchat');
+    playNotificationSound(kind);
+    showDesktopNotification(kind === 'newchat' ? ('New chat from ' + (name || 'a visitor')) : (name || 'New message'), body || '', sticky);
+    if (document.hidden || !document.hasFocus()) startTitleFlash(kind);
+  }
+
+  // ─── ALERTS STATUS PILL ───
+  function _alertsState() {
+    if (!('Notification' in window)) return 'unsupported';
+    if (Notification.permission === 'granted') return 'on';
+    if (Notification.permission === 'denied') return 'blocked';
+    return 'off';
+  }
+  function updateAlertsPill() {
+    const b = document.getElementById('btnAlerts'); if (!b) return;
+    const txt = b.querySelector('.al-txt'); const s = _alertsState();
+    b.classList.remove('alerts-on', 'alerts-off', 'alerts-blocked');
+    if (s === 'unsupported') { b.style.display = 'none'; return; }
+    if (s === 'on') { b.classList.add('alerts-on'); if (txt) txt.textContent = 'Alerts on'; b.title = 'Desktop lead alerts are on. Click to send a test alert.'; }
+    else if (s === 'blocked') { b.classList.add('alerts-blocked'); if (txt) txt.textContent = 'Alerts blocked'; b.title = 'Notifications are blocked for this site. Allow them in your browser, then reload.'; }
+    else { b.classList.add('alerts-off'); if (txt) txt.textContent = 'Enable alerts'; b.title = 'Click to switch on desktop lead alerts so you never miss a chat.'; }
+  }
+  window._alertsPillClick = function () {
+    unlockAudio();
+    const s = _alertsState();
+    if (s === 'off') {
+      Notification.requestPermission().then(function (p) {
+        desktopNotifsEnabled = (p === 'granted');
+        updateAlertsPill();
+        if (p === 'granted') { _ding(true); showDesktopNotification('Alerts switched on', 'You will be notified the moment a new chat starts.', false); }
+      });
+    } else if (s === 'on') {
+      _ding(true);
+      showDesktopNotification('Test alert', 'This is what a new lead alert looks like.', false);
+    } else if (s === 'blocked') {
+      alert('Notifications are blocked for this site. Click the padlock in your browser address bar, allow Notifications, then reload the page.');
+    }
+  };
+
+  function _injectAlertCss() {
+    if (document.getElementById('lunaAlertCss')) return;
+    const st = document.createElement('style'); st.id = 'lunaAlertCss';
+    st.textContent = '#btnAlerts{display:inline-flex;align-items:center;gap:6px;}' +
+      '#btnAlerts .al-dot{width:8px;height:8px;border-radius:50%;background:#F59E0B;flex:0 0 auto;}' +
+      '#btnAlerts.alerts-on .al-dot{background:#10B981;animation:none;}' +
+      '#btnAlerts.alerts-off .al-dot{background:#F59E0B;animation:alDotPulse 1.6s ease-out infinite;}' +
+      '#btnAlerts.alerts-blocked .al-dot{background:#EF4444;animation:none;}' +
+      '@keyframes alDotPulse{0%{box-shadow:0 0 0 0 rgba(245,158,11,.5);}70%{box-shadow:0 0 0 6px rgba(245,158,11,0);}100%{box-shadow:0 0 0 0 rgba(245,158,11,0);}}';
+    document.head.appendChild(st);
+  }
+
+  function lunaAlertInit() {
+    _injectAlertCss();
+    _ensureFav();
+    // If permission was granted in a prior session, arm desktop notifications automatically.
+    if (('Notification' in window) && Notification.permission === 'granted') desktopNotifsEnabled = true;
+    updateAlertsPill();
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) clearAlerts(); });
+    window.addEventListener('focus', clearAlerts);
+    // Unlock the audio context on the first user gesture so the alert sound is never silently suspended.
+    document.addEventListener('pointerdown', unlockAudio, { once: true, capture: true });
+    document.addEventListener('keydown', unlockAudio, { once: true, capture: true });
+  }
+  if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', lunaAlertInit); } else { lunaAlertInit(); }
 
   // ─── ANALYTICS ───
   let statsOpen = false;
@@ -5352,20 +5474,47 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     if (diff < 60) return diff + 'm ago';
     return Math.floor(diff/60) + 'h ' + (diff%60) + 'm';
   }
-  let _audioCtx = null;
-  function playNotificationSound() {
+  let _audioCtx = null, _soundRepeatTimer = null, _repeatCount = 0;
+  function _ctx() {
+    if (!_audioCtx) { try { _audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+    return _audioCtx;
+  }
+  function unlockAudio() {
+    const c = _ctx();
+    if (c && c.state === 'suspended') { c.resume().catch(function () {}); }
+  }
+  function _ding(strong) {
     if (!soundEnabled) return;
+    const c = _ctx(); if (!c) return;
+    if (c.state === 'suspended') { c.resume().catch(function () {}); }
     try {
-      if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const osc = _audioCtx.createOscillator();
-      const gain = _audioCtx.createGain();
-      osc.connect(gain); gain.connect(_audioCtx.destination);
-      osc.frequency.value = 880;
-      osc.type = 'sine';
-      gain.gain.value = 0.1;
-      gain.gain.exponentialRampToValueAtTime(0.001, _audioCtx.currentTime + 0.3);
-      osc.start(); osc.stop(_audioCtx.currentTime + 0.3);
-    } catch(e) {}
+      const now = c.currentTime;
+      const notes = strong ? [880, 1175, 880] : [880];
+      const peak = strong ? 0.22 : 0.12;
+      notes.forEach(function (f, i) {
+        const t = now + i * 0.17;
+        const osc = c.createOscillator(), g = c.createGain();
+        osc.connect(g); g.connect(c.destination);
+        osc.type = 'sine'; osc.frequency.value = f;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(peak, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.30);
+        osc.start(t); osc.stop(t + 0.32);
+      });
+    } catch (e) {}
+  }
+  function stopSoundRepeat() { if (_soundRepeatTimer) { clearInterval(_soundRepeatTimer); _soundRepeatTimer = null; } }
+  // kind: 'newchat' = strong two-tone + repeat every 12s (max 4) while tab is hidden/unfocused; anything else = single ding.
+  function playNotificationSound(kind) {
+    _ding(kind === 'newchat');
+    if (kind === 'newchat') {
+      stopSoundRepeat(); _repeatCount = 0;
+      _soundRepeatTimer = setInterval(function () {
+        _repeatCount++;
+        if (_repeatCount > 4 || !(document.hidden || !document.hasFocus())) { stopSoundRepeat(); return; }
+        _ding(true);
+      }, 12000);
+    }
   }
 
   // ─── DEMO MODE (when Ably key not configured) ───
