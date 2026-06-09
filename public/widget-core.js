@@ -1970,9 +1970,17 @@ function injectCSS() {
   +'#tgx-cw .tgx-cap-card > span:last-child{display:none}'
 
   // Starters — horizontal scroll, no clipping
-  +'#tgx-cw #tgxStarters{display:flex;flex-wrap:nowrap;gap:6px;overflow-x:auto;scrollbar-width:none;margin:0 -18px;padding:4px 18px 6px;min-height:38px}'
+  +'#tgx-cw #tgxStarters{display:flex;flex-wrap:nowrap;gap:6px;overflow-x:auto;scrollbar-width:none;margin:0 -18px;padding:4px 18px 6px;min-height:38px;touch-action:pan-x;overscroll-behavior-x:contain;scroll-behavior:smooth;-webkit-overflow-scrolling:touch;cursor:grab}'
   +'#tgx-cw #tgxStarters::-webkit-scrollbar{display:none}'
-  +'#tgx-cw .tgx-starter{flex-shrink:0;display:inline-block;padding:8px 14px;border-radius:999px;background:#fff;border:1px solid rgba(15,26,61,0.10);color:'+C.brandColor+';font-size:12.5px;font-weight:500;cursor:pointer;line-height:1.3;white-space:nowrap;transition:all .18s ease;font-family:inherit}'
+  +'#tgx-cw #tgxStarters.tgx-dragging{cursor:grabbing;scroll-behavior:auto}'
+  +'#tgx-cw .tgx-starters-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}'
+  +'#tgx-cw .tgx-starters-nav{display:flex;gap:4px;flex-shrink:0}'
+  +'#tgx-cw .tgx-starters-nav[hidden]{display:none}'
+  +'#tgx-cw .tgx-starters-arrow{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;border-radius:999px;background:#fff;border:1px solid rgba(15,26,61,0.12);color:'+C.brandColor+';cursor:pointer;transition:border-color .15s ease,color .15s ease,opacity .15s ease;-webkit-tap-highlight-color:transparent}'
+  +'#tgx-cw .tgx-starters-arrow:hover:not(:disabled){border-color:'+C.accentColor+';color:'+C.accentColor+'}'
+  +'#tgx-cw .tgx-starters-arrow:disabled{opacity:.32;cursor:default}'
+  +'#tgx-cw .tgx-starters-arrow svg{display:block}'
+  +'#tgx-cw .tgx-starter{flex-shrink:0;display:inline-block;padding:8px 14px;border-radius:999px;background:#fff;border:1px solid rgba(15,26,61,0.10);color:'+C.brandColor+';font-size:12.5px;font-weight:500;cursor:pointer;line-height:1.3;white-space:nowrap;transition:all .18s ease;font-family:inherit;user-select:none;-webkit-user-select:none}'
   +'#tgx-cw .tgx-starter:hover{border-color:'+C.accentColor+';color:'+C.accentColor+';transform:translateY(-1px)}'
 
   // Demoted footer
@@ -2629,7 +2637,13 @@ function buildDOM() {
           +'<div id="tgxCapCards"></div>'
         +'</div>'
         +'<div>'
-          +'<div class="tgx-section-label">Try asking</div>'
+          +'<div class="tgx-starters-head">'
+            +'<div class="tgx-section-label" style="margin-bottom:0">Try asking</div>'
+            +'<div class="tgx-starters-nav" id="tgxStartersNav" hidden>'
+              +'<button class="tgx-starters-arrow" id="tgxStartersPrev" type="button" aria-label="Scroll suggestions left" disabled><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>'
+              +'<button class="tgx-starters-arrow" id="tgxStartersNext" type="button" aria-label="Scroll suggestions right"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>'
+            +'</div>'
+          +'</div>'
           +'<div id="tgxStarters"></div>'
         +'</div>'
         +'<div class="tgx-demoted">'
@@ -2785,7 +2799,76 @@ function buildDOM() {
     startersEl.appendChild(btn);
   });
 
+  setupStartersScroll();
   return root;
+}
+
+/* ─── "TRY ASKING" PILLS: arrows + mouse-drag + wheel; mobile uses native pan-x ─── */
+function setupStartersScroll() {
+  var el = document.getElementById("tgxStarters");
+  if (!el) return;
+  var nav = document.getElementById("tgxStartersNav");
+  var prev = document.getElementById("tgxStartersPrev");
+  var next = document.getElementById("tgxStartersNext");
+
+  function update() {
+    var max = el.scrollWidth - el.clientWidth;
+    var scrollable = max > 2;
+    if (nav) nav.hidden = !scrollable;
+    if (prev) prev.disabled = el.scrollLeft <= 1;
+    if (next) next.disabled = el.scrollLeft >= max - 1;
+  }
+  function step(dir) {
+    var amt = Math.max(120, Math.round(el.clientWidth * 0.7));
+    el.scrollBy({ left: dir * amt, behavior: "smooth" });
+  }
+
+  if (!el._scrollWired) {
+    el._scrollWired = true;
+    if (prev) prev.addEventListener("click", function(){ step(-1); });
+    if (next) next.addEventListener("click", function(){ step(1); });
+    el.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    if (typeof ResizeObserver !== "undefined") { try { new ResizeObserver(update).observe(el); } catch(_e) {} }
+
+    /* Mouse wheel -> horizontal (fixes Firefox / mouse-only desktops). */
+    el.addEventListener("wheel", function(e){
+      if (el.scrollWidth <= el.clientWidth) return;
+      var d = Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+      if (!d) return;
+      el.scrollLeft += d;
+      e.preventDefault();
+    }, { passive: false });
+
+    /* Mouse drag-to-scroll (desktop). Touch keeps native momentum scrolling. */
+    var down = false, moved = false, startX = 0, startLeft = 0;
+    el.addEventListener("pointerdown", function(e){
+      if (e.pointerType === "touch") return;
+      down = true; moved = false; startX = e.clientX; startLeft = el.scrollLeft;
+      el.classList.add("tgx-dragging");
+    });
+    el.addEventListener("pointermove", function(e){
+      if (!down) return;
+      var dx = e.clientX - startX;
+      if (Math.abs(dx) > 4) moved = true;
+      el.scrollLeft = startLeft - dx;
+    });
+    function endDrag(){
+      if (!down) return;
+      down = false;
+      el.classList.remove("tgx-dragging");
+      if (moved) { el._justDragged = true; setTimeout(function(){ el._justDragged = false; }, 0); }
+    }
+    el.addEventListener("pointerup", endDrag);
+    el.addEventListener("pointercancel", endDrag);
+    el.addEventListener("pointerleave", endDrag);
+    /* If a drag just happened, swallow the click so a pill isn't accidentally sent. */
+    el.addEventListener("click", function(e){
+      if (el._justDragged) { e.preventDefault(); e.stopPropagation(); el._justDragged = false; }
+    }, true);
+  }
+  update();
+  setTimeout(update, 300);
 }
 
 /* ─── SCREEN SWITCHING ──────────────────────────────────── */
