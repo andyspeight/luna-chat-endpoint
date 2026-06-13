@@ -24,6 +24,7 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const scrape = require('../lib/safe-scrape');
 const discover = require('../lib/discover');
+const ticketmaster = require('../lib/ticketmaster');
 
 const AT_BASE = 'app6Ot3eOb3DangkB';
 const KNOWLEDGE_TABLE = 'tblstATJ3BSqtuTDU';
@@ -35,6 +36,7 @@ const MODEL = process.env.DISCOVER_MODEL || 'claude-haiku-4-5-20251001';
 const MAX_CLIENTS = 6;
 const MAX_URLS_PER_CLIENT = 5;
 const MAX_NEW_PER_CLIENT = 12;
+const MAX_DESTINATIONS = 6;
 
 async function atFetch(path, opts) {
   opts = opts || {};
@@ -53,22 +55,24 @@ async function atFetch(path, opts) {
   return r.json();
 }
 
-// Clients that have opted in and have at least one source URL.
+// Clients that have opted in. They may have URL sources, destinations (for the
+// structured event connector), or both.
 async function loadEnabledClients(onlyClient) {
-  var formula = "AND({DiscoverEnabled}=TRUE(), {DiscoverSources}!='')";
+  var formula = "{DiscoverEnabled}=TRUE()";
   if (onlyClient) {
     formula = "AND(" + formula + ", {ClientName}='" + onlyClient.replace(/'/g, "\\'") + "')";
   }
   var data = await atFetch('/' + CLIENTS_TABLE
     + '?filterByFormula=' + encodeURIComponent(formula)
-    + '&fields%5B%5D=ClientName&fields%5B%5D=DiscoverSources'
+    + '&fields%5B%5D=ClientName&fields%5B%5D=DiscoverSources&fields%5B%5D=Destinations'
     + '&maxRecords=' + MAX_CLIENTS);
   return (data.records || []).map(function (rec) {
     var f = rec.fields || {};
     return {
       id: rec.id,
       name: f.ClientName || '',
-      sources: String(f.DiscoverSources || '').split(/\r?\n/).map(function (s) { return s.trim(); }).filter(Boolean).slice(0, MAX_URLS_PER_CLIENT)
+      sources: String(f.DiscoverSources || '').split(/\r?\n/).map(function (s) { return s.trim(); }).filter(Boolean).slice(0, MAX_URLS_PER_CLIENT),
+      destinations: String(f.Destinations || '').split(/[\n,]/).map(function (s) { return s.trim(); }).filter(Boolean).slice(0, MAX_DESTINATIONS)
     };
   });
 }
@@ -180,6 +184,23 @@ module.exports = async function handler(req, res) {
         }
         found.forEach(function (c) { if (clientNew.length < MAX_NEW_PER_CLIENT) clientNew.push(c); });
         report.push({ client: client.name, url: scraped.url, candidates: found.length, titles: found.map(function (c) { return c.question; }) });
+      }
+
+      // Trusted structured source: Ticketmaster events per destination. Gated on
+      // the API key, so this is a no-op until a key is configured. The draft is
+      // built deterministically from the API, then run through the same dedup.
+      if (process.env.TICKETMASTER_API_KEY) {
+        for (var di = 0; di < client.destinations.length && clientNew.length < MAX_NEW_PER_CLIENT; di++) {
+          var dest = client.destinations[di];
+          var evDraft = await ticketmaster.fetchEventsDraft(dest, { max: 5 });
+          if (!evDraft) continue;
+          var processedEv = discover.processCandidates(JSON.stringify([evDraft]), {
+            existingQuestions: existing.concat(clientNew.map(function (c) { return c.question; })),
+            sourceUrl: 'https://www.ticketmaster.com'
+          });
+          processedEv.forEach(function (c) { if (clientNew.length < MAX_NEW_PER_CLIENT) clientNew.push(c); });
+          if (processedEv.length) report.push({ client: client.name, source: 'ticketmaster', destination: dest, candidates: processedEv.length });
+        }
       }
 
       if (!dryRun && clientNew.length) {
