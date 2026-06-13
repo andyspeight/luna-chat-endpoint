@@ -1821,6 +1821,41 @@ function buildLongPromptAugment() {
     + 'and booking instructions — use them normally.';
 }
 
+// buildTemporalContext — gives Luna a precise, factual anchor for "now" so she
+// never has to guess the date, month or season. Pure function of the supplied
+// Date (defaults to the current time) so it can be unit-tested deterministically.
+//
+// Anti-hallucination posture: it states ONLY what the calendar guarantees, the
+// date and the hemisphere season. It explicitly forbids inventing dated events
+// (festivals, opening or closing dates, school holidays, prices). Those must come
+// from the verified knowledge or destination context, never from assumption.
+//
+// All fields are read in UTC so the server timezone can never shift the calendar
+// day. Seasons are meteorological (3-month blocks), framed for the northern
+// hemisphere by default with the southern hemisphere stated as its inverse, so
+// Luna never claims it is summer in Sydney when it is June in the UK.
+function buildTemporalContext(now) {
+  now = now || new Date();
+  var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var weekdays = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  var northSeasons = ['Winter','Winter','Spring','Spring','Spring','Summer','Summer','Summer','Autumn','Autumn','Autumn','Winter'];
+  var southSeasons = ['Summer','Summer','Autumn','Autumn','Autumn','Winter','Winter','Winter','Spring','Spring','Spring','Summer'];
+  var mIdx = now.getUTCMonth();
+  var dateLine = weekdays[now.getUTCDay()] + ' ' + now.getUTCDate() + ' ' + months[mIdx] + ' ' + now.getUTCFullYear();
+  var iso = now.toISOString().split('T')[0];
+
+  return '\n\n## Today (your temporal anchor, treat this as the present moment)\n'
+    + 'Today is ' + dateLine + ' (' + iso + ').\n'
+    + 'Season right now: ' + northSeasons[mIdx] + ' across the northern hemisphere '
+    + '(UK, Europe, the Mediterranean, the Caribbean, most of Asia and North America), and '
+    + southSeasons[mIdx] + ' across the southern hemisphere '
+    + '(Australia, New Zealand, southern Africa and most of South America).\n'
+    + 'Use this as the present moment for every reply. Never guess or assume a different date, month or season.\n'
+    + '- When the visitor says "now", "at the moment", "currently", "this month", "right now" or "is it a good time", anchor to the date above.\n'
+    + '- When seasonality matters, reason from this date and the destination hemisphere. Do not describe an out-of-season period as if it were happening now.\n'
+    + '- Do NOT invent dated specifics such as festivals, events, opening or closing dates, school holidays or prices for "this month" or any date. State a dated event ONLY if it appears in the verified knowledge or destination context. If you do not have it, say you can check rather than guessing.';
+}
+
 function sanitizeInput(str) {
   if (typeof str !== 'string') return '';
   return str
@@ -2418,6 +2453,11 @@ module.exports = async function handler(req, res) {
 
   const isTravelgenix = (clientName || '').toLowerCase().includes('travelgenix');
   let systemPrompt = isTravelgenix ? LUNA_TRAVELGENIX : LUNA_CLIENT;
+
+  // -- Temporal anchor: ON for every client, always ----------------------
+  // Give Luna a precise, factual "now" so she never guesses the date or season.
+  // High salience near the top of the assembled prompt. See buildTemporalContext.
+  systemPrompt += buildTemporalContext();
 
   // -- Multilingual: ON for every client, always -------------------------
   // Luna detects the visitor's language and replies in it, for all clients,
@@ -3515,3 +3555,7 @@ function detectEscalation(aiReply, visitorMessage) {
 
   return false;
 }
+
+// Exposed for unit testing only. Vercel invokes the default handler export
+// above; attaching helpers as properties does not change that contract.
+module.exports.buildTemporalContext = buildTemporalContext;
