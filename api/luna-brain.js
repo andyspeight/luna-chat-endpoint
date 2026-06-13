@@ -8,6 +8,8 @@
 //
 // Auth: X-Client-Name header set by tg-auth-gate session (same pattern as /api/profile).
 
+const freshness = require('../lib/freshness');
+
 const AT_BASE = 'app6Ot3eOb3DangkB';
 const KNOWLEDGE_TABLE = 'tblstATJ3BSqtuTDU';
 const GAPS_TABLE = 'tblLkRcdcMIgmHPFj';
@@ -139,11 +141,22 @@ async function actionFeed(atKey, clientRecordId, clientName) {
     + '&maxRecords=500'
   );
 
-  var results = await Promise.all([gapsP, lowQualP, topKnowP, summaryP]);
+  // All Active knowledge for this client, with just the fields freshness needs.
+  // Native createdTime comes back automatically and is the fallback anchor when
+  // LastVerifiedAt is empty (i.e. nobody has re-verified the item yet).
+  var staleKnowP = atFetch(atKey,
+    '/' + KNOWLEDGE_TABLE
+    + '?filterByFormula=' + encodeURIComponent("AND(" + clientLinkFilter + ", {Status} = 'Active')")
+    + '&fields[]=Question&fields[]=Answer&fields[]=Type&fields[]=Confidence&fields[]=LastVerifiedAt&fields[]=TimesUsed&fields[]=LastUsedAt'
+    + '&maxRecords=300'
+  );
+
+  var results = await Promise.all([gapsP, lowQualP, topKnowP, summaryP, staleKnowP]);
   var gapsData = results[0];
   var lowQualData = results[1];
   var topKnowData = results[2];
   var summaryData = results[3];
+  var staleKnowData = results[4];
 
   // Shape gaps
   var gaps = (gapsData.records || []).map(function(rec) {
@@ -195,6 +208,41 @@ async function actionFeed(atKey, clientRecordId, clientName) {
     };
   });
 
+  // Review-due queue — purely advisory. Classify every Active item by how long
+  // it has gone unverified. This never changes what Luna retrieves; it only
+  // tells the owner what to re-check. selectStale returns overdue first.
+  var now = new Date();
+  var staleInput = (staleKnowData.records || []).map(function(rec) {
+    var f = rec.fields || {};
+    return {
+      id: rec.id,
+      question: f.Question || '',
+      answer: f.Answer || '',
+      type: valueOf(f.Type) || '',
+      confidence: valueOf(f.Confidence) || '',
+      timesUsed: f.TimesUsed || 0,
+      lastUsedAt: f.LastUsedAt || null,
+      lastVerifiedAt: f.LastVerifiedAt || null,
+      createdTime: rec.createdTime || null
+    };
+  });
+  var freshnessCounts = freshness.summarise(staleInput, now);
+  var staleKnowledge = freshness.selectStale(staleInput, now).map(function(it) {
+    return {
+      id: it.id,
+      question: it.question,
+      answer: (it.answer || '').slice(0, 400),
+      type: it.type,
+      confidence: it.confidence,
+      timesUsed: it.timesUsed,
+      lastUsedAt: it.lastUsedAt,
+      lastVerifiedAt: it.lastVerifiedAt,
+      everVerified: it.everVerified,
+      ageDays: it.ageDays,
+      freshnessState: it.freshnessState
+    };
+  });
+
   // Summary stats — last 7 days
   var allConvs = summaryData.records || [];
   var totalConvs = allConvs.length;
@@ -211,11 +259,15 @@ async function actionFeed(atKey, clientRecordId, clientName) {
       avgQualityScore: Math.round(avgScore * 10) / 10,
       answerRate: Math.round(answerRate * 100),
       openGaps: gaps.length,
-      lowQualityCount: lowQual.length
+      lowQualityCount: lowQual.length,
+      reviewDue: freshnessCounts.stale,
+      overdueCount: freshnessCounts.overdue,
+      activeKnowledge: staleInput.length
     },
     gaps: gaps,
     lowQualityConversations: lowQual,
-    topKnowledge: topKnow
+    topKnowledge: topKnow,
+    staleKnowledge: staleKnowledge
   };
 }
 
@@ -321,6 +373,25 @@ async function actionUpdateKnowledge(atKey, clientRecordId, body) {
   return { ok: true, knowledgeId: knowledgeId };
 }
 
+// Stamp LastVerifiedAt = now. This is the human "still accurate" action behind
+// the review-due queue. It writes ONLY the timestamp, never the answer or
+// confidence, so re-verifying can never alter what Luna retrieves or says.
+async function actionVerifyKnowledge(atKey, clientRecordId, body) {
+  var knowledgeId = (body.knowledgeId || '').trim();
+  if (!knowledgeId || !/^rec[A-Za-z0-9]{14}$/.test(knowledgeId)) throw new Error('Invalid knowledgeId');
+  var data = await atFetch(atKey, '/' + KNOWLEDGE_TABLE + '/' + knowledgeId);
+  var f = data.fields || {};
+  var fClient = (f.Client && f.Client[0]) ? (typeof f.Client[0] === 'object' ? f.Client[0].id : f.Client[0]) : null;
+  if (fClient !== clientRecordId) throw new Error('Item belongs to a different client');
+
+  var nowIso = new Date().toISOString();
+  await atFetch(atKey, '/' + KNOWLEDGE_TABLE + '/' + knowledgeId, {
+    method: 'PATCH',
+    body: { fields: { LastVerifiedAt: nowIso }, typecast: true }
+  });
+  return { ok: true, knowledgeId: knowledgeId, lastVerifiedAt: nowIso };
+}
+
 module.exports = async function handler(req, res) {
   applyCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -358,6 +429,9 @@ module.exports = async function handler(req, res) {
       }
       if (action === 'update-knowledge') {
         return res.status(200).json(await actionUpdateKnowledge(atKey, clientRecordId, body));
+      }
+      if (action === 'verify-knowledge') {
+        return res.status(200).json(await actionVerifyKnowledge(atKey, clientRecordId, body));
       }
     }
 

@@ -675,6 +675,16 @@ a:hover { text-decoration: underline; }
     <div id="lowQualHost"></div>
   </div>
 
+  <div class="section" id="reviewSection">
+    <div class="section-head">
+      <div>
+        <h2>Review due <span class="count-pill" id="reviewCount">0</span></h2>
+      </div>
+      <p>Answers that have gone a while without a check. Confirm each is still accurate, then mark it verified to reset the clock. This never changes what Luna says, it just keeps your knowledge honest.</p>
+    </div>
+    <div id="reviewHost"></div>
+  </div>
+
   <div class="section" id="topKnowSection">
     <div class="section-head">
       <div>
@@ -822,6 +832,7 @@ a:hover { text-decoration: underline; }
     host.appendChild(stat('Avg quality', String(s.avgQualityScore || 0), ' / 5', 'last 7 days'));
     host.appendChild(stat('Answer rate', String(s.answerRate || 0), '%', 'last 7 days'));
     host.appendChild(stat('Open gaps', String(s.openGaps || 0), '', 'awaiting your review'));
+    host.appendChild(stat('Review due', String(s.reviewDue || 0), '', (s.overdueCount || 0) + ' overdue'));
   }
 
   function renderGaps() {
@@ -983,6 +994,75 @@ a:hover { text-decoration: underline; }
     }
 
     return card;
+  }
+
+  function renderReview() {
+    var items = (state.feed.staleKnowledge || []);
+    $('reviewCount').textContent = String(items.length);
+    var host = $('reviewHost');
+    host.innerHTML = '';
+
+    if (items.length === 0) {
+      host.appendChild(el('div', { class: 'empty' }, [
+        el('div', { class: 'emoji', text: '🟢' }),
+        el('h3', { text: 'Everything is up to date' }),
+        el('p', { text: 'When an answer has gone a while without a check, it will appear here.' })
+      ]));
+      return;
+    }
+
+    items.forEach(function(item) { host.appendChild(renderReviewCard(item)); });
+  }
+
+  function renderReviewCard(item) {
+    var card = el('div', { class: 'card' });
+    var overdue = item.freshnessState === 'overdue';
+
+    var pill = el('span', {
+      text: overdue ? 'Overdue' : 'Review due',
+      style: 'display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600;'
+        + (overdue ? 'background:#fde2e1;color:#b42318;' : 'background:#fef3cd;color:#915907;')
+    });
+
+    var ageText = item.everVerified
+      ? ('last verified ' + (item.ageDays != null ? item.ageDays + ' days ago' : 'a while ago'))
+      : (item.ageDays != null ? item.ageDays + ' days old, never verified' : 'never verified');
+
+    card.appendChild(el('div', { class: 'card-question', text: item.question || '(no question)' }));
+    card.appendChild(el('div', { style: 'display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:6px 0 10px;' }, [
+      pill,
+      item.type ? el('span', { class: 'tag tag-type', text: item.type }) : null,
+      el('span', { style: 'color:#667085;font-size:13px;', text: ageText })
+    ]));
+    if (item.answer) {
+      card.appendChild(el('div', { style: 'color:#475467;font-size:14px;line-height:1.5;margin-bottom:12px;', text: item.answer }));
+    }
+
+    var btn = el('button', { class: 'btn btn-primary', text: 'Mark verified' });
+    btn.addEventListener('click', function() {
+      btn.disabled = true;
+      btn.textContent = 'Saving…';
+      verifyKnowledge(item.id, btn);
+    });
+    card.appendChild(el('div', { class: 'card-actions' }, btn));
+    return card;
+  }
+
+  function verifyKnowledge(id, btn) {
+    api('verify-knowledge', { method: 'POST', body: { knowledgeId: id } })
+      .then(function() {
+        state.feed.staleKnowledge = (state.feed.staleKnowledge || []).filter(function(k) { return k.id !== id; });
+        if (state.feed.summary) {
+          state.feed.summary.reviewDue = Math.max(0, (state.feed.summary.reviewDue || 1) - 1);
+        }
+        renderSummary();
+        renderReview();
+        toast('Marked verified. That resets the clock.', 'success');
+      })
+      .catch(function(err) {
+        if (btn) { btn.disabled = false; btn.textContent = 'Mark verified'; }
+        toast('Could not save: ' + err.message, 'error');
+      });
   }
 
   function renderTopKnow() {
@@ -1168,6 +1248,7 @@ a:hover { text-decoration: underline; }
       renderSummary();
       renderGaps();
       renderLowQual();
+      renderReview();
       renderTopKnow();
     }).catch(function(err) {
       showError('Could not load: ' + err.message);
