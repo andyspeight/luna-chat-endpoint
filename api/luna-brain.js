@@ -151,12 +151,21 @@ async function actionFeed(atKey, clientRecordId, clientName) {
     + '&maxRecords=300'
   );
 
-  var results = await Promise.all([gapsP, lowQualP, topKnowP, summaryP, staleKnowP]);
+  // Draft items the discovery crawler suggested, awaiting owner approval.
+  var suggestedP = atFetch(atKey,
+    '/' + KNOWLEDGE_TABLE
+    + '?filterByFormula=' + encodeURIComponent("AND(" + clientLinkFilter + ", {Status} = 'Draft', {Source} = 'Suggested by Luna')")
+    + '&fields[]=Question&fields[]=Answer&fields[]=Type&fields[]=Notes&fields[]=Confidence'
+    + '&maxRecords=50'
+  );
+
+  var results = await Promise.all([gapsP, lowQualP, topKnowP, summaryP, staleKnowP, suggestedP]);
   var gapsData = results[0];
   var lowQualData = results[1];
   var topKnowData = results[2];
   var summaryData = results[3];
   var staleKnowData = results[4];
+  var suggestedData = results[5];
 
   // Shape gaps
   var gaps = (gapsData.records || []).map(function(rec) {
@@ -243,6 +252,21 @@ async function actionFeed(atKey, clientRecordId, clientName) {
     };
   });
 
+  // Suggested-by-Luna drafts (from the discovery crawler), newest first.
+  var suggestedKnowledge = (suggestedData.records || []).map(function (rec) {
+    var f = rec.fields || {};
+    return {
+      id: rec.id,
+      question: f.Question || '',
+      answer: f.Answer || '',
+      type: valueOf(f.Type) || '',
+      notes: f.Notes || '',
+      createdTime: rec.createdTime || null
+    };
+  }).sort(function (a, b) {
+    return (Date.parse(b.createdTime) || 0) - (Date.parse(a.createdTime) || 0);
+  });
+
   // Summary stats — last 7 days
   var allConvs = summaryData.records || [];
   var totalConvs = allConvs.length;
@@ -262,12 +286,14 @@ async function actionFeed(atKey, clientRecordId, clientName) {
       lowQualityCount: lowQual.length,
       reviewDue: freshnessCounts.stale,
       overdueCount: freshnessCounts.overdue,
-      activeKnowledge: staleInput.length
+      activeKnowledge: staleInput.length,
+      suggestedCount: suggestedKnowledge.length
     },
     gaps: gaps,
     lowQualityConversations: lowQual,
     topKnowledge: topKnow,
-    staleKnowledge: staleKnowledge
+    staleKnowledge: staleKnowledge,
+    suggestedKnowledge: suggestedKnowledge
   };
 }
 
