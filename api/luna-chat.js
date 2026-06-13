@@ -1,6 +1,7 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const ratelimit = require('../lib/ratelimit');
 const knowledge = require('../lib/knowledge');
+const fcdoLib = require('../lib/fcdo');
 
 // ─── LUNA BRAIN KNOWLEDGE BASE ───
 const LB_BASE = 'appPKx77relfeiqmq';
@@ -2208,6 +2209,46 @@ function stripInternalTokens(text) {
     .trim();
 }
 
+// ── FCDO status card (server-sourced, model never assesses safety) ───────────
+// Luna's safety guardrail makes her point to the exact FCDO country page
+// (gov.uk/foreign-travel-advice/<country>) and stop. We detect that link in her
+// finished reply and attach the OFFICIAL current status card, fetched verbatim
+// from FCDO via lib/fcdo. The model is only ever read for WHICH country page it
+// linked, never for the status itself, so there is no route for it to invent or
+// soften a safety judgement. Safe no-op when there is no FCDO link, the slug is
+// the bare index, or the lookup fails.
+var FCDO_URL_RE = /gov\.uk\/foreign-travel-advice\/([a-z][a-z0-9-]{1,60})/i;
+
+function prettifySlug(slug) {
+  return slug.split('-').map(function (w) {
+    return w ? w.charAt(0).toUpperCase() + w.slice(1) : w;
+  }).join(' ');
+}
+
+async function buildFcdoCardFromReply(replyText) {
+  try {
+    if (!replyText || typeof replyText !== 'string') return null;
+    var m = replyText.match(FCDO_URL_RE);
+    if (!m) return null;
+    var slug = m[1].toLowerCase();
+    if (slug === 'foreign-travel-advice') return null; // bare index, no country
+    var advice = await fcdoLib.getAdvice(prettifySlug(slug), { slug: slug, timeoutMs: 2500 });
+    if (!advice || advice.error || advice.notFound) return null;
+    return {
+      country: advice.country,
+      hasWarning: advice.hasWarning,
+      statusLines: advice.statusLines,
+      lastUpdated: advice.lastUpdated,
+      reviewedAt: advice.reviewedAt,
+      url: advice.url,
+      source: advice.source
+    };
+  } catch (e) {
+    console.warn('[luna-chat] FCDO card build failed:', e.message);
+    return null;
+  }
+}
+
 // Strike tracking (in-memory, resets on cold start)
 const moderationStrikes = {};
 const WARNING_THRESHOLDS = { warn: 1, block: 3 };
@@ -3119,6 +3160,8 @@ No problem, drop your email and departure date in below and I'll find it.
           }
         };
 
+        try { var __fcdo2 = await buildFcdoCardFromReply(donePayload2.reply); if (__fcdo2) donePayload2.fcdoCard = __fcdo2; } catch (e) { /* never block the reply */ }
+
         sendEvent('done', donePayload2);
         mark('end');
         logTimings({
@@ -3291,6 +3334,7 @@ No problem, drop your email and departure date in below and I'll find it.
           }
         };
         if (detectedLang) donePayload.detectedLanguage = detectedLang;
+        try { var __fcdo1 = await buildFcdoCardFromReply(donePayload.reply); if (__fcdo1) donePayload.fcdoCard = __fcdo1; } catch (e) { /* never block the reply */ }
 
         sendEvent('done', donePayload);
         mark('end');
@@ -3437,6 +3481,7 @@ No problem, drop your email and departure date in below and I'll find it.
     };
     if (detectedLang) responseJson.detectedLanguage = detectedLang;
     if (openerPills && openerPills.length > 0) responseJson.pills = openerPills;
+    try { var __fcdo0 = await buildFcdoCardFromReply(responseJson.reply); if (__fcdo0) responseJson.fcdoCard = __fcdo0; } catch (e) { /* never block the reply */ }
 
     mark('end');
     logTimings({

@@ -40,7 +40,8 @@ const KNOWN_BLOCK_TYPES = new Set([
   'emergency_card',
   'location_card',
   'weather_card',
-  'quick_replies'
+  'quick_replies',
+  'fcdo_card'
 ]);
 
 /**
@@ -588,6 +589,57 @@ function renderFaqPolicyCard(props, ctx) {
     }
     card.appendChild(foot);
   }
+
+  return card;
+}
+
+// ─────────── BLOCK: fcdo_card ───────────
+// Official FCDO travel-advice status, sourced verbatim server-side (see
+// api/luna-chat.js buildFcdoCardFromReply). Reuses the FAQ card styling so it
+// looks native. The model never supplies this text; it only ever pointed to the
+// country page, so nothing here is a Luna-authored safety assessment.
+
+function renderFcdoCard(props, ctx) {
+  const card = el('div', 'luna-faq-card');
+  card.dataset.fcdo = '1';
+
+  const head = el('div', 'luna-faq-head');
+  const pill = el('span', 'luna-faq-pill', 'FCDO advice');
+  pill.dataset.category = 'advice';
+  head.appendChild(pill);
+  if (props.country) {
+    head.appendChild(el('div', 'luna-faq-title', String(props.country)));
+  }
+  card.appendChild(head);
+
+  const body = el('div', 'luna-faq-body');
+  const lines = Array.isArray(props.statusLines) ? props.statusLines : [];
+  lines.forEach(function (line) {
+    body.appendChild(el('div', 'luna-fcdo-line', String(line)));
+  });
+  card.appendChild(body);
+
+  const foot = el('div', 'luna-faq-foot');
+  const bits = [];
+  if (props.lastUpdated) {
+    const d = new Date(props.lastUpdated);
+    if (!isNaN(d.getTime())) {
+      bits.push('Updated ' + d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }));
+    }
+  }
+  bits.push(props.source || 'UK FCDO');
+  foot.appendChild(el('span', 'luna-faq-source', bits.join(' · ')));
+  if (props.url) {
+    const link = document.createElement('a');
+    link.className = 'luna-faq-link';
+    link.href = safeUrl(props.url);
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = 'Read the full advice';
+    link.appendChild(iconNode('external-link'));
+    foot.appendChild(link);
+  }
+  card.appendChild(foot);
 
   return card;
 }
@@ -1209,7 +1261,8 @@ const RENDERERS = {
   emergency_card:      renderEmergencyCard,
   location_card:       renderLocationCard,
   weather_card:        renderWeatherCard,
-  quick_replies:       renderQuickReplies
+  quick_replies:       renderQuickReplies,
+  fcdo_card:           renderFcdoCard
 };
 
 /**
@@ -4649,6 +4702,15 @@ async function sendToAI(text) {
   var workingReply = bookingExtracted.cleanText;
 
   var parsed = parseResponse(workingReply);
+
+  /* FCDO status card: the server attaches data.fcdoCard (verbatim official
+     status) when Luna's reply points to an FCDO country page. Render it as a
+     block beneath her prose, through the normal block pipeline. */
+  if (data.fcdoCard && data.fcdoCard.statusLines) {
+    parsed.blocks = parsed.blocks || [];
+    parsed.blocks.push({ type: "block", blockType: "fcdo_card", props: data.fcdoCard });
+  }
+
   if (data._streamedBubble) {
     // The prose has already been streamed into a live bubble. We need to:
     //   1. Replace its content with the FINAL parsed prose (cleans up any
