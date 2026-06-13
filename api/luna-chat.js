@@ -1,6 +1,7 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const ratelimit = require('../lib/ratelimit');
 const knowledge = require('../lib/knowledge');
+const fcdoLib = require('../lib/fcdo');
 
 // ─── LUNA BRAIN KNOWLEDGE BASE ───
 const LB_BASE = 'appPKx77relfeiqmq';
@@ -1821,6 +1822,41 @@ function buildLongPromptAugment() {
     + 'and booking instructions — use them normally.';
 }
 
+// buildTemporalContext — gives Luna a precise, factual anchor for "now" so she
+// never has to guess the date, month or season. Pure function of the supplied
+// Date (defaults to the current time) so it can be unit-tested deterministically.
+//
+// Anti-hallucination posture: it states ONLY what the calendar guarantees, the
+// date and the hemisphere season. It explicitly forbids inventing dated events
+// (festivals, opening or closing dates, school holidays, prices). Those must come
+// from the verified knowledge or destination context, never from assumption.
+//
+// All fields are read in UTC so the server timezone can never shift the calendar
+// day. Seasons are meteorological (3-month blocks), framed for the northern
+// hemisphere by default with the southern hemisphere stated as its inverse, so
+// Luna never claims it is summer in Sydney when it is June in the UK.
+function buildTemporalContext(now) {
+  now = now || new Date();
+  var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var weekdays = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  var northSeasons = ['Winter','Winter','Spring','Spring','Spring','Summer','Summer','Summer','Autumn','Autumn','Autumn','Winter'];
+  var southSeasons = ['Summer','Summer','Autumn','Autumn','Autumn','Winter','Winter','Winter','Spring','Spring','Spring','Summer'];
+  var mIdx = now.getUTCMonth();
+  var dateLine = weekdays[now.getUTCDay()] + ' ' + now.getUTCDate() + ' ' + months[mIdx] + ' ' + now.getUTCFullYear();
+  var iso = now.toISOString().split('T')[0];
+
+  return '\n\n## Today (your temporal anchor, treat this as the present moment)\n'
+    + 'Today is ' + dateLine + ' (' + iso + ').\n'
+    + 'Season right now: ' + northSeasons[mIdx] + ' across the northern hemisphere '
+    + '(UK, Europe, the Mediterranean, the Caribbean, most of Asia and North America), and '
+    + southSeasons[mIdx] + ' across the southern hemisphere '
+    + '(Australia, New Zealand, southern Africa and most of South America).\n'
+    + 'Use this as the present moment for every reply. Never guess or assume a different date, month or season.\n'
+    + '- When the visitor says "now", "at the moment", "currently", "this month", "right now" or "is it a good time", anchor to the date above.\n'
+    + '- When seasonality matters, reason from this date and the destination hemisphere. Do not describe an out-of-season period as if it were happening now.\n'
+    + '- Do NOT invent dated specifics such as festivals, events, opening or closing dates, school holidays or prices for "this month" or any date. State a dated event ONLY if it appears in the verified knowledge or destination context. If you do not have it, say you can check rather than guessing.';
+}
+
 function sanitizeInput(str) {
   if (typeof str !== 'string') return '';
   return str
@@ -2173,6 +2209,46 @@ function stripInternalTokens(text) {
     .trim();
 }
 
+// ── FCDO status card (server-sourced, model never assesses safety) ───────────
+// Luna's safety guardrail makes her point to the exact FCDO country page
+// (gov.uk/foreign-travel-advice/<country>) and stop. We detect that link in her
+// finished reply and attach the OFFICIAL current status card, fetched verbatim
+// from FCDO via lib/fcdo. The model is only ever read for WHICH country page it
+// linked, never for the status itself, so there is no route for it to invent or
+// soften a safety judgement. Safe no-op when there is no FCDO link, the slug is
+// the bare index, or the lookup fails.
+var FCDO_URL_RE = /gov\.uk\/foreign-travel-advice\/([a-z][a-z0-9-]{1,60})/i;
+
+function prettifySlug(slug) {
+  return slug.split('-').map(function (w) {
+    return w ? w.charAt(0).toUpperCase() + w.slice(1) : w;
+  }).join(' ');
+}
+
+async function buildFcdoCardFromReply(replyText) {
+  try {
+    if (!replyText || typeof replyText !== 'string') return null;
+    var m = replyText.match(FCDO_URL_RE);
+    if (!m) return null;
+    var slug = m[1].toLowerCase();
+    if (slug === 'foreign-travel-advice') return null; // bare index, no country
+    var advice = await fcdoLib.getAdvice(prettifySlug(slug), { slug: slug, timeoutMs: 2500 });
+    if (!advice || advice.error || advice.notFound) return null;
+    return {
+      country: advice.country,
+      hasWarning: advice.hasWarning,
+      statusLines: advice.statusLines,
+      lastUpdated: advice.lastUpdated,
+      reviewedAt: advice.reviewedAt,
+      url: advice.url,
+      source: advice.source
+    };
+  } catch (e) {
+    console.warn('[luna-chat] FCDO card build failed:', e.message);
+    return null;
+  }
+}
+
 // Strike tracking (in-memory, resets on cold start)
 const moderationStrikes = {};
 const WARNING_THRESHOLDS = { warn: 1, block: 3 };
@@ -2418,6 +2494,11 @@ module.exports = async function handler(req, res) {
 
   const isTravelgenix = (clientName || '').toLowerCase().includes('travelgenix');
   let systemPrompt = isTravelgenix ? LUNA_TRAVELGENIX : LUNA_CLIENT;
+
+  // -- Temporal anchor: ON for every client, always ----------------------
+  // Give Luna a precise, factual "now" so she never guesses the date or season.
+  // High salience near the top of the assembled prompt. See buildTemporalContext.
+  systemPrompt += buildTemporalContext();
 
   // -- Multilingual: ON for every client, always -------------------------
   // Luna detects the visitor's language and replies in it, for all clients,
@@ -3079,6 +3160,8 @@ No problem, drop your email and departure date in below and I'll find it.
           }
         };
 
+        try { var __fcdo2 = await buildFcdoCardFromReply(donePayload2.reply); if (__fcdo2) donePayload2.fcdoCard = __fcdo2; } catch (e) { /* never block the reply */ }
+
         sendEvent('done', donePayload2);
         mark('end');
         logTimings({
@@ -3251,6 +3334,7 @@ No problem, drop your email and departure date in below and I'll find it.
           }
         };
         if (detectedLang) donePayload.detectedLanguage = detectedLang;
+        try { var __fcdo1 = await buildFcdoCardFromReply(donePayload.reply); if (__fcdo1) donePayload.fcdoCard = __fcdo1; } catch (e) { /* never block the reply */ }
 
         sendEvent('done', donePayload);
         mark('end');
@@ -3397,6 +3481,7 @@ No problem, drop your email and departure date in below and I'll find it.
     };
     if (detectedLang) responseJson.detectedLanguage = detectedLang;
     if (openerPills && openerPills.length > 0) responseJson.pills = openerPills;
+    try { var __fcdo0 = await buildFcdoCardFromReply(responseJson.reply); if (__fcdo0) responseJson.fcdoCard = __fcdo0; } catch (e) { /* never block the reply */ }
 
     mark('end');
     logTimings({
@@ -3515,3 +3600,7 @@ function detectEscalation(aiReply, visitorMessage) {
 
   return false;
 }
+
+// Exposed for unit testing only. Vercel invokes the default handler export
+// above; attaching helpers as properties does not change that contract.
+module.exports.buildTemporalContext = buildTemporalContext;

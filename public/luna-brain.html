@@ -665,6 +665,16 @@ a:hover { text-decoration: underline; }
     <div id="gapsHost"></div>
   </div>
 
+  <div class="section" id="suggestedSection">
+    <div class="section-head">
+      <div>
+        <h2>Suggested by Luna <span class="count-pill" id="suggestedCount">0</span></h2>
+      </div>
+      <p>Fresh things to do that Luna found from your sources. Check each is accurate, edit if needed, then approve to make it live. Dismiss anything that does not fit.</p>
+    </div>
+    <div id="suggestedHost"></div>
+  </div>
+
   <div class="section" id="lowQualSection">
     <div class="section-head">
       <div>
@@ -673,6 +683,16 @@ a:hover { text-decoration: underline; }
       <p>Where Luna's answer scored 1 or 2 out of 5. Review and decide what to do.</p>
     </div>
     <div id="lowQualHost"></div>
+  </div>
+
+  <div class="section" id="reviewSection">
+    <div class="section-head">
+      <div>
+        <h2>Review due <span class="count-pill" id="reviewCount">0</span></h2>
+      </div>
+      <p>Answers that have gone a while without a check. Confirm each is still accurate, then mark it verified to reset the clock. This never changes what Luna says, it just keeps your knowledge honest.</p>
+    </div>
+    <div id="reviewHost"></div>
   </div>
 
   <div class="section" id="topKnowSection">
@@ -822,6 +842,8 @@ a:hover { text-decoration: underline; }
     host.appendChild(stat('Avg quality', String(s.avgQualityScore || 0), ' / 5', 'last 7 days'));
     host.appendChild(stat('Answer rate', String(s.answerRate || 0), '%', 'last 7 days'));
     host.appendChild(stat('Open gaps', String(s.openGaps || 0), '', 'awaiting your review'));
+    host.appendChild(stat('Suggested', String(s.suggestedCount || 0), '', 'awaiting approval'));
+    host.appendChild(stat('Review due', String(s.reviewDue || 0), '', (s.overdueCount || 0) + ' overdue'));
   }
 
   function renderGaps() {
@@ -983,6 +1005,138 @@ a:hover { text-decoration: underline; }
     }
 
     return card;
+  }
+
+  function renderSuggested() {
+    var items = (state.feed.suggestedKnowledge || []);
+    $('suggestedCount').textContent = String(items.length);
+    var host = $('suggestedHost');
+    host.innerHTML = '';
+
+    if (items.length === 0) {
+      host.appendChild(el('div', { class: 'empty' }, [
+        el('div', { class: 'emoji', text: '🧭' }),
+        el('h3', { text: 'Nothing new to review' }),
+        el('p', { text: 'When Luna finds new things to do from your sources, they will appear here to approve.' })
+      ]));
+      return;
+    }
+
+    items.forEach(function(item) { host.appendChild(renderSuggestedCard(item)); });
+  }
+
+  function renderSuggestedCard(item) {
+    var card = el('div', { class: 'card' });
+    card.appendChild(el('div', { class: 'card-question', text: item.question || '(no question)' }));
+    card.appendChild(el('div', { style: 'display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:6px 0 10px;' }, [
+      item.type ? el('span', { class: 'tag tag-type', text: item.type }) : null,
+      item.notes ? el('span', { style: 'color:#667085;font-size:12px;', text: item.notes }) : null
+    ]));
+
+    var ta = el('textarea', { class: 'know-editor-textarea', style: 'width:100%;min-height:80px;' });
+    ta.value = item.answer || '';
+    card.appendChild(ta);
+
+    var approveBtn = el('button', { class: 'btn btn-primary', text: 'Approve' });
+    approveBtn.addEventListener('click', function() {
+      approveBtn.disabled = true; approveBtn.textContent = 'Saving…';
+      decideSuggested(item.id, 'Active', ta.value, approveBtn);
+    });
+    var dismissBtn = el('button', { class: 'btn btn-ghost', text: 'Dismiss' });
+    dismissBtn.addEventListener('click', function() {
+      dismissBtn.disabled = true;
+      decideSuggested(item.id, 'Archived', null, dismissBtn);
+    });
+    card.appendChild(el('div', { class: 'card-actions' }, [approveBtn, dismissBtn]));
+    return card;
+  }
+
+  function decideSuggested(id, status, answer, btn) {
+    var body = { knowledgeId: id, status: status };
+    if (status === 'Active' && typeof answer === 'string') body.answer = answer;
+    api('update-knowledge', { method: 'POST', body: body })
+      .then(function() {
+        state.feed.suggestedKnowledge = (state.feed.suggestedKnowledge || []).filter(function(k) { return k.id !== id; });
+        if (state.feed.summary) {
+          state.feed.summary.suggestedCount = Math.max(0, (state.feed.summary.suggestedCount || 1) - 1);
+        }
+        renderSummary();
+        renderSuggested();
+        toast(status === 'Active' ? 'Approved and live.' : 'Dismissed.', 'success');
+      })
+      .catch(function(err) {
+        if (btn) { btn.disabled = false; btn.textContent = (status === 'Active' ? 'Approve' : 'Dismiss'); }
+        toast('Could not save: ' + err.message, 'error');
+      });
+  }
+
+  function renderReview() {
+    var items = (state.feed.staleKnowledge || []);
+    $('reviewCount').textContent = String(items.length);
+    var host = $('reviewHost');
+    host.innerHTML = '';
+
+    if (items.length === 0) {
+      host.appendChild(el('div', { class: 'empty' }, [
+        el('div', { class: 'emoji', text: '🟢' }),
+        el('h3', { text: 'Everything is up to date' }),
+        el('p', { text: 'When an answer has gone a while without a check, it will appear here.' })
+      ]));
+      return;
+    }
+
+    items.forEach(function(item) { host.appendChild(renderReviewCard(item)); });
+  }
+
+  function renderReviewCard(item) {
+    var card = el('div', { class: 'card' });
+    var overdue = item.freshnessState === 'overdue';
+
+    var pill = el('span', {
+      text: overdue ? 'Overdue' : 'Review due',
+      style: 'display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600;'
+        + (overdue ? 'background:#fde2e1;color:#b42318;' : 'background:#fef3cd;color:#915907;')
+    });
+
+    var ageText = item.everVerified
+      ? ('last verified ' + (item.ageDays != null ? item.ageDays + ' days ago' : 'a while ago'))
+      : (item.ageDays != null ? item.ageDays + ' days old, never verified' : 'never verified');
+
+    card.appendChild(el('div', { class: 'card-question', text: item.question || '(no question)' }));
+    card.appendChild(el('div', { style: 'display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:6px 0 10px;' }, [
+      pill,
+      item.type ? el('span', { class: 'tag tag-type', text: item.type }) : null,
+      el('span', { style: 'color:#667085;font-size:13px;', text: ageText })
+    ]));
+    if (item.answer) {
+      card.appendChild(el('div', { style: 'color:#475467;font-size:14px;line-height:1.5;margin-bottom:12px;', text: item.answer }));
+    }
+
+    var btn = el('button', { class: 'btn btn-primary', text: 'Mark verified' });
+    btn.addEventListener('click', function() {
+      btn.disabled = true;
+      btn.textContent = 'Saving…';
+      verifyKnowledge(item.id, btn);
+    });
+    card.appendChild(el('div', { class: 'card-actions' }, btn));
+    return card;
+  }
+
+  function verifyKnowledge(id, btn) {
+    api('verify-knowledge', { method: 'POST', body: { knowledgeId: id } })
+      .then(function() {
+        state.feed.staleKnowledge = (state.feed.staleKnowledge || []).filter(function(k) { return k.id !== id; });
+        if (state.feed.summary) {
+          state.feed.summary.reviewDue = Math.max(0, (state.feed.summary.reviewDue || 1) - 1);
+        }
+        renderSummary();
+        renderReview();
+        toast('Marked verified. That resets the clock.', 'success');
+      })
+      .catch(function(err) {
+        if (btn) { btn.disabled = false; btn.textContent = 'Mark verified'; }
+        toast('Could not save: ' + err.message, 'error');
+      });
   }
 
   function renderTopKnow() {
@@ -1167,7 +1321,9 @@ a:hover { text-decoration: underline; }
       renderTopbarMeta();
       renderSummary();
       renderGaps();
+      renderSuggested();
       renderLowQual();
+      renderReview();
       renderTopKnow();
     }).catch(function(err) {
       showError('Could not load: ' + err.message);

@@ -8,10 +8,17 @@
     "api/auth.js": { "maxDuration": 10, "memory": 128 },
     "api/widget-config.js": { "maxDuration": 10, "memory": 128 },
     "api/ably-token.js": { "maxDuration": 5, "memory": 128 },
-    "api/monitor.js": { "maxDuration": 15, "memory": 128 }
+    "api/monitor.js": { "maxDuration": 15, "memory": 128 },
+    "api/knowledge-freshness.js": { "maxDuration": 30, "memory": 128 },
+    "api/fcdo.js": { "maxDuration": 15, "memory": 128 },
+    "api/discover-scan.js": { "maxDuration": 60, "memory": 256 },
+    "api/global-brain.js": { "maxDuration": 15, "memory": 128 }
   },
   "crons": [
-    { "path": "/api/monitor", "schedule": "*/15 * * * *" }
+    { "path": "/api/monitor", "schedule": "*/15 * * * *" },
+    { "path": "/api/knowledge-freshness", "schedule": "0 8 * * *" },
+    { "path": "/api/fcdo?warm=1", "schedule": "0 7 * * *" },
+    { "path": "/api/discover-scan", "schedule": "0 6 * * *" }
   ],
   "headers": [
     {
