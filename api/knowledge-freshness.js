@@ -201,6 +201,60 @@ function shouldSend(digest, state, now) {
   return days >= REMINDER_DAYS;                              // weekly reminder
 }
 
+// ─── global base freshness ───────────────────────────────────────────────────
+// The shared knowledge base (appPKx77relfeiqmq) powers Luna and the widgets for
+// every client, so its staleness matters most. We scan the three unified tables
+// the widgets search. Global data is re-checked more often than per-client.
+var GLOBAL_BASE = 'appPKx77relfeiqmq';
+var GLOBAL_TABLES = [
+  { id: 'tblgdLszaPmquxQ7O', name: 'Knowledge' },
+  { id: 'tblirr0vJuQcTLuH2', name: 'Destinations' },
+  { id: 'tbl8CRDV48QGjDx2a', name: 'Transport' }
+];
+var GLOBAL_REVIEW_DAYS = parseInt(process.env.LUNA_GLOBAL_REVIEW_DAYS || '90', 10);
+var GLOBAL_OVERDUE_DAYS = parseInt(process.env.LUNA_GLOBAL_OVERDUE_DAYS || '180', 10);
+
+async function atGetGlobal(path) {
+  var r = await fetch('https://api.airtable.com/v0/' + GLOBAL_BASE + path, {
+    headers: { 'Authorization': 'Bearer ' + process.env.AIRTABLE_KEY },
+    signal: AbortSignal.timeout(10000)
+  });
+  if (!r.ok) throw new Error('Airtable ' + r.status);
+  return r.json();
+}
+
+async function scanGlobal(now) {
+  var opts = { reviewDays: GLOBAL_REVIEW_DAYS, overdueDays: GLOBAL_OVERDUE_DAYS };
+  var out = [];
+  for (var t = 0; t < GLOBAL_TABLES.length; t++) {
+    var items = [], offset = null, pages = 0;
+    do {
+      var path = '/' + GLOBAL_TABLES[t].id + '?fields%5B%5D=Last%20Verified&pageSize=100';
+      if (offset) path += '&offset=' + encodeURIComponent(offset);
+      var data;
+      try { data = await atGetGlobal(path); } catch (e) { data = { records: [] }; }
+      (data.records || []).forEach(function (r) {
+        items.push({ lastVerifiedAt: (r.fields && r.fields['Last Verified']) || null, createdTime: r.createdTime });
+      });
+      offset = data.offset || null; pages++;
+    } while (offset && pages < 12);
+    var counts = freshness.summarise(items, now, opts);
+    var stats = freshness.ageStats(items, now);
+    out.push({ table: GLOBAL_TABLES[t].name, total: items.length, reviewDue: counts.stale, overdue: counts.overdue, oldestDays: stats.oldestDays, avgDays: stats.avgDays });
+  }
+  return out;
+}
+
+// One-line digest of the global scan, plus a totalStale used to decide sending.
+function globalDigest(globalScan) {
+  if (!globalScan || !globalScan.length) return { totalStale: 0, line: null };
+  var totalStale = globalScan.reduce(function (s, t) { return s + (t.reviewDue || 0); }, 0);
+  var line = 'Global knowledge base: ' + globalScan.map(function (t) {
+    return t.table + ' ' + t.total + ' (' + (t.oldestDays != null ? t.oldestDays + 'd oldest' : 'no dates') + ', ' + (t.reviewDue || 0) + ' due)';
+  }).join('; ') + '.';
+  return { totalStale: totalStale, line: line };
+}
+
 // ─── handler ─────────────────────────────────────────────────────────────────
 
 module.exports = async function handler(req, res) {
@@ -229,12 +283,19 @@ module.exports = async function handler(req, res) {
 
     var digest = buildDigest(items, clientNames, now, opts);
 
+    // Global base freshness (the shared brain). Append its line to the digest
+    // when something there is past review so the same alert covers both.
+    var globalScan = await scanGlobal(now);
+    var gd = globalDigest(globalScan);
+    if (gd.totalStale > 0) {
+      digest.text = (digest.text ? digest.text + '\n\n' : 'Luna knowledge review\n\n') + gd.line + '\n\nReview in the global knowledge screen.';
+    }
+
     if (dryRun) {
       return res.status(200).json({
         dryRun: true,
-        activeKnowledge: items.length,
-        counts: digest.counts,
-        topOverdue: digest.topOverdue,
+        perClient: { activeKnowledge: items.length, counts: digest.counts, topOverdue: digest.topOverdue },
+        global: globalScan,
         wouldSend: !!digest.text,
         message: digest.text
       });
@@ -255,6 +316,7 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({
       activeKnowledge: items.length,
       counts: digest.counts,
+      global: globalScan,
       sent: sent,
       checkedAt: now.toISOString()
     });

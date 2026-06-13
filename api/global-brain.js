@@ -17,8 +17,13 @@
 'use strict';
 
 const gk = require('../lib/global-knowledge');
+const freshness = require('../lib/freshness');
 
 const ADMIN_PASS = process.env.ADMIN_PASSWORD || 'travelgenix2026';
+// Global knowledge is shared, high-traffic data, so it is re-checked more often
+// than per-client knowledge. Tunable via env.
+const GLOBAL_REVIEW_DAYS = parseInt(process.env.LUNA_GLOBAL_REVIEW_DAYS || '90', 10);
+const GLOBAL_OVERDUE_DAYS = parseInt(process.env.LUNA_GLOBAL_OVERDUE_DAYS || '180', 10);
 
 const SF = { // Suggested Knowledge field names
   question: 'Question', consumerAnswer: 'Consumer Answer', agentAnswer: 'Agent Answer',
@@ -56,7 +61,36 @@ function valueOf(field) {
   return field;
 }
 
+// Read the live Knowledge table's verification dates and summarise its health,
+// so the review screen can show how stale the shared brain is even when nothing
+// is past the review threshold yet.
+async function knowledgeHealth() {
+  var items = [];
+  var offset = null, pages = 0;
+  do {
+    var path = '/' + gk.KNOWLEDGE_TABLE + '?fields%5B%5D=Last%20Verified&pageSize=100';
+    if (offset) path += '&offset=' + encodeURIComponent(offset);
+    var data = await atFetch(path);
+    (data.records || []).forEach(function (r) {
+      items.push({ lastVerifiedAt: (r.fields && r.fields['Last Verified']) || null, createdTime: r.createdTime });
+    });
+    offset = data.offset || null; pages++;
+  } while (offset && pages < 12);
+  var now = new Date();
+  var stats = freshness.ageStats(items, now);
+  var counts = freshness.summarise(items, now, { reviewDays: GLOBAL_REVIEW_DAYS, overdueDays: GLOBAL_OVERDUE_DAYS });
+  return {
+    total: items.length,
+    oldestDays: stats.oldestDays,
+    avgDays: stats.avgDays,
+    pastReview: counts.stale,
+    overdue: counts.overdue,
+    reviewDays: GLOBAL_REVIEW_DAYS
+  };
+}
+
 async function actionFeed() {
+  var healthP = knowledgeHealth().catch(function () { return null; });
   var data = await atFetch('/' + gk.SUGGESTED_TABLE
     + '?filterByFormula=' + encodeURIComponent("{Status}='Pending'")
     + '&maxRecords=200');
@@ -78,7 +112,7 @@ async function actionFeed() {
   }).sort(function (a, b) {
     return (Date.parse(b.suggestedAt) || 0) - (Date.parse(a.suggestedAt) || 0);
   });
-  return { suggestions: items, pendingCount: items.length };
+  return { suggestions: items, pendingCount: items.length, knowledgeHealth: await healthP };
 }
 
 async function actionApprove(body) {

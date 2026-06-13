@@ -40,7 +40,12 @@
 <div class="wrap" id="app" hidden>
   <h1>Global <em>Knowledge</em> Review</h1>
   <p class="sub">Suggestions found for the shared knowledge base. Check each is accurate, edit if needed, then approve to make it live for every client. Nothing here is live yet.</p>
-  <div class="summary"><div class="stat"><div class="v" id="pendingCount">0</div><div class="l">pending review</div></div></div>
+  <div class="summary">
+    <div class="stat"><div class="v" id="pendingCount">0</div><div class="l">pending review</div></div>
+    <div class="stat"><div class="v" id="kbTotal">–</div><div class="l">live knowledge records</div></div>
+    <div class="stat"><div class="v" id="kbOldest">–</div><div class="l">oldest last verified</div></div>
+    <div class="stat"><div class="v" id="kbStale">–</div><div class="l">past review</div></div>
+  </div>
   <div id="host"></div>
 </div>
 
@@ -90,6 +95,12 @@
   function render(data) {
     state.feed = data;
     $('pendingCount').textContent = String(data.pendingCount || 0);
+    var h = data.knowledgeHealth;
+    if (h) {
+      $('kbTotal').textContent = String(h.total || 0);
+      $('kbOldest').textContent = (h.oldestDays != null) ? (h.oldestDays + 'd') : '–';
+      $('kbStale').textContent = String(h.pastReview || 0);
+    }
     var host = $('host'); host.innerHTML = '';
     var items = data.suggestions || [];
     if (!items.length) {
