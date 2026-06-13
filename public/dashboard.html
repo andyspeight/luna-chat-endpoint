@@ -2346,6 +2346,32 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
 
     <hr style="border:none;border-top:1px solid var(--border);margin:32px 0">
 
+    <div class="settings-title">Discover New Things To Do</div>
+    <div class="settings-sub">Point Luna at trusted sources for what is on in your destinations. She checks them daily, drafts anything new, and adds it to Luna Brain for you to approve. Nothing goes live until you say so.</div>
+
+    <div class="settings-section">
+      <h4>Discovery Sources</h4>
+      <div class="settings-hint" style="margin-bottom:12px">Add sources you trust, like official tourism boards, resort sites, or events calendars. Official tourism boards are the most reliable. One URL per line.</div>
+      <div class="settings-row">
+        <textarea class="settings-textarea" id="setDiscoverSources" placeholder="https://www.visitgreece.gr/experiences
+https://en.wikivoyage.org/wiki/Crete
+https://www.visitportugal.com/en/experiencias" rows="5" style="font-family:var(--mono);font-size:var(--text-sm);min-height:120px"></textarea>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;margin-top:var(--space-3)">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="setDiscoverEnabled" style="width:18px;height:18px;accent-color:var(--teal)">
+          <span style="font-size:13px;font-weight:600">Check these sources daily</span>
+        </label>
+      </div>
+      <div style="display:flex;gap:var(--space-3);align-items:center;margin-top:var(--space-3)">
+        <button class="settings-save" id="discoverSaveBtn" onclick="window._saveDiscoverSettings()" style="margin:0;background:var(--teal)">Save sources</button>
+        <span id="discoverStatus" style="font-size:var(--text-sm);color:var(--text-muted)"></span>
+      </div>
+      <div class="settings-hint" style="margin-top:var(--space-2)">New finds appear as drafts in Luna Brain for you to approve or dismiss. Luna only reads what is written on the page, she never invents anything.</div>
+    </div>
+
+    <hr style="border:none;border-top:1px solid var(--border);margin:32px 0">
+
     <div class="settings-title">Widget Appearance</div>
     <div class="settings-sub">Customise how the chat widget looks on your website. Changes take effect within a minute.</div>
 
@@ -6495,8 +6521,39 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
 
       // Auto-rescan checkbox
       if (p.autoRescan) document.getElementById('setAutoRescan').checked = true;
+
+      // Discovery sources
+      var dsEl = document.getElementById('setDiscoverSources');
+      if (dsEl && p.discoverSources) dsEl.value = p.discoverSources;
+      var deEl = document.getElementById('setDiscoverEnabled');
+      if (deEl && p.discoverEnabled) deEl.checked = true;
+      if (p.discoverLastRun) {
+        var st = document.getElementById('discoverStatus');
+        if (st) st.textContent = 'Last checked ' + new Date(p.discoverLastRun).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+      }
     } catch(e) {
       console.warn('Failed to load scan data:', e.message);
+    }
+  };
+
+  window._saveDiscoverSettings = async function() {
+    var btn = document.getElementById('discoverSaveBtn');
+    var status = document.getElementById('discoverStatus');
+    var sources = (document.getElementById('setDiscoverSources') || {}).value || '';
+    var enabled = (document.getElementById('setDiscoverEnabled') || {}).checked || false;
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+    try {
+      var res = await fetch('https://luna-chat-endpoint.vercel.app/api/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Client-Name': CONFIG.CLIENT_NAME, 'X-Client-Pass': CONFIG.PASSWORD },
+        body: JSON.stringify({ discoverSources: sources, discoverEnabled: enabled })
+      });
+      if (!res.ok) throw new Error('Save failed');
+      if (status) { status.textContent = 'Saved'; status.style.color = 'var(--teal)'; }
+    } catch (e) {
+      if (status) { status.textContent = 'Could not save'; status.style.color = '#f87171'; }
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Save sources'; }
     }
   };
 

@@ -117,7 +117,10 @@ module.exports = async function handler(req, res) {
           scannedKnowledge: fields.scannedKnowledge || '',
           scannedAt: fields.scannedAt || '',
           scannedPageCount: fields.scannedPageCount || 0,
-          autoRescan: !!fields.autoRescan
+          autoRescan: !!fields.autoRescan,
+          discoverSources: fields.DiscoverSources || '',
+          discoverEnabled: !!fields.DiscoverEnabled,
+          discoverLastRun: fields.DiscoverLastRun || ''
         }
       });
     }
@@ -182,6 +185,10 @@ module.exports = async function handler(req, res) {
       if (body.scannedAt !== undefined) updateFields.scannedAt = body.scannedAt;
       if (body.scannedPageCount !== undefined) updateFields.scannedPageCount = parseInt(body.scannedPageCount) || 0;
       if (body.autoRescan !== undefined) updateFields.autoRescan = !!body.autoRescan;
+
+      // Discovery crawler fields (Step 4 — proactive things-to-do ingest)
+      if (body.discoverSources !== undefined) updateFields.DiscoverSources = body.discoverSources;
+      if (body.discoverEnabled !== undefined) updateFields.DiscoverEnabled = !!body.discoverEnabled;
 
       if (Object.keys(updateFields).length === 0) {
         return res.status(400).json({ error: 'No fields to update' });
