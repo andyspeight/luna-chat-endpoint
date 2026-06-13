@@ -11,7 +11,8 @@
     "api/monitor.js": { "maxDuration": 15, "memory": 128 },
     "api/knowledge-freshness.js": { "maxDuration": 30, "memory": 128 },
     "api/fcdo.js": { "maxDuration": 15, "memory": 128 },
-    "api/discover-scan.js": { "maxDuration": 60, "memory": 256 }
+    "api/discover-scan.js": { "maxDuration": 60, "memory": 256 },
+    "api/global-brain.js": { "maxDuration": 15, "memory": 128 }
   },
   "crons": [
     { "path": "/api/monitor", "schedule": "*/15 * * * *" },

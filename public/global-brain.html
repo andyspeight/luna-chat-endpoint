@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Global Knowledge Review</title>
+<style>
+  :root { --bg:#0e1424; --panel:#161f36; --border:#26314f; --text:#e7ecf5; --dim:#9aa7c2; --teal:#2dd4bf; --green:#34d399; --red:#f87171; --radius:12px; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--text); }
+  .wrap { max-width:860px; margin:0 auto; padding:28px 20px 80px; }
+  h1 { font-size:22px; margin:0 0 2px; } h1 em { color:var(--teal); font-style:normal; }
+  .sub { color:var(--dim); font-size:14px; margin:0 0 20px; }
+  .summary { display:flex; gap:14px; margin-bottom:22px; flex-wrap:wrap; }
+  .stat { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:12px 16px; min-width:120px; }
+  .stat .v { font-size:24px; font-weight:700; } .stat .l { font-size:12px; color:var(--dim); }
+  .card { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:14px; }
+  .q { font-weight:600; font-size:15px; margin-bottom:8px; }
+  .meta { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px; }
+  .pill { font-size:11px; font-weight:600; padding:2px 9px; border-radius:999px; background:#1f2a47; color:var(--dim); }
+  .pill.cat { background:#0f3d38; color:var(--teal); }
+  textarea { width:100%; min-height:78px; background:#0f1626; color:var(--text); border:1px solid var(--border); border-radius:8px; padding:9px; font-size:13px; font-family:inherit; resize:vertical; }
+  .src { font-size:12px; color:var(--dim); margin-top:8px; word-break:break-all; }
+  .src a { color:var(--teal); }
+  .actions { display:flex; gap:10px; margin-top:12px; }
+  button { font:inherit; font-weight:600; font-size:13px; border-radius:8px; padding:8px 16px; border:1px solid var(--border); cursor:pointer; }
+  .approve { background:var(--green); color:#06281c; border-color:transparent; }
+  .dismiss { background:transparent; color:var(--dim); }
+  .empty { text-align:center; color:var(--dim); padding:48px 0; }
+  .gate { max-width:360px; margin:80px auto; background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:24px; }
+  .gate input { width:100%; padding:10px; border-radius:8px; border:1px solid var(--border); background:#0f1626; color:var(--text); margin:10px 0; }
+  .gate button { width:100%; background:var(--teal); color:#04201c; border-color:transparent; }
+  .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--panel); border:1px solid var(--border); padding:10px 18px; border-radius:10px; font-size:13px; opacity:0; transition:opacity .2s; }
+  .toast.show { opacity:1; }
+  .toast.ok { border-color:var(--green); } .toast.err { border-color:var(--red); }
+</style>
+</head>
+<body>
+<div class="wrap" id="app" hidden>
+  <h1>Global <em>Knowledge</em> Review</h1>
+  <p class="sub">Suggestions found for the shared knowledge base. Check each is accurate, edit if needed, then approve to make it live for every client. Nothing here is live yet.</p>
+  <div class="summary"><div class="stat"><div class="v" id="pendingCount">0</div><div class="l">pending review</div></div></div>
+  <div id="host"></div>
+</div>
+
+<div class="gate" id="gate">
+  <h1>Global <em>Knowledge</em> Review</h1>
+  <p class="sub">Admin access required.</p>
+  <input type="password" id="pass" placeholder="Admin password" autocomplete="current-password">
+  <button onclick="window._login()">Enter</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function() {
+  'use strict';
+  var API = '/api/global-brain';
+  var state = { pass: '', feed: null };
+
+  function $(id) { return document.getElementById(id); }
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+  function toast(msg, kind) {
+    var t = $('toast'); t.textContent = msg; t.className = 'toast show ' + (kind || '');
+    setTimeout(function() { t.className = 'toast ' + (kind || ''); }, 3000);
+  }
+
+  function api(action, opts) {
+    opts = opts || {};
+    return fetch(API + '?action=' + encodeURIComponent(action), {
+      method: opts.method || 'GET',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Pass': state.pass },
+      body: opts.body ? JSON.stringify(opts.body) : undefined
+    }).then(function(r) { return r.json().then(function(d) { if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status)); return d; }); });
+  }
+
+  window._login = function() {
+    var p = $('pass').value.trim();
+    if (!p) return;
+    state.pass = p;
+    api('feed').then(function(data) {
+      try { sessionStorage.setItem('gb_pass', p); } catch (e) {}
+      $('gate').hidden = true; $('app').hidden = false;
+      render(data);
+    }).catch(function(err) { toast('Login failed: ' + err.message, 'err'); });
+  };
+
+  function render(data) {
+    state.feed = data;
+    $('pendingCount').textContent = String(data.pendingCount || 0);
+    var host = $('host'); host.innerHTML = '';
+    var items = data.suggestions || [];
+    if (!items.length) {
+      var e = el('div', 'empty'); e.appendChild(el('div', null, '✓')); e.appendChild(el('div', null, 'Nothing waiting for review'));
+      host.appendChild(e); return;
+    }
+    items.forEach(function(item) { host.appendChild(card(item)); });
+  }
+
+  function card(item) {
+    var c = el('div', 'card');
+    c.appendChild(el('div', 'q', item.question || '(no question)'));
+    var meta = el('div', 'meta');
+    if (item.category) meta.appendChild(el('span', 'pill cat', item.category));
+    if (item.origin) meta.appendChild(el('span', 'pill', item.origin));
+    if (item.relatedTo) meta.appendChild(el('span', 'pill', item.relatedTo));
+    if (item.confidence) meta.appendChild(el('span', 'pill', item.confidence));
+    c.appendChild(meta);
+
+    var ta = el('textarea'); ta.value = item.consumerAnswer || ''; c.appendChild(ta);
+
+    if (item.source) {
+      var src = el('div', 'src'); src.appendChild(document.createTextNode('Source: '));
+      var a = el('a', null, item.source); a.href = item.source; a.target = '_blank'; a.rel = 'noopener noreferrer';
+      src.appendChild(a); c.appendChild(src);
+    }
+
+    var actions = el('div', 'actions');
+    var ok = el('button', 'approve', 'Approve and make live');
+    ok.addEventListener('click', function() {
+      ok.disabled = true; ok.textContent = 'Saving…';
+      api('approve', { method: 'POST', body: { id: item.id, consumerAnswer: ta.value } })
+        .then(function() { removeAndRefresh(item.id); toast('Approved and live.', 'ok'); })
+        .catch(function(err) { ok.disabled = false; ok.textContent = 'Approve and make live'; toast('Could not approve: ' + err.message, 'err'); });
+    });
+    var no = el('button', 'dismiss', 'Dismiss');
+    no.addEventListener('click', function() {
+      no.disabled = true;
+      api('dismiss', { method: 'POST', body: { id: item.id } })
+        .then(function() { removeAndRefresh(item.id); toast('Dismissed.', 'ok'); })
+        .catch(function(err) { no.disabled = false; toast('Could not dismiss: ' + err.message, 'err'); });
+    });
+    actions.appendChild(ok); actions.appendChild(no);
+    c.appendChild(actions);
+    return c;
+  }
+
+  function removeAndRefresh(id) {
+    state.feed.suggestions = (state.feed.suggestions || []).filter(function(s) { return s.id !== id; });
+    state.feed.pendingCount = Math.max(0, (state.feed.pendingCount || 1) - 1);
+    render(state.feed);
+  }
+
+  // Auto-login from stored pass or ?pass=
+  var qp = new URLSearchParams(location.search).get('pass');
+  var stored = null; try { stored = sessionStorage.getItem('gb_pass'); } catch (e) {}
+  if (qp || stored) { $('pass').value = qp || stored; window._login(); }
+})();
+</script>
+</body>
+</html>
