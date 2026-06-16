@@ -23,6 +23,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 const scrape = require('../lib/safe-scrape');
 const reverify = require('../lib/reverify');
 const trusted = require('../lib/trusted-sources');
+const search = require('../lib/search');
 const gk = require('../lib/global-knowledge');
 
 const REVERIFICATION_TABLE = 'tblCimk9x32l3LRMK';
@@ -105,6 +106,36 @@ async function runCheck(anthropic, record) {
   return reverify.parseVerdict(text);
 }
 
+// Seek independent corroboration for a fact whose own source is not
+// authoritative. Searches the web, checks up to 3 INDEPENDENT domains (excluding
+// the record's own source) with the same grounded checker, and counts how many
+// confirm. Returns { confirmedCount, domains }. No-op without TAVILY_API_KEY.
+async function corroborate(anthropic, rec) {
+  var out = { confirmedCount: 0, domains: [] };
+  if (!process.env.TAVILY_API_KEY) return out;
+  var sr = await search.search(rec.question, { maxResults: 6 });
+  if (!sr.ok || !sr.results || !sr.results.length) return out;
+
+  var ownDomain = search.registrableDomain(rec.sourceUrl);
+  var seen = {}, independent = [];
+  sr.results.forEach(function (r) {
+    var d = search.registrableDomain(r.url);
+    if (!d || d === ownDomain || seen[d]) return;
+    seen[d] = 1; independent.push({ r: r, domain: d });
+  });
+  independent = independent.slice(0, 3);
+
+  for (var i = 0; i < independent.length; i++) {
+    var item = independent[i];
+    var prompt = reverify.buildVerificationPrompt(rec, item.r.content, { sourceUrl: item.r.url });
+    var resp = await anthropic.messages.create({ model: MODEL, max_tokens: 500, system: prompt.system, messages: [{ role: 'user', content: prompt.user }] });
+    var text = '';
+    if (resp && resp.content) { for (var j = 0; j < resp.content.length; j++) { if (resp.content[j].type === 'text') text += resp.content[j].text; } }
+    if (reverify.parseVerdict(text).verdict === 'confirmed') { out.confirmedCount++; out.domains.push(item.domain); }
+  }
+  return out;
+}
+
 async function queueRows(rows) {
   for (var i = 0; i < rows.length; i += 10) {
     await atFetch('/' + REVERIFICATION_TABLE, { method: 'POST', body: { records: rows.slice(i, i + 10), typecast: true } });
@@ -151,11 +182,12 @@ module.exports = async function handler(req, res) {
       // Trust gate: only a trusted source (government, authority, or an
       // official-site domain) lets a verdict apply without human review.
       var tr = trusted.isTrusted(rec.sourceUrl, extraTrusted);
-      var canAuto = AUTOAPPLY && tr.trusted && (v.verdict === 'confirmed' || v.verdict === 'changed');
       var status = 'Pending';
       var action = 'pending';
+      var evidence = v.evidence || '';
 
-      if (canAuto) {
+      if (AUTOAPPLY && tr.trusted && (v.verdict === 'confirmed' || v.verdict === 'changed')) {
+        // Path 1: one authoritative source is enough.
         action = 'auto-' + v.verdict + ' (' + tr.reason + ')';
         status = 'Applied';
         if (!dryRun) {
@@ -167,25 +199,41 @@ module.exports = async function handler(req, res) {
           }
         }
         counts.autoApplied++;
+      } else if (AUTOAPPLY && !tr.trusted && (v.verdict === 'confirmed' || v.verdict === 'unverifiable')) {
+        // Path 2: non-authoritative source, so require two independent sources
+        // to agree. (A 'changed' verdict from the own source is a real signal to
+        // review, so it is never auto-confirmed this way.)
+        var corro = await corroborate(anthropic, rec);
+        counts.corroborationRuns = (counts.corroborationRuns || 0) + 1;
+        if (corro.confirmedCount >= 2) {
+          action = 'auto-corroborated (' + corro.domains.join(', ') + ')';
+          status = 'Applied';
+          evidence = 'Corroborated by ' + corro.confirmedCount + ' independent sources: ' + corro.domains.join(', ');
+          if (!dryRun) await applyToKnowledge(rec.id, { 'Last Verified': today });
+          counts.autoApplied++;
+        } else {
+          action = 'pending (corroboration ' + corro.confirmedCount + '/2)';
+          counts.pending++;
+        }
       } else {
         counts.pending++;
       }
 
-      // Always write an audit/queue row: Applied (auto, trusted) keeps a
-      // before/after record; Pending is the human review item.
+      // Always write an audit/queue row: Applied keeps a before/after record;
+      // Pending is the human review item.
       rows.push({ fields: {
         'Question': rec.question,
         'Knowledge Record ID': rec.id,
         'Verdict': v.verdict,
         'Current Answer': rec.answer,
         'Suggested Answer': v.suggestedAnswer || '',
-        'Evidence': v.evidence || '',
+        'Evidence': evidence,
         'Source URL': rec.sourceUrl,
         'Status': status,
         'Checked At': nowIso,
         'Category': rec.category
       } });
-      report.push({ question: rec.question, verdict: v.verdict, trusted: tr.trusted, trustReason: tr.reason, action: action });
+      report.push({ question: rec.question, verdict: v.verdict, trusted: tr.trusted, action: action });
     }
 
     if (!dryRun && rows.length) await queueRows(rows);
