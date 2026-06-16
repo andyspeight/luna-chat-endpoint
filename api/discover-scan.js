@@ -150,19 +150,22 @@ module.exports = async function handler(req, res) {
       report.push({ source: src.name, url: scraped.url, staged: found.length, titles: found.map(function (c) { return c.question; }) });
     }
 
-    // 2) Ticketmaster events per unique source destination (gated on key)
-    if (process.env.TICKETMASTER_API_KEY) {
+    // 2) Ticketmaster events per unique source destination.
+    if (!process.env.TICKETMASTER_API_KEY) {
+      report.push({ source: 'ticketmaster', error: 'no_key (TICKETMASTER_API_KEY not set on this deployment)' });
+    } else {
       var seenDest = {};
       for (var di = 0; di < sources.length && staged.length < MAX_NEW_TOTAL; di++) {
         var dest = sources[di].destination;
         if (!dest || seenDest[dest.toLowerCase()]) continue;
         seenDest[dest.toLowerCase()] = 1;
-        var evDraft = await ticketmaster.fetchEventsDraft(dest, { max: 5 });
-        if (!evDraft) continue;
-        var processedEv = discover.processCandidates(JSON.stringify([evDraft]), { existingQuestions: existing.concat(staged), sourceUrl: 'https://www.ticketmaster.com' });
+        var ev = await ticketmaster.fetchEvents(dest, { max: 5 });
+        if (!ev.ok) { report.push({ source: 'ticketmaster', destination: dest, error: ev.error, httpStatus: ev.httpStatus }); continue; }
+        if (!ev.draft) { report.push({ source: 'ticketmaster', destination: dest, events: ev.count, staged: 0 }); continue; }
+        var processedEv = discover.processCandidates(JSON.stringify([ev.draft]), { existingQuestions: existing.concat(staged), sourceUrl: 'https://www.ticketmaster.com' });
         if (!dryRun && processedEv.length) await stageCandidates(processedEv, { category: 'Events', destination: dest, origin: 'Ticketmaster' });
         processedEv.forEach(function (c) { staged.push(c.question); });
-        if (processedEv.length) report.push({ source: 'ticketmaster', destination: dest, staged: processedEv.length });
+        report.push({ source: 'ticketmaster', destination: dest, events: ev.count, staged: processedEv.length });
       }
     }
 
