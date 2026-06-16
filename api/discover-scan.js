@@ -24,7 +24,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 const scrape = require('../lib/safe-scrape');
 const discover = require('../lib/discover');
 const ticketmaster = require('../lib/ticketmaster');
-const amadeus = require('../lib/amadeus');
+const foursquare = require('../lib/foursquare');
 const gk = require('../lib/global-knowledge');
 
 const MODEL = process.env.DISCOVER_MODEL || 'claude-haiku-4-5-20251001';
@@ -170,22 +170,22 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    // 3) Amadeus Tours & Activities per unique source destination (things to do).
-    if (!process.env.AMADEUS_API_KEY || !process.env.AMADEUS_API_SECRET) {
-      report.push({ source: 'amadeus', error: 'no_key (AMADEUS_API_KEY/AMADEUS_API_SECRET not set on this deployment)' });
+    // 3) Foursquare Places per unique source destination (things to do).
+    if (!process.env.FOURSQUARE_API_KEY) {
+      report.push({ source: 'foursquare', error: 'no_key (FOURSQUARE_API_KEY not set on this deployment)' });
     } else {
-      var seenAmaDest = {};
+      var seenFsqDest = {};
       for (var ai = 0; ai < sources.length && staged.length < MAX_NEW_TOTAL; ai++) {
-        var adest = sources[ai].destination;
-        if (!adest || seenAmaDest[adest.toLowerCase()]) continue;
-        seenAmaDest[adest.toLowerCase()] = 1;
-        var act = await amadeus.fetchActivities(adest, { max: 6 });
-        if (!act.ok) { report.push({ source: 'amadeus', destination: adest, error: act.error, httpStatus: act.httpStatus }); continue; }
-        if (!act.draft) { report.push({ source: 'amadeus', destination: adest, activities: act.count, staged: 0 }); continue; }
-        var processedAct = discover.processCandidates(JSON.stringify([act.draft]), { existingQuestions: existing.concat(staged), destination: adest, sourceUrl: 'https://www.amadeus.com' });
-        if (!dryRun && processedAct.length) await stageCandidates(processedAct, { category: 'Things To Do', destination: adest, origin: 'Amadeus' });
-        processedAct.forEach(function (c) { staged.push(c.question); });
-        report.push({ source: 'amadeus', destination: adest, activities: act.count, staged: processedAct.length });
+        var fdest = sources[ai].destination;
+        if (!fdest || seenFsqDest[fdest.toLowerCase()]) continue;
+        seenFsqDest[fdest.toLowerCase()] = 1;
+        var fsq = await foursquare.fetchPlaces(fdest, { max: 8 });
+        if (!fsq.ok) { report.push({ source: 'foursquare', destination: fdest, error: fsq.error, httpStatus: fsq.httpStatus }); continue; }
+        if (!fsq.draft) { report.push({ source: 'foursquare', destination: fdest, places: fsq.count, staged: 0 }); continue; }
+        var processedFsq = discover.processCandidates(JSON.stringify([fsq.draft]), { existingQuestions: existing.concat(staged), destination: fdest, sourceUrl: 'https://foursquare.com' });
+        if (!dryRun && processedFsq.length) await stageCandidates(processedFsq, { category: 'Things To Do', destination: fdest, origin: 'Foursquare' });
+        processedFsq.forEach(function (c) { staged.push(c.question); });
+        report.push({ source: 'foursquare', destination: fdest, places: fsq.count, staged: processedFsq.length });
       }
     }
 
