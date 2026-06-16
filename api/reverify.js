@@ -29,6 +29,11 @@ const gk = require('../lib/global-knowledge');
 const REVERIFICATION_TABLE = 'tblCimk9x32l3LRMK';
 const MODEL = process.env.REVERIFY_MODEL || 'claude-haiku-4-5-20251001';
 const DEFAULT_LIMIT = 15;
+const DEFAULT_UNSOURCED_LIMIT = parseInt(process.env.REVERIFY_UNSOURCED_LIMIT || '6', 10);
+// Cap web-search corroborations per run so the cron stays within its time limit
+// (each is a search plus up to 3 model checks). Trusted-source records do not
+// consume this; they auto-apply on a single grounded check.
+const CORRO_CAP = parseInt(process.env.REVERIFY_CORRO_CAP || '8', 10);
 // Auto-apply verdicts backed by a trusted source (government, authority, or an
 // official-site domain in LUNA_TRUSTED_DOMAINS). Set REVERIFY_AUTOAPPLY=false to
 // route everything to human review instead.
@@ -80,6 +85,33 @@ async function loadStaleSourced(limit, queued) {
       question: f.Question || '',
       answer: f['Consumer Answer'] || '',
       sourceUrl: f.Source,
+      category: valueOf(f.Category) || '',
+      relatedTo: f['Related To'] || '',
+      lastVerified: f['Last Verified'] || null
+    });
+  });
+  return out;
+}
+
+// Oldest-verified Knowledge answers that have NO Source, not already queued.
+// These can only be grounded via corroboration (search for independent sources).
+async function loadStaleUnsourced(limit, queued) {
+  var data = await atFetch('/' + gk.KNOWLEDGE_TABLE
+    + '?filterByFormula=' + encodeURIComponent("{Source}=''")
+    + '&sort%5B0%5D%5Bfield%5D=' + encodeURIComponent('Last Verified') + '&sort%5B0%5D%5Bdirection%5D=asc'
+    + '&fields%5B%5D=Question&fields%5B%5D=Consumer Answer&fields%5B%5D=Last Verified&fields%5B%5D=Category&fields%5B%5D=Related To'
+    + '&maxRecords=200');
+  var out = [];
+  (data.records || []).forEach(function (rec) {
+    if (out.length >= limit) return;
+    if (queued[rec.id]) return;
+    var f = rec.fields || {};
+    if (f.Source) return;
+    out.push({
+      id: rec.id,
+      question: f.Question || '',
+      answer: f['Consumer Answer'] || '',
+      sourceUrl: '',
       category: valueOf(f.Category) || '',
       relatedTo: f['Related To'] || '',
       lastVerified: f['Last Verified'] || null
@@ -170,8 +202,9 @@ module.exports = async function handler(req, res) {
     var today = nowIso.split('T')[0];
     var queued = await loadQueuedIds();
     var records = await loadStaleSourced(limit, queued);
-    var counts = { checked: 0, confirmed: 0, changed: 0, unverifiable: 0, source_unreachable: 0, autoApplied: 0, pending: 0 };
+    var counts = { checked: 0, confirmed: 0, changed: 0, unverifiable: 0, source_unreachable: 0, autoApplied: 0, pending: 0, unsourcedChecked: 0 };
     var rows = [], report = [];
+    var corroDone = 0; // bounds web-search corroborations per run (CORRO_CAP)
 
     for (var i = 0; i < records.length; i++) {
       var rec = records[i];
@@ -199,12 +232,12 @@ module.exports = async function handler(req, res) {
           }
         }
         counts.autoApplied++;
-      } else if (AUTOAPPLY && !tr.trusted && (v.verdict === 'confirmed' || v.verdict === 'unverifiable')) {
+      } else if (AUTOAPPLY && !tr.trusted && (v.verdict === 'confirmed' || v.verdict === 'unverifiable') && corroDone < CORRO_CAP) {
         // Path 2: non-authoritative source, so require two independent sources
         // to agree. (A 'changed' verdict from the own source is a real signal to
         // review, so it is never auto-confirmed this way.)
+        corroDone++;
         var corro = await corroborate(anthropic, rec);
-        counts.corroborationRuns = (counts.corroborationRuns || 0) + 1;
         if (corro.confirmedCount >= 2) {
           action = 'auto-corroborated (' + corro.domains.join(', ') + ')';
           status = 'Applied';
@@ -234,6 +267,45 @@ module.exports = async function handler(req, res) {
         'Category': rec.category
       } });
       report.push({ question: rec.question, verdict: v.verdict, trusted: tr.trusted, action: action });
+    }
+
+    // Unsourced records: no cited source to ground-check, so the only honest way
+    // to verify them is independent corroboration (needs Tavily). Same per-run
+    // corroboration cap, so this naturally takes over once the sourced backlog
+    // is light.
+    if (AUTOAPPLY && process.env.TAVILY_API_KEY && corroDone < CORRO_CAP) {
+      var uLimit = Math.min(parseInt((req.query && req.query.unsourcedLimit) || DEFAULT_UNSOURCED_LIMIT, 10) || DEFAULT_UNSOURCED_LIMIT, 20);
+      var unsourced = await loadStaleUnsourced(uLimit, queued);
+      for (var u = 0; u < unsourced.length && corroDone < CORRO_CAP; u++) {
+        var urec = unsourced[u];
+        corroDone++;
+        counts.unsourcedChecked++;
+        var ucorro = await corroborate(anthropic, urec);
+        var ustatus = 'Pending', uverdict = 'unverifiable', uevidence = '';
+        var uaction = 'pending (no source, corroboration ' + ucorro.confirmedCount + '/2)';
+        if (ucorro.confirmedCount >= 2) {
+          ustatus = 'Applied'; uverdict = 'confirmed';
+          uaction = 'auto-corroborated, no prior source (' + ucorro.domains.join(', ') + ')';
+          uevidence = 'Corroborated by ' + ucorro.confirmedCount + ' independent sources: ' + ucorro.domains.join(', ');
+          if (!dryRun) await applyToKnowledge(urec.id, { 'Last Verified': today });
+          counts.autoApplied++;
+        } else {
+          counts.pending++;
+        }
+        rows.push({ fields: {
+          'Question': urec.question,
+          'Knowledge Record ID': urec.id,
+          'Verdict': uverdict,
+          'Current Answer': urec.answer,
+          'Suggested Answer': '',
+          'Evidence': uevidence,
+          'Source URL': '',
+          'Status': ustatus,
+          'Checked At': nowIso,
+          'Category': urec.category
+        } });
+        report.push({ question: urec.question, verdict: uverdict, sourced: false, action: uaction });
+      }
     }
 
     if (!dryRun && rows.length) await queueRows(rows);
