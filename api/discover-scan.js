@@ -162,7 +162,7 @@ module.exports = async function handler(req, res) {
         var ev = await ticketmaster.fetchEvents(dest, { max: 5 });
         if (!ev.ok) { report.push({ source: 'ticketmaster', destination: dest, error: ev.error, httpStatus: ev.httpStatus }); continue; }
         if (!ev.draft) { report.push({ source: 'ticketmaster', destination: dest, events: ev.count, staged: 0 }); continue; }
-        var processedEv = discover.processCandidates(JSON.stringify([ev.draft]), { existingQuestions: existing.concat(staged), sourceUrl: 'https://www.ticketmaster.com' });
+        var processedEv = discover.processCandidates(JSON.stringify([ev.draft]), { existingQuestions: existing.concat(staged), destination: dest, sourceUrl: 'https://www.ticketmaster.com' });
         if (!dryRun && processedEv.length) await stageCandidates(processedEv, { category: 'Events', destination: dest, origin: 'Ticketmaster' });
         processedEv.forEach(function (c) { staged.push(c.question); });
         report.push({ source: 'ticketmaster', destination: dest, events: ev.count, staged: processedEv.length });
