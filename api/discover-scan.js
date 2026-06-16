@@ -24,6 +24,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 const scrape = require('../lib/safe-scrape');
 const discover = require('../lib/discover');
 const ticketmaster = require('../lib/ticketmaster');
+const amadeus = require('../lib/amadeus');
 const gk = require('../lib/global-knowledge');
 
 const MODEL = process.env.DISCOVER_MODEL || 'claude-haiku-4-5-20251001';
@@ -166,6 +167,25 @@ module.exports = async function handler(req, res) {
         if (!dryRun && processedEv.length) await stageCandidates(processedEv, { category: 'Events', destination: dest, origin: 'Ticketmaster' });
         processedEv.forEach(function (c) { staged.push(c.question); });
         report.push({ source: 'ticketmaster', destination: dest, events: ev.count, staged: processedEv.length });
+      }
+    }
+
+    // 3) Amadeus Tours & Activities per unique source destination (things to do).
+    if (!process.env.AMADEUS_API_KEY || !process.env.AMADEUS_API_SECRET) {
+      report.push({ source: 'amadeus', error: 'no_key (AMADEUS_API_KEY/AMADEUS_API_SECRET not set on this deployment)' });
+    } else {
+      var seenAmaDest = {};
+      for (var ai = 0; ai < sources.length && staged.length < MAX_NEW_TOTAL; ai++) {
+        var adest = sources[ai].destination;
+        if (!adest || seenAmaDest[adest.toLowerCase()]) continue;
+        seenAmaDest[adest.toLowerCase()] = 1;
+        var act = await amadeus.fetchActivities(adest, { max: 6 });
+        if (!act.ok) { report.push({ source: 'amadeus', destination: adest, error: act.error, httpStatus: act.httpStatus }); continue; }
+        if (!act.draft) { report.push({ source: 'amadeus', destination: adest, activities: act.count, staged: 0 }); continue; }
+        var processedAct = discover.processCandidates(JSON.stringify([act.draft]), { existingQuestions: existing.concat(staged), destination: adest, sourceUrl: 'https://www.amadeus.com' });
+        if (!dryRun && processedAct.length) await stageCandidates(processedAct, { category: 'Things To Do', destination: adest, origin: 'Amadeus' });
+        processedAct.forEach(function (c) { staged.push(c.question); });
+        report.push({ source: 'amadeus', destination: adest, activities: act.count, staged: processedAct.length });
       }
     }
 
