@@ -56,10 +56,19 @@ async function loadSources() {
   var data = await atFetch('/' + gk.DISCOVERY_SOURCES_TABLE
     + '?filterByFormula=' + encodeURIComponent("{Enabled}=TRUE()")
     + '&maxRecords=' + MAX_SOURCES);
+  // Keep every enabled row (even url-less ones) so its Destination still feeds
+  // the API connectors; the scrape phase decides per row whether to fetch.
   return (data.records || []).map(function (rec) {
     var f = rec.fields || {};
-    return { id: rec.id, name: f['Name'] || '', url: f['URL'] || '', destination: f['Destination'] || '', categoryHint: valueOf(f['Category Hint']) || 'Things To Do' };
-  }).filter(function (s) { return s.url; });
+    return {
+      id: rec.id,
+      name: f['Name'] || '',
+      url: f['URL'] || '',
+      destination: f['Destination'] || '',
+      categoryHint: valueOf(f['Category Hint']) || 'Things To Do',
+      skipScrape: !!f['Skip Scrape']
+    };
+  });
 }
 
 // Existing questions to dedup against: live global Knowledge + pending suggestions.
@@ -136,6 +145,9 @@ module.exports = async function handler(req, res) {
     // 1) URL sources -> extract things to do
     for (var si = 0; si < sources.length && staged.length < MAX_NEW_TOTAL; si++) {
       var src = sources[si];
+      // Skip rows with no URL or flagged Skip Scrape (e.g. bot-blocked sites).
+      // Their Destination is still used by the connectors below.
+      if (!src.url || src.skipScrape) continue;
       var scraped = await scrape.scrapeUrl(src.url, { timeoutMs: 12000, maxHops: 3 });
       if (!scraped.ok) { report.push({ source: src.name, url: src.url, error: scraped.error }); continue; }
       var found;
