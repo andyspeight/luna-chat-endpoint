@@ -22,11 +22,16 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const scrape = require('../lib/safe-scrape');
 const reverify = require('../lib/reverify');
+const trusted = require('../lib/trusted-sources');
 const gk = require('../lib/global-knowledge');
 
 const REVERIFICATION_TABLE = 'tblCimk9x32l3LRMK';
 const MODEL = process.env.REVERIFY_MODEL || 'claude-haiku-4-5-20251001';
 const DEFAULT_LIMIT = 15;
+// Auto-apply verdicts backed by a trusted source (government, authority, or an
+// official-site domain in LUNA_TRUSTED_DOMAINS). Set REVERIFY_AUTOAPPLY=false to
+// route everything to human review instead.
+const AUTOAPPLY = process.env.REVERIFY_AUTOAPPLY !== 'false';
 
 async function atFetch(path, opts) {
   opts = opts || {};
@@ -61,7 +66,7 @@ async function loadStaleSourced(limit, queued) {
   var data = await atFetch('/' + gk.KNOWLEDGE_TABLE
     + '?filterByFormula=' + encodeURIComponent("{Source}!=''")
     + '&sort%5B0%5D%5Bfield%5D=' + encodeURIComponent('Last Verified') + '&sort%5B0%5D%5Bdirection%5D=asc'
-    + '&fields%5B%5D=Question&fields%5B%5D=Consumer Answer&fields%5B%5D=Source&fields%5B%5D=Last Verified&fields%5B%5D=Category'
+    + '&fields%5B%5D=Question&fields%5B%5D=Consumer Answer&fields%5B%5D=Source&fields%5B%5D=Last Verified&fields%5B%5D=Category&fields%5B%5D=Related To'
     + '&maxRecords=200');
   var out = [];
   (data.records || []).forEach(function (rec) {
@@ -75,10 +80,19 @@ async function loadStaleSourced(limit, queued) {
       answer: f['Consumer Answer'] || '',
       sourceUrl: f.Source,
       category: valueOf(f.Category) || '',
+      relatedTo: f['Related To'] || '',
       lastVerified: f['Last Verified'] || null
     });
   });
   return out;
+}
+
+// Apply a field update to a live Knowledge record (only ever called for
+// trusted-source verdicts).
+async function applyToKnowledge(recordId, fields) {
+  await atFetch('/' + gk.KNOWLEDGE_TABLE + '/' + recordId, {
+    method: 'PATCH', body: { fields: fields, typecast: true }
+  });
 }
 
 async function runCheck(anthropic, record) {
@@ -121,9 +135,11 @@ module.exports = async function handler(req, res) {
   var nowIso = new Date().toISOString();
 
   try {
+    var extraTrusted = trusted.parseDomainList(process.env.LUNA_TRUSTED_DOMAINS || '');
+    var today = nowIso.split('T')[0];
     var queued = await loadQueuedIds();
     var records = await loadStaleSourced(limit, queued);
-    var counts = { checked: 0, confirmed: 0, changed: 0, unverifiable: 0, source_unreachable: 0 };
+    var counts = { checked: 0, confirmed: 0, changed: 0, unverifiable: 0, source_unreachable: 0, autoApplied: 0, pending: 0 };
     var rows = [], report = [];
 
     for (var i = 0; i < records.length; i++) {
@@ -131,6 +147,32 @@ module.exports = async function handler(req, res) {
       var v = await runCheck(anthropic, rec);
       counts.checked++;
       counts[v.verdict] = (counts[v.verdict] || 0) + 1;
+
+      // Trust gate: only a trusted source (government, authority, or an
+      // official-site domain) lets a verdict apply without human review.
+      var tr = trusted.isTrusted(rec.sourceUrl, extraTrusted);
+      var canAuto = AUTOAPPLY && tr.trusted && (v.verdict === 'confirmed' || v.verdict === 'changed');
+      var status = 'Pending';
+      var action = 'pending';
+
+      if (canAuto) {
+        action = 'auto-' + v.verdict + ' (' + tr.reason + ')';
+        status = 'Applied';
+        if (!dryRun) {
+          if (v.verdict === 'confirmed') {
+            await applyToKnowledge(rec.id, { 'Last Verified': today });
+          } else {
+            var searchIndex = gk.buildSearchIndex({ question: rec.question, consumerAnswer: v.suggestedAnswer, category: rec.category, relatedTo: rec.relatedTo });
+            await applyToKnowledge(rec.id, { 'Consumer Answer': v.suggestedAnswer, 'Search Index': searchIndex, 'Last Verified': today });
+          }
+        }
+        counts.autoApplied++;
+      } else {
+        counts.pending++;
+      }
+
+      // Always write an audit/queue row: Applied (auto, trusted) keeps a
+      // before/after record; Pending is the human review item.
       rows.push({ fields: {
         'Question': rec.question,
         'Knowledge Record ID': rec.id,
@@ -139,19 +181,19 @@ module.exports = async function handler(req, res) {
         'Suggested Answer': v.suggestedAnswer || '',
         'Evidence': v.evidence || '',
         'Source URL': rec.sourceUrl,
-        'Status': 'Pending',
+        'Status': status,
         'Checked At': nowIso,
         'Category': rec.category
       } });
-      report.push({ question: rec.question, verdict: v.verdict, lastVerified: rec.lastVerified });
+      report.push({ question: rec.question, verdict: v.verdict, trusted: tr.trusted, trustReason: tr.reason, action: action });
     }
 
     if (!dryRun && rows.length) await queueRows(rows);
-    if (!dryRun && (counts.changed > 0 || counts.confirmed > 0)) {
-      await tgSend('Luna re-verification: checked ' + counts.checked + ' (confirmed ' + counts.confirmed + ', changed ' + counts.changed + ', unverifiable ' + counts.unverifiable + '). Review in the re-verification queue.');
+    if (!dryRun && (counts.autoApplied > 0 || counts.pending > 0)) {
+      await tgSend('Luna re-verification: checked ' + counts.checked + '. Auto-applied ' + counts.autoApplied + ' from trusted sources; ' + counts.pending + ' need review.');
     }
 
-    return res.status(200).json({ ok: true, dryRun: !!dryRun, counts: counts, report: report, checkedAt: nowIso });
+    return res.status(200).json({ ok: true, dryRun: !!dryRun, autoApply: AUTOAPPLY, counts: counts, report: report, checkedAt: nowIso });
   } catch (e) {
     console.error('[reverify] run failed:', e.message);
     return res.status(500).json({ error: e.message });
