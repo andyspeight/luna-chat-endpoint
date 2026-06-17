@@ -22,6 +22,13 @@
 //      is a trusted connector (Foursquare/Ticketmaster) into live Knowledge too,
 //      so the policy applies retroactively and clears the review queue.
 //
+// Pacing: the cron runs every 3h and processes DISCOVER_BATCH destinations/run
+// (default 25 -> 200/day), so a full sweep of ~230 takes ~1.2 days and then each
+// destination refreshes on a rolling basis. The per-run cost is bounded by
+// frequency x batch regardless of table size (~6k Foursquare + ~6k Ticketmaster
+// calls/month at the defaults, inside the free tiers), so adding more
+// destinations just lengthens the refresh cycle, it does not raise the bill.
+//
 // Zero-hallucination posture is preserved: only deterministic, code-built drafts
 // auto-publish; anything a model touched (the curated scrape) still needs a human.
 //
@@ -52,11 +59,15 @@ const MAX_NEW_TOTAL = 60;      // total scrape suggestions staged per run
 const MAX_PER_SOURCE = 6;
 // Connector phase: how many global destinations to rotate through per run, and
 // how many connector fetches to run at once (keeps wall-time under the 60s cron).
-const BATCH = parseInt(process.env.DISCOVER_BATCH || '20', 10);
+const BATCH = parseInt(process.env.DISCOVER_BATCH || '25', 10);
 const CONCURRENCY = parseInt(process.env.DISCOVER_CONCURRENCY || '6', 10);
 // Backlog sweep: how many pre-existing Pending connector suggestions to promote
 // per run. The sweep chips through the backlog over several runs.
 const SWEEP = parseInt(process.env.DISCOVER_SWEEP || '50', 10);
+// The cron now runs every 3h to accelerate connector coverage, but the curated
+// scrape + its LLM extraction only need to run ~daily, so skip a source scraped
+// within this many hours. Keeps us from re-hitting the same sites 8x/day.
+const SCRAPE_MIN_HOURS = parseInt(process.env.DISCOVER_SCRAPE_MIN_HOURS || '20', 10);
 
 const TM_SOURCE = 'https://www.ticketmaster.com';
 const FSQ_SOURCE = 'https://foursquare.com';
@@ -92,7 +103,8 @@ async function loadSources() {
       url: f['URL'] || '',
       destination: f['Destination'] || '',
       categoryHint: valueOf(f['Category Hint']) || 'Things To Do',
-      skipScrape: !!f['Skip Scrape']
+      skipScrape: !!f['Skip Scrape'],
+      lastScanned: f['Last Scanned'] || null
     };
   });
 }
@@ -306,9 +318,15 @@ module.exports = async function handler(req, res) {
 
     // ---- 1) Curated URL scrape -> Pending (human-gated) ----
     var scrapeStaged = [];
+    var scrapeMinMs = SCRAPE_MIN_HOURS * 3600 * 1000;
     for (var si = 0; si < sources.length && scrapeStaged.length < MAX_NEW_TOTAL; si++) {
       var src = sources[si];
       if (!src.url || src.skipScrape) continue;
+      // The cron runs every 3h for the connectors; only re-scrape a source (and
+      // re-run its LLM extraction) once it is at least SCRAPE_MIN_HOURS stale.
+      if (src.lastScanned && (Date.now() - Date.parse(src.lastScanned)) < scrapeMinMs) {
+        report.push({ source: src.name, skipped: 'scanned_within_' + SCRAPE_MIN_HOURS + 'h' }); continue;
+      }
       var scraped = await scrape.scrapeUrl(src.url, { timeoutMs: 12000, maxHops: 3 });
       if (!scraped.ok) { report.push({ source: src.name, url: src.url, error: scraped.error }); continue; }
       var found;
