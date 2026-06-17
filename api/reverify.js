@@ -37,6 +37,19 @@ const CORRO_CAP = parseInt(process.env.REVERIFY_CORRO_CAP || '5', 10);
 // How many records' network steps run at once. Keeps total wall-time well under
 // the function's 60s limit while staying gentle on the upstream APIs.
 const CONCURRENCY = parseInt(process.env.REVERIFY_CONCURRENCY || '5', 10);
+
+// Re-verification value by category: time-sensitive facts (visas, fees, health)
+// benefit most and have clean authoritative sources; opinion/recommendation
+// content cannot be source-confirmed and barely goes stale, so it is processed
+// last. Unknown categories sit in the middle.
+var CATEGORY_RANK = {
+  'Entry & Visas': 5, 'Money & Costs': 5, 'Health & Safety': 5,
+  'Airline Guide': 4, 'Airport Guide': 4,
+  'Getting There': 3, 'Getting Around': 3, 'Cruise Guide': 3,
+  'Culture & Practical': 2,
+  'Climate & When to Go': 1, 'Destination Recommendations': 1
+};
+function catRank(c) { return (c && CATEGORY_RANK[c] != null) ? CATEGORY_RANK[c] : 2; }
 // Auto-apply verdicts backed by a trusted source (government, authority, or an
 // official-site domain in LUNA_TRUSTED_DOMAINS). Set REVERIFY_AUTOAPPLY=false to
 // route everything to human review instead.
@@ -233,7 +246,8 @@ module.exports = async function handler(req, res) {
     // immediately rather than budget being spent on un-sourceable advice.
     var pool = await loadStaleSourced(Math.max(limit * 5, 50), queued);
     pool.forEach(function (r) { r.__trusted = trusted.isTrusted(r.sourceUrl, extraTrusted).trusted ? 1 : 0; });
-    pool.sort(function (a, b) { return b.__trusted - a.__trusted; });
+    // Verifiable, time-sensitive categories first; authoritative source breaks ties.
+    pool.sort(function (a, b) { return (catRank(b.category) + b.__trusted) - (catRank(a.category) + a.__trusted); });
     var sourced = pool.slice(0, limit);
     var counts = { checked: 0, confirmed: 0, changed: 0, unverifiable: 0, source_unreachable: 0, autoApplied: 0, pending: 0, unsourcedChecked: 0 };
     var report = [];
