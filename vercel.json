@@ -14,6 +14,7 @@
     "api/discover-scan.js": { "maxDuration": 60, "memory": 256 },
     "api/global-brain.js": { "maxDuration": 15, "memory": 128 },
     "api/reverify.js": { "maxDuration": 60, "memory": 256 },
+    "api/reverify-structured.js": { "maxDuration": 60, "memory": 256 },
     "api/refresh-fcdo.js": { "maxDuration": 60, "memory": 256 }
   },
   "crons": [
@@ -22,6 +23,7 @@
     { "path": "/api/fcdo?warm=1", "schedule": "0 7 * * *" },
     { "path": "/api/discover-scan", "schedule": "0 */3 * * *" },
     { "path": "/api/reverify", "schedule": "0 5 * * *" },
+    { "path": "/api/reverify-structured", "schedule": "0 2 * * *" },
     { "path": "/api/refresh-fcdo", "schedule": "0 4 * * *" }
   ],
   "headers": [
