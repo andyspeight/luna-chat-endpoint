@@ -71,7 +71,9 @@ async function loadQueuedIds() {
 }
 
 // Oldest-verified Knowledge answers that cite a Source, not already queued.
-async function loadStaleSourced(limit, queued) {
+// Returns up to `pool` candidates; the handler then prioritises the highest-
+// yield ones (authoritative source) before taking the per-run limit.
+async function loadStaleSourced(pool, queued) {
   var data = await atFetch('/' + gk.KNOWLEDGE_TABLE
     + '?filterByFormula=' + encodeURIComponent("{Source}!=''")
     + '&sort%5B0%5D%5Bfield%5D=' + encodeURIComponent('Last Verified') + '&sort%5B0%5D%5Bdirection%5D=asc'
@@ -79,7 +81,7 @@ async function loadStaleSourced(limit, queued) {
     + '&maxRecords=200');
   var out = [];
   (data.records || []).forEach(function (rec) {
-    if (out.length >= limit) return;
+    if (out.length >= pool) return;
     if (queued[rec.id]) return;
     var f = rec.fields || {};
     if (!f.Source) return;
@@ -223,7 +225,14 @@ module.exports = async function handler(req, res) {
     var extraTrusted = trusted.parseDomainList(process.env.LUNA_TRUSTED_DOMAINS || '');
     var today = nowIso.split('T')[0];
     var queued = await loadQueuedIds();
-    var sourced = await loadStaleSourced(limit, queued);
+    // Pull a pool of the oldest sourced records, then prioritise those whose
+    // cited source is authoritative: they auto-apply on a single grounded check
+    // (Path 1), so the verifiable backlog clears first and real refreshes surface
+    // immediately rather than budget being spent on un-sourceable advice.
+    var pool = await loadStaleSourced(Math.max(limit * 5, 50), queued);
+    pool.forEach(function (r) { r.__trusted = trusted.isTrusted(r.sourceUrl, extraTrusted).trusted ? 1 : 0; });
+    pool.sort(function (a, b) { return b.__trusted - a.__trusted; });
+    var sourced = pool.slice(0, limit);
     var counts = { checked: 0, confirmed: 0, changed: 0, unverifiable: 0, source_unreachable: 0, autoApplied: 0, pending: 0, unsourcedChecked: 0 };
     var report = [];
 
