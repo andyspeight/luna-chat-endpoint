@@ -159,7 +159,8 @@ async function corroborate(anthropic, rec) {
 
   for (var i = 0; i < independent.length; i++) {
     var item = independent[i];
-    var prompt = reverify.buildVerificationPrompt(rec, item.r.content, { sourceUrl: item.r.url });
+    var sourceText = item.r.rawContent || item.r.content;
+    var prompt = reverify.buildVerificationPrompt(rec, sourceText, { sourceUrl: item.r.url });
     var resp = await anthropic.messages.create({ model: MODEL, max_tokens: 500, system: prompt.system, messages: [{ role: 'user', content: prompt.user }] });
     var text = '';
     if (resp && resp.content) { for (var j = 0; j < resp.content.length; j++) { if (resp.content[j].type === 'text') text += resp.content[j].text; } }
@@ -232,10 +233,11 @@ module.exports = async function handler(req, res) {
           }
         }
         counts.autoApplied++;
-      } else if (AUTOAPPLY && !tr.trusted && (v.verdict === 'confirmed' || v.verdict === 'unverifiable') && corroDone < CORRO_CAP) {
-        // Path 2: non-authoritative source, so require two independent sources
-        // to agree. (A 'changed' verdict from the own source is a real signal to
-        // review, so it is never auto-confirmed this way.)
+      } else if (AUTOAPPLY && corroDone < CORRO_CAP && (v.verdict === 'confirmed' || v.verdict === 'unverifiable' || v.verdict === 'source_unreachable')) {
+        // Path 2: we could not confirm from the cited source (non-authoritative,
+        // unreachable, or it did not cover the claim), so seek two INDEPENDENT
+        // sources that agree. A 'changed' verdict is never routed here, since the
+        // source contradicting the answer is a real signal to review, not confirm.
         corroDone++;
         var corro = await corroborate(anthropic, rec);
         if (corro.confirmedCount >= 2) {
