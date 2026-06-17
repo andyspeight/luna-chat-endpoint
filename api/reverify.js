@@ -28,12 +28,15 @@ const gk = require('../lib/global-knowledge');
 
 const REVERIFICATION_TABLE = 'tblCimk9x32l3LRMK';
 const MODEL = process.env.REVERIFY_MODEL || 'claude-haiku-4-5-20251001';
-const DEFAULT_LIMIT = 15;
-const DEFAULT_UNSOURCED_LIMIT = parseInt(process.env.REVERIFY_UNSOURCED_LIMIT || '6', 10);
-// Cap web-search corroborations per run so the cron stays within its time limit
-// (each is a search plus up to 3 model checks). Trusted-source records do not
-// consume this; they auto-apply on a single grounded check.
-const CORRO_CAP = parseInt(process.env.REVERIFY_CORRO_CAP || '8', 10);
+const DEFAULT_LIMIT = parseInt(process.env.REVERIFY_LIMIT || '8', 10);
+const DEFAULT_UNSOURCED_LIMIT = parseInt(process.env.REVERIFY_UNSOURCED_LIMIT || '4', 10);
+// Cap web-search corroborations per run (each is a search plus up to 3 model
+// checks). Trusted-source records do not consume this; they auto-apply on a
+// single grounded check.
+const CORRO_CAP = parseInt(process.env.REVERIFY_CORRO_CAP || '5', 10);
+// How many records' network steps run at once. Keeps total wall-time well under
+// the function's 60s limit while staying gentle on the upstream APIs.
+const CONCURRENCY = parseInt(process.env.REVERIFY_CONCURRENCY || '5', 10);
 // Auto-apply verdicts backed by a trusted source (government, authority, or an
 // official-site domain in LUNA_TRUSTED_DOMAINS). Set REVERIFY_AUTOAPPLY=false to
 // route everything to human review instead.
@@ -128,8 +131,26 @@ async function applyToKnowledge(recordId, fields) {
   });
 }
 
+// Run async fn over items with bounded concurrency. Errors are captured per
+// item (so one failure never aborts the batch) and returned in place.
+async function mapLimit(items, limit, fn) {
+  var out = new Array(items.length);
+  var idx = 0;
+  async function worker() {
+    while (idx < items.length) {
+      var i = idx++;
+      try { out[i] = await fn(items[i], i); } catch (e) { out[i] = { __error: (e && e.message) || 'error' }; }
+    }
+  }
+  var workers = [];
+  var n = Math.min(limit, items.length);
+  for (var w = 0; w < n; w++) workers.push(worker());
+  await Promise.all(workers);
+  return out;
+}
+
 async function runCheck(anthropic, record) {
-  var scraped = await scrape.scrapeUrl(record.sourceUrl, { timeoutMs: 12000, maxHops: 3 });
+  var scraped = await scrape.scrapeUrl(record.sourceUrl, { timeoutMs: 6000, maxHops: 2 });
   if (!scraped.ok) return { verdict: 'source_unreachable', evidence: '', changedDetail: '', suggestedAnswer: '', scrapeError: scraped.error };
   var prompt = reverify.buildVerificationPrompt(record, scraped.content, { sourceUrl: record.sourceUrl });
   var resp = await anthropic.messages.create({ model: MODEL, max_tokens: 700, system: prompt.system, messages: [{ role: 'user', content: prompt.user }] });
@@ -145,7 +166,7 @@ async function runCheck(anthropic, record) {
 async function corroborate(anthropic, rec) {
   var out = { confirmedCount: 0, domains: [] };
   if (!process.env.TAVILY_API_KEY) return out;
-  var sr = await search.search(rec.question, { maxResults: 6 });
+  var sr = await search.search(rec.question, { maxResults: 6, timeoutMs: 6000 });
   if (!sr.ok || !sr.results || !sr.results.length) return out;
 
   var ownDomain = search.registrableDomain(rec.sourceUrl);
@@ -202,113 +223,96 @@ module.exports = async function handler(req, res) {
     var extraTrusted = trusted.parseDomainList(process.env.LUNA_TRUSTED_DOMAINS || '');
     var today = nowIso.split('T')[0];
     var queued = await loadQueuedIds();
-    var records = await loadStaleSourced(limit, queued);
+    var sourced = await loadStaleSourced(limit, queued);
     var counts = { checked: 0, confirmed: 0, changed: 0, unverifiable: 0, source_unreachable: 0, autoApplied: 0, pending: 0, unsourcedChecked: 0 };
-    var rows = [], report = [];
-    var corroDone = 0; // bounds web-search corroborations per run (CORRO_CAP)
+    var report = [];
 
-    for (var i = 0; i < records.length; i++) {
-      var rec = records[i];
+    // Phase 1 - primary grounded checks (scrape + one model call), concurrent.
+    var primaries = await mapLimit(sourced, CONCURRENCY, async function (rec) {
       var v = await runCheck(anthropic, rec);
+      return { rec: rec, v: v, tr: trusted.isTrusted(rec.sourceUrl, extraTrusted), status: 'Pending', action: 'pending', evidence: (v && v.evidence) || '' };
+    });
+
+    // Phase 2 - apply single-trusted-source verdicts; collect the rest for corroboration.
+    var needCorro = [];
+    primaries.forEach(function (p) {
+      if (!p || !p.v) { counts.pending++; return; }
       counts.checked++;
-      counts[v.verdict] = (counts[v.verdict] || 0) + 1;
-
-      // Trust gate: only a trusted source (government, authority, or an
-      // official-site domain) lets a verdict apply without human review.
-      var tr = trusted.isTrusted(rec.sourceUrl, extraTrusted);
-      var status = 'Pending';
-      var action = 'pending';
-      var evidence = v.evidence || '';
-
-      if (AUTOAPPLY && tr.trusted && (v.verdict === 'confirmed' || v.verdict === 'changed')) {
-        // Path 1: one authoritative source is enough.
-        action = 'auto-' + v.verdict + ' (' + tr.reason + ')';
-        status = 'Applied';
-        if (!dryRun) {
-          if (v.verdict === 'confirmed') {
-            await applyToKnowledge(rec.id, { 'Last Verified': today });
-          } else {
-            var searchIndex = gk.buildSearchIndex({ question: rec.question, consumerAnswer: v.suggestedAnswer, category: rec.category, relatedTo: rec.relatedTo });
-            await applyToKnowledge(rec.id, { 'Consumer Answer': v.suggestedAnswer, 'Search Index': searchIndex, 'Last Verified': today });
-          }
-        }
+      counts[p.v.verdict] = (counts[p.v.verdict] || 0) + 1;
+      if (AUTOAPPLY && p.tr.trusted && (p.v.verdict === 'confirmed' || p.v.verdict === 'changed')) {
+        p.status = 'Applied';
+        p.action = 'auto-' + p.v.verdict + ' (' + p.tr.reason + ')';
+        p.apply = (p.v.verdict === 'confirmed')
+          ? { 'Last Verified': today }
+          : { 'Consumer Answer': p.v.suggestedAnswer, 'Search Index': gk.buildSearchIndex({ question: p.rec.question, consumerAnswer: p.v.suggestedAnswer, category: p.rec.category, relatedTo: p.rec.relatedTo }), 'Last Verified': today };
         counts.autoApplied++;
-      } else if (AUTOAPPLY && corroDone < CORRO_CAP && (v.verdict === 'confirmed' || v.verdict === 'unverifiable' || v.verdict === 'source_unreachable')) {
-        // Path 2: we could not confirm from the cited source (non-authoritative,
-        // unreachable, or it did not cover the claim), so seek two INDEPENDENT
-        // sources that agree. A 'changed' verdict is never routed here, since the
-        // source contradicting the answer is a real signal to review, not confirm.
-        corroDone++;
-        var corro = await corroborate(anthropic, rec);
-        if (corro.confirmedCount >= 2) {
-          action = 'auto-corroborated (' + corro.domains.join(', ') + ')';
-          status = 'Applied';
-          evidence = 'Corroborated by ' + corro.confirmedCount + ' independent sources: ' + corro.domains.join(', ');
-          if (!dryRun) await applyToKnowledge(rec.id, { 'Last Verified': today });
-          counts.autoApplied++;
-        } else {
-          action = 'pending (corroboration ' + corro.confirmedCount + '/2)';
-          counts.pending++;
-        }
+      } else if (AUTOAPPLY && (p.v.verdict === 'confirmed' || p.v.verdict === 'unverifiable' || p.v.verdict === 'source_unreachable')) {
+        needCorro.push(p);
       } else {
         counts.pending++;
       }
+    });
 
-      // Always write an audit/queue row: Applied keeps a before/after record;
-      // Pending is the human review item.
-      rows.push({ fields: {
-        'Question': rec.question,
-        'Knowledge Record ID': rec.id,
-        'Verdict': v.verdict,
-        'Current Answer': rec.answer,
-        'Suggested Answer': v.suggestedAnswer || '',
-        'Evidence': evidence,
-        'Source URL': rec.sourceUrl,
-        'Status': status,
-        'Checked At': nowIso,
-        'Category': rec.category
-      } });
-      report.push({ question: rec.question, verdict: v.verdict, trusted: tr.trusted, action: action });
+    // Cap corroboration; anything over the cap stays Pending this run.
+    var sourcedCorro = needCorro.slice(0, CORRO_CAP);
+    needCorro.slice(CORRO_CAP).forEach(function (p) { p.action = 'pending (corroboration cap reached)'; counts.pending++; });
+
+    // Fill remaining corroboration budget with unsourced records.
+    var budgetLeft = CORRO_CAP - sourcedCorro.length;
+    var unsourced = [];
+    if (AUTOAPPLY && process.env.TAVILY_API_KEY && budgetLeft > 0) {
+      var uLimit = Math.min(parseInt((req.query && req.query.unsourcedLimit) || DEFAULT_UNSOURCED_LIMIT, 10) || DEFAULT_UNSOURCED_LIMIT, budgetLeft);
+      unsourced = await loadStaleUnsourced(uLimit, queued);
     }
 
-    // Unsourced records: no cited source to ground-check, so the only honest way
-    // to verify them is independent corroboration (needs Tavily). Same per-run
-    // corroboration cap, so this naturally takes over once the sourced backlog
-    // is light.
-    if (AUTOAPPLY && process.env.TAVILY_API_KEY && corroDone < CORRO_CAP) {
-      var uLimit = Math.min(parseInt((req.query && req.query.unsourcedLimit) || DEFAULT_UNSOURCED_LIMIT, 10) || DEFAULT_UNSOURCED_LIMIT, 20);
-      var unsourced = await loadStaleUnsourced(uLimit, queued);
-      for (var u = 0; u < unsourced.length && corroDone < CORRO_CAP; u++) {
-        var urec = unsourced[u];
-        corroDone++;
-        counts.unsourcedChecked++;
-        var ucorro = await corroborate(anthropic, urec);
-        var ustatus = 'Pending', uverdict = 'unverifiable', uevidence = '';
-        var uaction = 'pending (no source, corroboration ' + ucorro.confirmedCount + '/2)';
-        if (ucorro.confirmedCount >= 2) {
-          ustatus = 'Applied'; uverdict = 'confirmed';
-          uaction = 'auto-corroborated, no prior source (' + ucorro.domains.join(', ') + ')';
-          uevidence = 'Corroborated by ' + ucorro.confirmedCount + ' independent sources: ' + ucorro.domains.join(', ');
-          if (!dryRun) await applyToKnowledge(urec.id, { 'Last Verified': today });
-          counts.autoApplied++;
-        } else {
-          counts.pending++;
-        }
-        rows.push({ fields: {
-          'Question': urec.question,
-          'Knowledge Record ID': urec.id,
-          'Verdict': uverdict,
-          'Current Answer': urec.answer,
-          'Suggested Answer': '',
-          'Evidence': uevidence,
-          'Source URL': '',
-          'Status': ustatus,
-          'Checked At': nowIso,
-          'Category': urec.category
-        } });
-        report.push({ question: urec.question, verdict: uverdict, sourced: false, action: uaction });
+    // Phase 3 - corroboration searches, concurrent.
+    var corroItems = sourcedCorro.map(function (p) { return { p: p, rec: p.rec, sourced: true }; })
+      .concat(unsourced.map(function (urec) { return { urec: urec, rec: urec, sourced: false }; }));
+    await mapLimit(corroItems, CONCURRENCY, async function (item) { item.corro = await corroborate(anthropic, item.rec); });
+
+    corroItems.forEach(function (item) {
+      var corro = item.corro || { confirmedCount: 0, domains: [] };
+      var ok2 = corro.confirmedCount >= 2;
+      var note = 'Corroborated by ' + corro.confirmedCount + ' independent sources: ' + corro.domains.join(', ');
+      if (item.sourced) {
+        var p = item.p;
+        if (ok2) { p.status = 'Applied'; p.action = 'auto-corroborated (' + corro.domains.join(', ') + ')'; p.evidence = note; p.apply = { 'Last Verified': today }; counts.autoApplied++; }
+        else { p.action = 'pending (corroboration ' + corro.confirmedCount + '/2)'; counts.pending++; }
+      } else {
+        var urec = item.urec; counts.unsourcedChecked++;
+        urec.__verdict = ok2 ? 'confirmed' : 'unverifiable';
+        if (ok2) { urec.__status = 'Applied'; urec.__action = 'auto-corroborated, no prior source (' + corro.domains.join(', ') + ')'; urec.__evidence = note; urec.__apply = { 'Last Verified': today }; counts.autoApplied++; }
+        else { urec.__status = 'Pending'; urec.__action = 'pending (no source, corroboration ' + corro.confirmedCount + '/2)'; counts.pending++; }
       }
+    });
+
+    // Phase 4 - apply Knowledge updates concurrently (unless dry run).
+    if (!dryRun) {
+      var applies = [];
+      primaries.forEach(function (p) { if (p && p.apply) applies.push({ id: p.rec.id, fields: p.apply }); });
+      unsourced.forEach(function (urec) { if (urec.__apply) applies.push({ id: urec.id, fields: urec.__apply }); });
+      await mapLimit(applies, CONCURRENCY, async function (a) { await applyToKnowledge(a.id, a.fields); });
     }
+
+    // Build audit/queue rows + report.
+    var rows = [];
+    primaries.forEach(function (p) {
+      if (!p || !p.v) return;
+      rows.push({ fields: {
+        'Question': p.rec.question, 'Knowledge Record ID': p.rec.id, 'Verdict': p.v.verdict,
+        'Current Answer': p.rec.answer, 'Suggested Answer': p.v.suggestedAnswer || '', 'Evidence': p.evidence || '',
+        'Source URL': p.rec.sourceUrl, 'Status': p.status, 'Checked At': nowIso, 'Category': p.rec.category
+      } });
+      report.push({ question: p.rec.question, verdict: p.v.verdict, trusted: p.tr.trusted, action: p.action });
+    });
+    unsourced.forEach(function (urec) {
+      rows.push({ fields: {
+        'Question': urec.question, 'Knowledge Record ID': urec.id, 'Verdict': urec.__verdict || 'unverifiable',
+        'Current Answer': urec.answer, 'Suggested Answer': '', 'Evidence': urec.__evidence || '',
+        'Source URL': '', 'Status': urec.__status || 'Pending', 'Checked At': nowIso, 'Category': urec.category
+      } });
+      report.push({ question: urec.question, verdict: urec.__verdict || 'unverifiable', sourced: false, action: urec.__action || 'pending' });
+    });
 
     if (!dryRun && rows.length) await queueRows(rows);
     if (!dryRun && (counts.autoApplied > 0 || counts.pending > 0)) {
