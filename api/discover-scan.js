@@ -3,17 +3,27 @@
 //
 // Generic "things to do / what's on" data belongs in the shared knowledge base
 // (base appPKx77relfeiqmq) that powers Luna and the widgets for every client,
-// NOT per client. This job reads the central Discovery Sources table, safely
-// scrapes each page, and also queries Ticketmaster for each source's
-// destination, then writes everything as Pending rows in the Suggested
-// Knowledge staging table. Nothing goes live until an admin approves it in the
-// global review screen (api/global-brain), which promotes it into the live
-// Knowledge table with a Search Index.
+// NOT per client. Two phases write Pending rows into the Suggested Knowledge
+// staging table; nothing goes live until an admin approves it in the global
+// review screen (api/global-brain), which promotes it into the live Knowledge
+// table with a Search Index.
+//
+//   1. Curated URL scrape: reads the central Discovery Sources table and safely
+//      scrapes each enabled page, extracting things-to-do via the LLM.
+//   2. Global connectors: rotates through the WHOLE Destinations table (~230),
+//      querying Ticketmaster (events) + Foursquare (things to do) for a batch of
+//      the oldest-scanned destinations each run. Rotation is driven by the
+//      "Last Discovered" dateTime field (oldest/blank first); each processed
+//      destination is stamped so the next run picks up where this one left off.
+//      At the default batch of 20/day a full sweep takes ~12 days and costs
+//      ~600 Foursquare + ~600 Ticketmaster calls/month, well inside free tiers.
 //
 // Safety / cost posture:
 //   - Cron-only. CRON_SECRET as Bearer or ?secret=. ?dryRun=1 returns what WOULD
-//     be staged without writing. SSRF-hardened fetch via lib/safe-scrape.
+//     be staged without writing (and does not stamp Last Discovered). SSRF-
+//     hardened fetch via lib/safe-scrape.
 //   - Extraction-only prompting + dedup via lib/discover. Hard caps per run.
+//   - Connector fetches run with bounded concurrency to stay under the 60s cron.
 //
 // Env: CRON_SECRET, AIRTABLE_KEY, ANTHROPIC_API_KEY.
 // Optional: DISCOVER_MODEL, TICKETMASTER_API_KEY, TELEGRAM_BOT_TOKEN/CHAT_ID.
@@ -29,9 +39,13 @@ const gk = require('../lib/global-knowledge');
 
 const MODEL = process.env.DISCOVER_MODEL || 'claude-haiku-4-5-20251001';
 
-const MAX_SOURCES = 20;        // URL pages scanned per run
+const MAX_SOURCES = 20;        // URL pages scanned per run (curated phase)
 const MAX_NEW_TOTAL = 60;      // total suggestions staged per run
 const MAX_PER_SOURCE = 6;
+// Connector phase: how many global destinations to rotate through per run, and
+// how many connector fetches to run at once (keeps wall-time under the 60s cron).
+const BATCH = parseInt(process.env.DISCOVER_BATCH || '20', 10);
+const CONCURRENCY = parseInt(process.env.DISCOVER_CONCURRENCY || '6', 10);
 
 async function atFetch(path, opts) {
   opts = opts || {};
@@ -80,6 +94,59 @@ async function loadExistingQuestions() {
     + '?filterByFormula=' + encodeURIComponent("{Status}='Pending'") + '&fields%5B%5D=Question&maxRecords=500');
   (s.records || []).forEach(function (r) { if (r.fields && r.fields.Question) qs.push(r.fields.Question); });
   return qs;
+}
+
+function mapDest(rec) {
+  var f = rec.fields || {};
+  return { id: rec.id, name: f['Name'] || '', country: f['Country'] || '', type: valueOf(f['Type']) || '' };
+}
+
+// The rotating batch of global destinations to run the connectors over this run.
+// Never-scanned rows (blank Last Discovered) come first, then the oldest-scanned,
+// so every destination is reached before any is repeated.
+async function loadDestinationBatch(limit) {
+  var fields = '&fields%5B%5D=Name&fields%5B%5D=Country&fields%5B%5D=Type';
+  var out = [];
+  var blanks = await atFetch('/' + gk.DESTINATIONS_TABLE
+    + '?filterByFormula=' + encodeURIComponent('{Last Discovered}=BLANK()')
+    + fields + '&maxRecords=' + limit);
+  (blanks.records || []).forEach(function (r) { out.push(mapDest(r)); });
+  if (out.length < limit) {
+    var rest = await atFetch('/' + gk.DESTINATIONS_TABLE
+      + '?filterByFormula=' + encodeURIComponent('NOT({Last Discovered}=BLANK())')
+      + '&sort%5B0%5D%5Bfield%5D=' + encodeURIComponent('Last Discovered') + '&sort%5B0%5D%5Bdirection%5D=asc'
+      + fields + '&maxRecords=' + (limit - out.length));
+    (rest.records || []).forEach(function (r) { out.push(mapDest(r)); });
+  }
+  return out;
+}
+
+// Stamp Last Discovered=now on processed destinations so they rotate to the back
+// of the queue. Batched 10 per Airtable PATCH. Only called outside dry runs.
+async function stampDiscovered(ids, nowIso) {
+  for (var i = 0; i < ids.length; i += 10) {
+    var recs = ids.slice(i, i + 10).map(function (id) { return { id: id, fields: { 'Last Discovered': nowIso } }; });
+    await atFetch('/' + gk.DESTINATIONS_TABLE, { method: 'PATCH', body: { records: recs, typecast: true } });
+  }
+}
+
+// Run an async fn over items with bounded concurrency. Per-item errors are
+// captured (one failure never aborts the batch) and returned in place. Mirrors
+// the helper in api/reverify.js so connector fetches stay under the 60s cron.
+async function mapLimit(items, limit, fn) {
+  var out = new Array(items.length);
+  var idx = 0;
+  async function worker() {
+    while (idx < items.length) {
+      var i = idx++;
+      try { out[i] = await fn(items[i], i); } catch (e) { out[i] = { __error: (e && e.message) || 'error' }; }
+    }
+  }
+  var workers = [];
+  var n = Math.min(limit, items.length);
+  for (var w = 0; w < n; w++) workers.push(worker());
+  await Promise.all(workers);
+  return out;
 }
 
 function capConfidence(c) { return c === 'high' ? 'High' : (c === 'low' ? 'Low' : 'Medium'); }
@@ -163,41 +230,62 @@ module.exports = async function handler(req, res) {
       report.push({ source: src.name, url: scraped.url, staged: found.length, titles: found.map(function (c) { return c.question; }) });
     }
 
-    // 2) Ticketmaster events per unique source destination.
-    if (!process.env.TICKETMASTER_API_KEY) {
-      report.push({ source: 'ticketmaster', error: 'no_key (TICKETMASTER_API_KEY not set on this deployment)' });
-    } else {
-      var seenDest = {};
-      for (var di = 0; di < sources.length && staged.length < MAX_NEW_TOTAL; di++) {
-        var dest = sources[di].destination;
-        if (!dest || seenDest[dest.toLowerCase()]) continue;
-        seenDest[dest.toLowerCase()] = 1;
-        var ev = await ticketmaster.fetchEvents(dest, { max: 5 });
-        if (!ev.ok) { report.push({ source: 'ticketmaster', destination: dest, error: ev.error, httpStatus: ev.httpStatus }); continue; }
-        if (!ev.draft) { report.push({ source: 'ticketmaster', destination: dest, events: ev.count, staged: 0 }); continue; }
-        var processedEv = discover.processCandidates(JSON.stringify([ev.draft]), { existingQuestions: existing.concat(staged), destination: dest, sourceUrl: 'https://www.ticketmaster.com' });
-        if (!dryRun && processedEv.length) await stageCandidates(processedEv, { category: 'Events', destination: dest, origin: 'Ticketmaster' });
-        processedEv.forEach(function (c) { staged.push(c.question); });
-        report.push({ source: 'ticketmaster', destination: dest, events: ev.count, staged: processedEv.length });
-      }
-    }
+    // 2) Global connectors: rotate through the Destinations table (oldest-first
+    //    by Last Discovered), querying Ticketmaster + Foursquare for each. Fetch
+    //    concurrently to fit the 60s cron, then process sequentially so the dedup
+    //    accumulator stays deterministic. Drafts are built deterministically in
+    //    the libs (no LLM here), so this phase makes no model calls.
+    var tmKey = process.env.TICKETMASTER_API_KEY;
+    var fsqKey = process.env.FOURSQUARE_API_KEY;
+    if (!tmKey) report.push({ source: 'ticketmaster', error: 'no_key (TICKETMASTER_API_KEY not set on this deployment)' });
+    if (!fsqKey) report.push({ source: 'foursquare', error: 'no_key (FOURSQUARE_API_KEY not set on this deployment)' });
 
-    // 3) Foursquare Places per unique source destination (things to do).
-    if (!process.env.FOURSQUARE_API_KEY) {
-      report.push({ source: 'foursquare', error: 'no_key (FOURSQUARE_API_KEY not set on this deployment)' });
-    } else {
-      var seenFsqDest = {};
-      for (var ai = 0; ai < sources.length && staged.length < MAX_NEW_TOTAL; ai++) {
-        var fdest = sources[ai].destination;
-        if (!fdest || seenFsqDest[fdest.toLowerCase()]) continue;
-        seenFsqDest[fdest.toLowerCase()] = 1;
-        var fsq = await foursquare.fetchPlaces(fdest, { max: 8 });
-        if (!fsq.ok) { report.push({ source: 'foursquare', destination: fdest, error: fsq.error, httpStatus: fsq.httpStatus, via: fsq.via, near: fsq.near }); continue; }
-        if (!fsq.draft) { report.push({ source: 'foursquare', destination: fdest, places: fsq.count, staged: 0, via: fsq.via, near: fsq.near }); continue; }
-        var processedFsq = discover.processCandidates(JSON.stringify([fsq.draft]), { existingQuestions: existing.concat(staged), destination: fdest, sourceUrl: 'https://foursquare.com' });
-        if (!dryRun && processedFsq.length) await stageCandidates(processedFsq, { category: 'Things To Do', destination: fdest, origin: 'Foursquare' });
-        processedFsq.forEach(function (c) { staged.push(c.question); });
-        report.push({ source: 'foursquare', destination: fdest, places: fsq.count, staged: processedFsq.length, via: fsq.via, near: fsq.near });
+    var batch = (tmKey || fsqKey) ? await loadDestinationBatch(BATCH) : [];
+    if (batch.length) {
+      var fetched = await mapLimit(batch, CONCURRENCY, async function (d) {
+        var r = { dest: d };
+        if (tmKey) r.tm = await ticketmaster.fetchEvents(d.name, { max: 5, country: d.country });
+        if (fsqKey) r.fsq = await foursquare.fetchPlaces(d.name, { max: 8, country: d.country });
+        return r;
+      });
+
+      for (var bi = 0; bi < fetched.length; bi++) {
+        var item = fetched[bi];
+        if (!item || item.__error || !item.dest) continue;
+        var d = item.dest;
+        // Ticketmaster events
+        if (item.tm) {
+          if (!item.tm.ok) { report.push({ source: 'ticketmaster', destination: d.name, error: item.tm.error, httpStatus: item.tm.httpStatus }); }
+          else if (!item.tm.draft) { report.push({ source: 'ticketmaster', destination: d.name, events: item.tm.count, staged: 0 }); }
+          else {
+            var pe = (staged.length < MAX_NEW_TOTAL)
+              ? discover.processCandidates(JSON.stringify([item.tm.draft]), { existingQuestions: existing.concat(staged), destination: d.name, sourceUrl: 'https://www.ticketmaster.com' })
+              : [];
+            if (!dryRun && pe.length) await stageCandidates(pe, { category: 'Events', destination: d.name, origin: 'Ticketmaster' });
+            pe.forEach(function (c) { staged.push(c.question); });
+            report.push({ source: 'ticketmaster', destination: d.name, events: item.tm.count, staged: pe.length });
+          }
+        }
+        // Foursquare things to do
+        if (item.fsq) {
+          if (!item.fsq.ok) { report.push({ source: 'foursquare', destination: d.name, error: item.fsq.error, httpStatus: item.fsq.httpStatus, via: item.fsq.via, near: item.fsq.near }); }
+          else if (!item.fsq.draft) { report.push({ source: 'foursquare', destination: d.name, places: item.fsq.count, staged: 0, via: item.fsq.via, near: item.fsq.near }); }
+          else {
+            var pf = (staged.length < MAX_NEW_TOTAL)
+              ? discover.processCandidates(JSON.stringify([item.fsq.draft]), { existingQuestions: existing.concat(staged), destination: d.name, sourceUrl: 'https://foursquare.com' })
+              : [];
+            if (!dryRun && pf.length) await stageCandidates(pf, { category: 'Things To Do', destination: d.name, origin: 'Foursquare' });
+            pf.forEach(function (c) { staged.push(c.question); });
+            report.push({ source: 'foursquare', destination: d.name, places: item.fsq.count, staged: pf.length, via: item.fsq.via, near: item.fsq.near });
+          }
+        }
+      }
+
+      // Rotate: stamp every visited destination so the next run advances through
+      // the table (even ones that errored or yielded nothing, so none can block).
+      if (!dryRun) {
+        try { await stampDiscovered(batch.map(function (b) { return b.id; }), new Date().toISOString()); }
+        catch (e) { report.push({ source: 'rotation', error: 'stamp_failed: ' + e.message }); }
       }
     }
 
@@ -205,7 +293,7 @@ module.exports = async function handler(req, res) {
       await tgSend('Luna discovery: ' + staged.length + ' new suggestion(s) staged for review. Approve in the global review screen.');
     }
 
-    return res.status(200).json({ ok: true, dryRun: !!dryRun, sources: sources.length, totalStaged: staged.length, report: report, checkedAt: new Date().toISOString() });
+    return res.status(200).json({ ok: true, dryRun: !!dryRun, sources: sources.length, destinationsScanned: batch.length, totalStaged: staged.length, report: report, checkedAt: new Date().toISOString() });
   } catch (e) {
     console.error('[discover-scan] run failed:', e.message);
     return res.status(500).json({ error: e.message });
