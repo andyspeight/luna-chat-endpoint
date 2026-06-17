@@ -6,32 +6,49 @@
 <meta name="robots" content="noindex, nofollow">
 <title>Global Knowledge Review</title>
 <style>
-  :root { --bg:#0e1424; --panel:#161f36; --border:#26314f; --text:#e7ecf5; --dim:#9aa7c2; --teal:#2dd4bf; --green:#34d399; --red:#f87171; --radius:12px; }
+  :root { --bg:#0e1424; --panel:#161f36; --border:#26314f; --text:#e7ecf5; --dim:#9aa7c2; --teal:#2dd4bf; --green:#34d399; --amber:#fbbf24; --red:#f87171; --radius:12px; }
   * { box-sizing:border-box; }
   body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--text); }
-  .wrap { max-width:860px; margin:0 auto; padding:28px 20px 80px; }
+  .wrap { max-width:900px; margin:0 auto; padding:28px 20px 80px; }
   h1 { font-size:22px; margin:0 0 2px; } h1 em { color:var(--teal); font-style:normal; }
   .sub { color:var(--dim); font-size:14px; margin:0 0 20px; }
   .summary { display:flex; gap:14px; margin-bottom:22px; flex-wrap:wrap; }
   .stat { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:12px 16px; min-width:120px; }
   .stat .v { font-size:24px; font-weight:700; } .stat .l { font-size:12px; color:var(--dim); }
+  .tabs { display:flex; gap:8px; margin-bottom:18px; border-bottom:1px solid var(--border); }
+  .tab { background:none; border:none; border-bottom:2px solid transparent; color:var(--dim); font:inherit; font-weight:600; font-size:14px; padding:10px 12px; cursor:pointer; }
+  .tab.active { color:var(--text); border-bottom-color:var(--teal); }
+  .tab .badge { display:inline-block; min-width:20px; padding:1px 7px; margin-left:6px; border-radius:999px; background:#1f2a47; color:var(--dim); font-size:11px; }
+  .filters { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+  .filters input, .filters select { background:#0f1626; color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px 10px; font:inherit; font-size:13px; }
+  .filters input { flex:1; min-width:180px; }
   .card { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:14px; }
   .q { font-weight:600; font-size:15px; margin-bottom:8px; }
   .meta { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px; }
   .pill { font-size:11px; font-weight:600; padding:2px 9px; border-radius:999px; background:#1f2a47; color:var(--dim); }
   .pill.cat { background:#0f3d38; color:var(--teal); }
+  .pill.v-confirmed { background:#0f3d2a; color:var(--green); }
+  .pill.v-changed { background:#3d3410; color:var(--amber); }
+  .pill.v-unverifiable, .pill.v-source_unreachable { background:#3d1f1f; color:var(--red); }
   textarea { width:100%; min-height:78px; background:#0f1626; color:var(--text); border:1px solid var(--border); border-radius:8px; padding:9px; font-size:13px; font-family:inherit; resize:vertical; }
+  .ans { background:#0f1626; border:1px solid var(--border); border-radius:8px; padding:9px; font-size:13px; margin-top:8px; white-space:pre-wrap; }
+  .ans .lab { display:block; font-size:11px; font-weight:600; color:var(--dim); margin-bottom:4px; text-transform:uppercase; letter-spacing:.04em; }
+  .ans.suggest { border-color:#3a4a2a; }
+  .ans.evidence { font-style:italic; color:var(--dim); }
   .src { font-size:12px; color:var(--dim); margin-top:8px; word-break:break-all; }
   .src a { color:var(--teal); }
   .actions { display:flex; gap:10px; margin-top:12px; }
   button { font:inherit; font-weight:600; font-size:13px; border-radius:8px; padding:8px 16px; border:1px solid var(--border); cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
   .approve { background:var(--green); color:#06281c; border-color:transparent; }
   .dismiss { background:transparent; color:var(--dim); }
+  .pager { display:flex; gap:10px; align-items:center; justify-content:center; margin-top:18px; color:var(--dim); font-size:13px; }
+  .pager button { background:var(--panel); color:var(--text); }
   .empty { text-align:center; color:var(--dim); padding:48px 0; }
   .gate { max-width:360px; margin:80px auto; background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:24px; }
   .gate input { width:100%; padding:10px; border-radius:8px; border:1px solid var(--border); background:#0f1626; color:var(--text); margin:10px 0; }
   .gate button { width:100%; background:var(--teal); color:#04201c; border-color:transparent; }
-  .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--panel); border:1px solid var(--border); padding:10px 18px; border-radius:10px; font-size:13px; opacity:0; transition:opacity .2s; }
+  .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--panel); border:1px solid var(--border); padding:10px 18px; border-radius:10px; font-size:13px; opacity:0; transition:opacity .2s; pointer-events:none; }
   .toast.show { opacity:1; }
   .toast.ok { border-color:var(--green); } .toast.err { border-color:var(--red); }
 </style>
@@ -39,14 +56,37 @@
 <body>
 <div class="wrap" id="app" hidden>
   <h1>Global <em>Knowledge</em> Review</h1>
-  <p class="sub">Suggestions found for the shared knowledge base. Check each is accurate, edit if needed, then approve to make it live for every client. Nothing here is live yet.</p>
+  <p class="sub">Review what the discovery and re-verification jobs found for the shared knowledge base. Check each is accurate, then apply. Nothing here is live until you act on it.</p>
   <div class="summary">
-    <div class="stat"><div class="v" id="pendingCount">0</div><div class="l">pending review</div></div>
+    <div class="stat"><div class="v" id="pendingCount">0</div><div class="l">suggestions pending</div></div>
+    <div class="stat"><div class="v" id="reverifyCount">0</div><div class="l">re-verifications pending</div></div>
     <div class="stat"><div class="v" id="kbTotal">–</div><div class="l">live knowledge records</div></div>
     <div class="stat"><div class="v" id="kbOldest">–</div><div class="l">oldest last verified</div></div>
     <div class="stat"><div class="v" id="kbStale">–</div><div class="l">past review</div></div>
   </div>
-  <div id="host"></div>
+
+  <div class="tabs">
+    <button class="tab active" id="tab-suggestions" onclick="window._tab('suggestions')">Discovery suggestions <span class="badge" id="badge-suggestions">0</span></button>
+    <button class="tab" id="tab-reverify" onclick="window._tab('reverify')">Re-verification queue <span class="badge" id="badge-reverify">0</span></button>
+  </div>
+
+  <div id="suggestions-view">
+    <div class="filters">
+      <input type="search" id="f-q" placeholder="Search question, answer or destination…" autocomplete="off">
+      <select id="f-cat"><option value="">All categories</option></select>
+      <select id="f-origin"><option value="">All origins</option></select>
+    </div>
+    <div id="host"></div>
+    <div class="pager" id="pager" hidden>
+      <button id="prev" onclick="window._page(-1)">‹ Prev</button>
+      <span id="pageInfo"></span>
+      <button id="next" onclick="window._page(1)">Next ›</button>
+    </div>
+  </div>
+
+  <div id="reverify-view" hidden>
+    <div id="reverify-host"></div>
+  </div>
 </div>
 
 <div class="gate" id="gate">
@@ -62,7 +102,13 @@
 (function() {
   'use strict';
   var API = '/api/global-brain';
-  var state = { pass: '', feed: null };
+  var state = {
+    pass: '', tab: 'suggestions',
+    suggestions: [], reverifications: [],
+    pendingCount: 0, reverifyPendingCount: 0, health: null,
+    filters: { q: '', category: '', origin: '' },
+    page: 0, pageSize: 20
+  };
 
   function $(id) { return document.getElementById(id); }
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
@@ -85,32 +131,107 @@
     var p = $('pass').value.trim();
     if (!p) return;
     state.pass = p;
-    api('feed').then(function(data) {
-      try { sessionStorage.setItem('gb_pass', p); } catch (e) {}
-      $('gate').hidden = true; $('app').hidden = false;
-      render(data);
-    }).catch(function(err) { toast('Login failed: ' + err.message, 'err'); });
+    // Load both queues in parallel; only one needs to succeed to enter.
+    Promise.all([ api('feed'), api('reverify-feed').catch(function() { return {}; }) ])
+      .then(function(res) {
+        try { sessionStorage.setItem('gb_pass', p); } catch (e) {}
+        $('gate').hidden = true; $('app').hidden = false;
+        ingest(res[0], res[1]);
+        buildFilters();
+        render();
+      }).catch(function(err) { toast('Login failed: ' + err.message, 'err'); });
   };
 
-  function render(data) {
-    state.feed = data;
-    $('pendingCount').textContent = String(data.pendingCount || 0);
-    var h = data.knowledgeHealth;
+  function ingest(feed, reverify) {
+    feed = feed || {}; reverify = reverify || {};
+    state.suggestions = feed.suggestions || [];
+    state.pendingCount = feed.pendingCount || state.suggestions.length;
+    state.health = feed.knowledgeHealth || null;
+    state.reverifications = reverify.reverifications || [];
+    state.reverifyPendingCount = reverify.reverifyPendingCount || state.reverifications.length;
+  }
+
+  // Populate the category + origin filter dropdowns from the loaded data.
+  function buildFilters() {
+    fillSelect($('f-cat'), distinct(state.suggestions, 'category'), 'All categories');
+    fillSelect($('f-origin'), distinct(state.suggestions, 'origin'), 'All origins');
+  }
+  function distinct(list, key) {
+    var seen = {}, out = [];
+    list.forEach(function(x) { var v = (x[key] || '').trim(); if (v && !seen[v]) { seen[v] = 1; out.push(v); } });
+    return out.sort();
+  }
+  function fillSelect(sel, values, allLabel) {
+    var cur = sel.value;
+    sel.innerHTML = '';
+    sel.appendChild(new Option(allLabel, ''));
+    values.forEach(function(v) { sel.appendChild(new Option(v, v)); });
+    sel.value = cur && values.indexOf(cur) !== -1 ? cur : '';
+  }
+
+  function render() {
+    $('pendingCount').textContent = String(state.pendingCount || 0);
+    $('reverifyCount').textContent = String(state.reverifyPendingCount || 0);
+    $('badge-suggestions').textContent = String(state.pendingCount || 0);
+    $('badge-reverify').textContent = String(state.reverifyPendingCount || 0);
+    var h = state.health;
     if (h) {
       $('kbTotal').textContent = String(h.total || 0);
       $('kbOldest').textContent = (h.oldestDays != null) ? (h.oldestDays + 'd') : '–';
       $('kbStale').textContent = String(h.pastReview || 0);
     }
-    var host = $('host'); host.innerHTML = '';
-    var items = data.suggestions || [];
-    if (!items.length) {
-      var e = el('div', 'empty'); e.appendChild(el('div', null, '✓')); e.appendChild(el('div', null, 'Nothing waiting for review'));
-      host.appendChild(e); return;
-    }
-    items.forEach(function(item) { host.appendChild(card(item)); });
+    $('tab-suggestions').classList.toggle('active', state.tab === 'suggestions');
+    $('tab-reverify').classList.toggle('active', state.tab === 'reverify');
+    $('suggestions-view').hidden = state.tab !== 'suggestions';
+    $('reverify-view').hidden = state.tab !== 'reverify';
+    if (state.tab === 'suggestions') renderSuggestions(); else renderReverify();
   }
 
-  function card(item) {
+  window._tab = function(t) { state.tab = t; render(); };
+
+  // ---- Discovery suggestions (filtered + paginated) ----
+  function filteredSuggestions() {
+    var f = state.filters, q = f.q.toLowerCase();
+    return state.suggestions.filter(function(s) {
+      if (f.category && s.category !== f.category) return false;
+      if (f.origin && s.origin !== f.origin) return false;
+      if (q) {
+        var hay = ((s.question || '') + ' ' + (s.consumerAnswer || '') + ' ' + (s.relatedTo || '')).toLowerCase();
+        if (hay.indexOf(q) === -1) return false;
+      }
+      return true;
+    });
+  }
+
+  function renderSuggestions() {
+    var host = $('host'); host.innerHTML = '';
+    var items = filteredSuggestions();
+    var pages = Math.max(1, Math.ceil(items.length / state.pageSize));
+    if (state.page >= pages) state.page = pages - 1;
+    if (state.page < 0) state.page = 0;
+    if (!items.length) {
+      host.appendChild(emptyMsg(state.suggestions.length ? 'No suggestions match these filters' : 'Nothing waiting for review'));
+      $('pager').hidden = true; return;
+    }
+    var start = state.page * state.pageSize;
+    items.slice(start, start + state.pageSize).forEach(function(item) { host.appendChild(suggestionCard(item)); });
+    $('pager').hidden = pages <= 1;
+    $('pageInfo').textContent = 'Page ' + (state.page + 1) + ' of ' + pages + ' (' + items.length + ' shown)';
+    $('prev').disabled = state.page === 0;
+    $('next').disabled = state.page >= pages - 1;
+  }
+
+  window._page = function(d) { state.page += d; renderSuggestions(); };
+
+  function onFilterChange() {
+    state.filters.q = $('f-q').value.trim();
+    state.filters.category = $('f-cat').value;
+    state.filters.origin = $('f-origin').value;
+    state.page = 0;
+    renderSuggestions();
+  }
+
+  function suggestionCard(item) {
     var c = el('div', 'card');
     c.appendChild(el('div', 'q', item.question || '(no question)'));
     var meta = el('div', 'meta');
@@ -133,14 +254,14 @@
     ok.addEventListener('click', function() {
       ok.disabled = true; ok.textContent = 'Saving…';
       api('approve', { method: 'POST', body: { id: item.id, consumerAnswer: ta.value } })
-        .then(function() { removeAndRefresh(item.id); toast('Approved and live.', 'ok'); })
+        .then(function() { dropSuggestion(item.id); toast('Approved and live.', 'ok'); })
         .catch(function(err) { ok.disabled = false; ok.textContent = 'Approve and make live'; toast('Could not approve: ' + err.message, 'err'); });
     });
     var no = el('button', 'dismiss', 'Dismiss');
     no.addEventListener('click', function() {
       no.disabled = true;
       api('dismiss', { method: 'POST', body: { id: item.id } })
-        .then(function() { removeAndRefresh(item.id); toast('Dismissed.', 'ok'); })
+        .then(function() { dropSuggestion(item.id); toast('Dismissed.', 'ok'); })
         .catch(function(err) { no.disabled = false; toast('Could not dismiss: ' + err.message, 'err'); });
     });
     actions.appendChild(ok); actions.appendChild(no);
@@ -148,11 +269,99 @@
     return c;
   }
 
-  function removeAndRefresh(id) {
-    state.feed.suggestions = (state.feed.suggestions || []).filter(function(s) { return s.id !== id; });
-    state.feed.pendingCount = Math.max(0, (state.feed.pendingCount || 1) - 1);
-    render(state.feed);
+  function dropSuggestion(id) {
+    state.suggestions = state.suggestions.filter(function(s) { return s.id !== id; });
+    state.pendingCount = Math.max(0, state.pendingCount - 1);
+    render();
   }
+
+  // ---- Re-verification queue ----
+  var VERDICT_LABEL = { confirmed: 'Confirmed', changed: 'Changed', unverifiable: 'Unverifiable', source_unreachable: 'Source unreachable' };
+
+  function renderReverify() {
+    var host = $('reverify-host'); host.innerHTML = '';
+    if (!state.reverifications.length) {
+      host.appendChild(emptyMsg('Nothing in the re-verification queue')); return;
+    }
+    state.reverifications.forEach(function(item) { host.appendChild(reverifyCard(item)); });
+  }
+
+  function reverifyCard(item) {
+    var c = el('div', 'card');
+    c.appendChild(el('div', 'q', item.question || '(no question)'));
+    var meta = el('div', 'meta');
+    meta.appendChild(el('span', 'pill v-' + (item.verdict || 'unverifiable'), VERDICT_LABEL[item.verdict] || item.verdict || 'unknown'));
+    if (item.category) meta.appendChild(el('span', 'pill cat', item.category));
+    if (item.checkedAt) meta.appendChild(el('span', 'pill', 'checked ' + String(item.checkedAt).slice(0, 10)));
+    c.appendChild(meta);
+
+    var canApply = item.verdict === 'confirmed' || item.verdict === 'changed';
+
+    if (item.verdict === 'changed' && item.suggestedAnswer) {
+      c.appendChild(ansBlock('Current answer', item.currentAnswer, ''));
+      c.appendChild(ansBlock('Suggested answer (from source)', item.suggestedAnswer, 'suggest'));
+    } else if (item.currentAnswer) {
+      c.appendChild(ansBlock('Saved answer', item.currentAnswer, ''));
+    }
+    if (item.evidence) c.appendChild(ansBlock('Evidence', item.evidence, 'evidence'));
+
+    if (item.sourceUrl) {
+      var src = el('div', 'src'); src.appendChild(document.createTextNode('Source: '));
+      var a = el('a', null, item.sourceUrl); a.href = item.sourceUrl; a.target = '_blank'; a.rel = 'noopener noreferrer';
+      src.appendChild(a); c.appendChild(src);
+    }
+    if (!canApply) {
+      var note = el('div', 'src', item.verdict === 'source_unreachable'
+        ? 'The source could not be fetched, so nothing can be applied automatically. Check it by hand, then dismiss.'
+        : 'The source did not cover this answer, so there is nothing to apply. Check by hand, then dismiss.');
+      c.appendChild(note);
+    }
+
+    var actions = el('div', 'actions');
+    if (canApply) {
+      var apply = el('button', 'approve', item.verdict === 'confirmed' ? 'Confirm (reset freshness)' : 'Apply update');
+      apply.addEventListener('click', function() {
+        apply.disabled = true; apply.textContent = 'Applying…';
+        api('reverify-apply', { method: 'POST', body: { id: item.id } })
+          .then(function() { dropReverify(item.id); toast(item.verdict === 'confirmed' ? 'Freshness reset.' : 'Update applied and live.', 'ok'); })
+          .catch(function(err) { apply.disabled = false; apply.textContent = item.verdict === 'confirmed' ? 'Confirm (reset freshness)' : 'Apply update'; toast('Could not apply: ' + err.message, 'err'); });
+      });
+      actions.appendChild(apply);
+    }
+    var no = el('button', 'dismiss', 'Dismiss');
+    no.addEventListener('click', function() {
+      no.disabled = true;
+      api('reverify-dismiss', { method: 'POST', body: { id: item.id } })
+        .then(function() { dropReverify(item.id); toast('Dismissed.', 'ok'); })
+        .catch(function(err) { no.disabled = false; toast('Could not dismiss: ' + err.message, 'err'); });
+    });
+    actions.appendChild(no);
+    c.appendChild(actions);
+    return c;
+  }
+
+  function ansBlock(label, text, extra) {
+    var d = el('div', 'ans' + (extra ? (' ' + extra) : ''));
+    d.appendChild(el('span', 'lab', label));
+    d.appendChild(document.createTextNode(text || ''));
+    return d;
+  }
+
+  function dropReverify(id) {
+    state.reverifications = state.reverifications.filter(function(r) { return r.id !== id; });
+    state.reverifyPendingCount = Math.max(0, state.reverifyPendingCount - 1);
+    render();
+  }
+
+  function emptyMsg(text) {
+    var e = el('div', 'empty'); e.appendChild(el('div', null, '✓')); e.appendChild(el('div', null, text)); return e;
+  }
+
+  // Filter input wiring.
+  ['f-q', 'f-cat', 'f-origin'].forEach(function(id) {
+    var ev = id === 'f-q' ? 'input' : 'change';
+    document.getElementById(id).addEventListener(ev, onFilterChange);
+  });
 
   // Auto-login from stored pass or ?pass=
   var qp = new URLSearchParams(location.search).get('pass');
