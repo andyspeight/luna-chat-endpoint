@@ -89,12 +89,27 @@ async function knowledgeHealth() {
   };
 }
 
+// Page through every record matching a query (the discovery backlog is now
+// hundreds of rows, so the old maxRecords=200 silently hid most of them). Capped
+// so a runaway table can never blow the function's memory/time budget.
+async function loadAllRecords(table, query, cap) {
+  cap = cap || 1000;
+  var items = [], offset = null, pages = 0;
+  do {
+    var path = '/' + table + '?' + query + '&pageSize=100';
+    if (offset) path += '&offset=' + encodeURIComponent(offset);
+    var data = await atFetch(path);
+    (data.records || []).forEach(function (r) { items.push(r); });
+    offset = data.offset || null; pages++;
+  } while (offset && items.length < cap && pages < 12);
+  return items;
+}
+
 async function actionFeed() {
   var healthP = knowledgeHealth().catch(function () { return null; });
-  var data = await atFetch('/' + gk.SUGGESTED_TABLE
-    + '?filterByFormula=' + encodeURIComponent("{Status}='Pending'")
-    + '&maxRecords=200');
-  var items = (data.records || []).map(function (rec) {
+  var records = await loadAllRecords(gk.SUGGESTED_TABLE,
+    'filterByFormula=' + encodeURIComponent("{Status}='Pending'"), 1000);
+  var items = records.map(function (rec) {
     var f = rec.fields || {};
     return {
       id: rec.id,
@@ -113,6 +128,94 @@ async function actionFeed() {
     return (Date.parse(b.suggestedAt) || 0) - (Date.parse(a.suggestedAt) || 0);
   });
   return { suggestions: items, pendingCount: items.length, knowledgeHealth: await healthP };
+}
+
+// Pending rows in the re-verification queue (anti-staleness loop). These are
+// verdicts the cron could not auto-apply (non-authoritative source, or a
+// "changed" needing a human eye), waiting for an admin to apply or dismiss.
+async function actionReverifyFeed() {
+  var records = await loadAllRecords(gk.REVERIFICATION_TABLE,
+    'filterByFormula=' + encodeURIComponent("{Status}='Pending'"), 1000);
+  var items = records.map(function (rec) {
+    var f = rec.fields || {};
+    return {
+      id: rec.id,
+      question: f['Question'] || '',
+      verdict: valueOf(f['Verdict']) || '',
+      currentAnswer: f['Current Answer'] || '',
+      suggestedAnswer: f['Suggested Answer'] || '',
+      evidence: f['Evidence'] || '',
+      sourceUrl: f['Source URL'] || '',
+      category: valueOf(f['Category']) || '',
+      knowledgeRecordId: f['Knowledge Record ID'] || '',
+      checkedAt: f['Checked At'] || rec.createdTime || null
+    };
+  }).sort(function (a, b) {
+    return (Date.parse(b.checkedAt) || 0) - (Date.parse(a.checkedAt) || 0);
+  });
+  return { reverifications: items, reverifyPendingCount: items.length };
+}
+
+// Apply a re-verification verdict to the live Knowledge record, mirroring the
+// cron's trusted-source auto-apply (lib api/reverify) but human-triggered:
+//   confirmed -> reset Last Verified (source still supports the answer).
+//   changed   -> write the source-grounded Suggested Answer + rebuilt Search
+//                Index + reset Last Verified.
+//   unverifiable / source_unreachable -> nothing to apply; must be dismissed or
+//                handled by hand (never guess a value).
+async function actionReverifyApply(body) {
+  var id = (body.id || '').trim();
+  if (!/^rec[A-Za-z0-9]{14}$/.test(id)) throw new Error('Invalid id');
+  var row = await atFetch('/' + gk.REVERIFICATION_TABLE + '/' + id);
+  var f = row.fields || {};
+  if (valueOf(f['Status']) !== 'Pending') throw new Error('Already ' + (valueOf(f['Status']) || 'resolved').toLowerCase());
+  var verdict = valueOf(f['Verdict']) || '';
+  var knowledgeId = (f['Knowledge Record ID'] || '').trim();
+  if (!/^rec[A-Za-z0-9]{14}$/.test(knowledgeId)) throw new Error('No valid linked Knowledge record');
+  var today = new Date().toISOString().split('T')[0];
+
+  if (verdict === 'confirmed') {
+    await atFetch('/' + gk.KNOWLEDGE_TABLE + '/' + knowledgeId, {
+      method: 'PATCH', body: { fields: { 'Last Verified': today }, typecast: true }
+    });
+  } else if (verdict === 'changed') {
+    var suggested = (f['Suggested Answer'] || '').trim();
+    if (!suggested) throw new Error('No suggested answer to apply');
+    // Rebuild the Search Index from the live record so retrieval stays findable.
+    var krec = await atFetch('/' + gk.KNOWLEDGE_TABLE + '/' + knowledgeId);
+    var kf = krec.fields || {};
+    await atFetch('/' + gk.KNOWLEDGE_TABLE + '/' + knowledgeId, {
+      method: 'PATCH', body: { fields: {
+        'Consumer Answer': suggested,
+        'Search Index': gk.buildSearchIndex({
+          question: kf['Question'] || f['Question'] || '',
+          altPhrasings: kf['Alt Phrasings'] || '',
+          consumerAnswer: suggested,
+          agentAnswer: kf['Agent Answer'] || '',
+          category: valueOf(kf['Category']) || valueOf(f['Category']) || '',
+          relatedTo: kf['Related To'] || '',
+          tags: kf['Tags'] || ''
+        }),
+        'Last Verified': today
+      }, typecast: true }
+    });
+  } else {
+    throw new Error('Verdict "' + (verdict || 'unknown') + '" has nothing to apply; dismiss it or handle by hand');
+  }
+
+  await atFetch('/' + gk.REVERIFICATION_TABLE + '/' + id, {
+    method: 'PATCH', body: { fields: { 'Status': 'Applied' }, typecast: true }
+  });
+  return { ok: true, id: id, verdict: verdict, knowledgeId: knowledgeId };
+}
+
+async function actionReverifyDismiss(body) {
+  var id = (body.id || '').trim();
+  if (!/^rec[A-Za-z0-9]{14}$/.test(id)) throw new Error('Invalid id');
+  await atFetch('/' + gk.REVERIFICATION_TABLE + '/' + id, {
+    method: 'PATCH', body: { fields: { 'Status': 'Dismissed' }, typecast: true }
+  });
+  return { ok: true, id: id };
 }
 
 async function actionApprove(body) {
@@ -176,12 +279,17 @@ module.exports = async function handler(req, res) {
     if (req.method === 'GET' && (action === 'feed' || action === '')) {
       return res.status(200).json(await actionFeed());
     }
+    if (req.method === 'GET' && action === 'reverify-feed') {
+      return res.status(200).json(await actionReverifyFeed());
+    }
     if (req.method === 'POST') {
       var body;
       try { body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {}); }
       catch (e) { return res.status(400).json({ error: 'Invalid body' }); }
       if (action === 'approve') return res.status(200).json(await actionApprove(body));
       if (action === 'dismiss') return res.status(200).json(await actionDismiss(body));
+      if (action === 'reverify-apply') return res.status(200).json(await actionReverifyApply(body));
+      if (action === 'reverify-dismiss') return res.status(200).json(await actionReverifyDismiss(body));
     }
     return res.status(400).json({ error: 'Unknown action: ' + action });
   } catch (e) {
