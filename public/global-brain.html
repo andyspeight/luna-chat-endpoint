@@ -291,7 +291,11 @@
     c.appendChild(el('div', 'q', item.question || '(no question)'));
     var meta = el('div', 'meta');
     meta.appendChild(el('span', 'pill v-' + (item.verdict || 'unverifiable'), VERDICT_LABEL[item.verdict] || item.verdict || 'unknown'));
-    if (item.category) meta.appendChild(el('span', 'pill cat', item.category));
+    if (item.targetTable && item.targetTable !== 'Knowledge') {
+      meta.appendChild(el('span', 'pill cat', item.targetTable + (item.targetField ? (' · ' + item.targetField) : '')));
+    } else if (item.category) {
+      meta.appendChild(el('span', 'pill cat', item.category));
+    }
     if (item.checkedAt) meta.appendChild(el('span', 'pill', 'checked ' + String(item.checkedAt).slice(0, 10)));
     c.appendChild(meta);
 

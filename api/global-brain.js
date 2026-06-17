@@ -148,6 +148,8 @@ async function actionReverifyFeed() {
       sourceUrl: f['Source URL'] || '',
       category: valueOf(f['Category']) || '',
       knowledgeRecordId: f['Knowledge Record ID'] || '',
+      targetTable: valueOf(f['Target Table']) || 'Knowledge',
+      targetField: f['Target Field'] || '',
       checkedAt: f['Checked At'] || rec.createdTime || null
     };
   }).sort(function (a, b) {
@@ -173,6 +175,25 @@ async function actionReverifyApply(body) {
   var knowledgeId = (f['Knowledge Record ID'] || '').trim();
   if (!/^rec[A-Za-z0-9]{14}$/.test(knowledgeId)) throw new Error('No valid linked Knowledge record');
   var today = new Date().toISOString().split('T')[0];
+
+  // Structured re-verification (Destinations/Transport): apply the source-grounded
+  // suggestion to that table's field and reset its Last Verified. The record id is
+  // in 'Knowledge Record ID'. We do not rebuild that table's Search Index here (a
+  // single field correction stays findable by the row's other terms, and the
+  // corrected value is what the widget surfaces).
+  var targetTable = valueOf(f['Target Table']) || 'Knowledge';
+  if (targetTable === 'Destinations' || targetTable === 'Transport') {
+    var targetField = (f['Target Field'] || '').trim();
+    var sVal = (f['Suggested Answer'] || '').trim();
+    if (!targetField) throw new Error('No target field to apply');
+    if (!sVal) throw new Error('No suggested value to apply');
+    var tId = targetTable === 'Transport' ? gk.TRANSPORT_TABLE : gk.DESTINATIONS_TABLE;
+    var pf = { 'Last Verified': today };
+    pf[targetField] = sVal;
+    await atFetch('/' + tId + '/' + knowledgeId, { method: 'PATCH', body: { fields: pf, typecast: true } });
+    await atFetch('/' + gk.REVERIFICATION_TABLE + '/' + id, { method: 'PATCH', body: { fields: { 'Status': 'Applied' }, typecast: true } });
+    return { ok: true, id: id, verdict: verdict, target: targetTable + '.' + targetField, recordId: knowledgeId };
+  }
 
   if (verdict === 'confirmed') {
     await atFetch('/' + gk.KNOWLEDGE_TABLE + '/' + knowledgeId, {
