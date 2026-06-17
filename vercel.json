@@ -20,7 +20,7 @@
     { "path": "/api/monitor", "schedule": "*/15 * * * *" },
     { "path": "/api/knowledge-freshness", "schedule": "0 8 * * *" },
     { "path": "/api/fcdo?warm=1", "schedule": "0 7 * * *" },
-    { "path": "/api/discover-scan", "schedule": "0 6 * * *" },
+    { "path": "/api/discover-scan", "schedule": "0 */3 * * *" },
     { "path": "/api/reverify", "schedule": "0 5 * * *" },
     { "path": "/api/refresh-fcdo", "schedule": "0 4 * * *" }
   ],
