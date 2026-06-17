@@ -166,9 +166,10 @@ async function runCheck(anthropic, record) {
 // the record's own source) with the same grounded checker, and counts how many
 // confirm. Returns { confirmedCount, domains }. No-op without TAVILY_API_KEY.
 async function corroborate(anthropic, rec) {
-  var out = { confirmedCount: 0, domains: [] };
+  var out = { confirmedCount: 0, domains: [], checked: 0, searchStatus: 'no_key' };
   if (!process.env.TAVILY_API_KEY) return out;
   var sr = await search.search(rec.question, { maxResults: 6, timeoutMs: 6000 });
+  out.searchStatus = sr.ok ? ('results:' + ((sr.results && sr.results.length) || 0)) : ('search_' + (sr.error || 'fail') + (sr.httpStatus ? ('_' + sr.httpStatus) : ''));
   if (!sr.ok || !sr.results || !sr.results.length) return out;
 
   var ownDomain = search.registrableDomain(rec.sourceUrl);
@@ -179,6 +180,7 @@ async function corroborate(anthropic, rec) {
     seen[d] = 1; independent.push({ r: r, domain: d });
   });
   independent = independent.slice(0, 3);
+  out.checked = independent.length;
 
   for (var i = 0; i < independent.length; i++) {
     var item = independent[i];
@@ -286,12 +288,12 @@ module.exports = async function handler(req, res) {
       if (item.sourced) {
         var p = item.p;
         if (ok2) { p.status = 'Applied'; p.action = 'auto-corroborated (' + corro.domains.join(', ') + ')'; p.evidence = note; p.apply = { 'Last Verified': today }; counts.autoApplied++; }
-        else { p.action = 'pending (corroboration ' + corro.confirmedCount + '/2)'; counts.pending++; }
+        else { p.action = 'pending (corroboration ' + corro.confirmedCount + '/2; ' + corro.searchStatus + ', checked ' + corro.checked + ')'; counts.pending++; }
       } else {
         var urec = item.urec; counts.unsourcedChecked++;
         urec.__verdict = ok2 ? 'confirmed' : 'unverifiable';
         if (ok2) { urec.__status = 'Applied'; urec.__action = 'auto-corroborated, no prior source (' + corro.domains.join(', ') + ')'; urec.__evidence = note; urec.__apply = { 'Last Verified': today }; counts.autoApplied++; }
-        else { urec.__status = 'Pending'; urec.__action = 'pending (no source, corroboration ' + corro.confirmedCount + '/2)'; counts.pending++; }
+        else { urec.__status = 'Pending'; urec.__action = 'pending (no source, corroboration ' + corro.confirmedCount + '/2; ' + corro.searchStatus + ', checked ' + corro.checked + ')'; counts.pending++; }
       }
     });
 
