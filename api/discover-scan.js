@@ -192,12 +192,12 @@ module.exports = async function handler(req, res) {
         if (!fdest || seenFsqDest[fdest.toLowerCase()]) continue;
         seenFsqDest[fdest.toLowerCase()] = 1;
         var fsq = await foursquare.fetchPlaces(fdest, { max: 8 });
-        if (!fsq.ok) { report.push({ source: 'foursquare', destination: fdest, error: fsq.error, httpStatus: fsq.httpStatus }); continue; }
-        if (!fsq.draft) { report.push({ source: 'foursquare', destination: fdest, places: fsq.count, staged: 0 }); continue; }
+        if (!fsq.ok) { report.push({ source: 'foursquare', destination: fdest, error: fsq.error, httpStatus: fsq.httpStatus, via: fsq.via, near: fsq.near }); continue; }
+        if (!fsq.draft) { report.push({ source: 'foursquare', destination: fdest, places: fsq.count, staged: 0, via: fsq.via, near: fsq.near }); continue; }
         var processedFsq = discover.processCandidates(JSON.stringify([fsq.draft]), { existingQuestions: existing.concat(staged), destination: fdest, sourceUrl: 'https://foursquare.com' });
         if (!dryRun && processedFsq.length) await stageCandidates(processedFsq, { category: 'Things To Do', destination: fdest, origin: 'Foursquare' });
         processedFsq.forEach(function (c) { staged.push(c.question); });
-        report.push({ source: 'foursquare', destination: fdest, places: fsq.count, staged: processedFsq.length });
+        report.push({ source: 'foursquare', destination: fdest, places: fsq.count, staged: processedFsq.length, via: fsq.via, near: fsq.near });
       }
     }
 
