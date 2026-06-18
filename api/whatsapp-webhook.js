@@ -25,6 +25,7 @@ const fmt = require('../lib/wa-format');
 const convs = require('../lib/wa-conversations');
 const store = require('../lib/wa-store');
 const ably = require('../lib/ably-rest');
+const wamsg = require('../lib/wa-messages');
 
 const SESS_TTL = 60 * 60 * 26;   // AI memory window (~ WhatsApp 24h + slack)
 const HIST_MAX = 20;             // recent turns fed back to Luna
@@ -35,14 +36,13 @@ function digits(s) { return String(s || '').replace(/\D/g, ''); }
 function dashboardChannel(clientId) { return 'luna-dashboard:' + clientId; }
 function chatChannel(clientId, convId) { return 'luna-chat:' + clientId + ':' + convId; }
 
-// Airtable Handler (Title case) -> the dashboard's lowercase handler chip.
+// Airtable Status (singleSelect: Bot|Waiting|Active|Closed) -> dashboard chip.
 function mapHandlerToDash(h) {
   switch (h) {
-    case 'Agent': return 'human';
+    case 'Active': return 'human';
     case 'Waiting': return 'waiting';
-    case 'Resolved': return 'resolved';
     case 'Closed': return 'closed';
-    default: return 'ai'; // Bot / AI
+    default: return 'ai'; // Bot
   }
 }
 
@@ -117,43 +117,51 @@ async function handleEvent(ctx, ev) {
   var displayName = ev.fromName || ('WhatsApp ' + ev.from);
   var text = isText ? ev.text : ('[' + (ev.type || 'unsupported') + ' message received on WhatsApp — open WhatsApp to view it]');
 
-  // ── Upsert the Conversations row + decide the handler ──
+  // ── Upsert the Conversations row + decide the status ──
+  // Status (Airtable singleSelect): Bot=Luna handling · Waiting=awaiting human ·
+  // Active=human handling · Closed=ended. (Read from the live base schema.)
   var existing = await convs.getByConvId(atKey, convId);
-  var reopen = existing && (existing.handler === 'Resolved' || existing.handler === 'Closed');
-  var newConvHandler = aiEnabled() ? 'AI' : 'Waiting';
-  var currentHandler, created = false, announced;
+  var reopen = existing && existing.handler === 'Closed';
+  var newConvStatus = aiEnabled() ? 'Bot' : 'Waiting';
+  var currentStatus, convRecordId, created = false, announced;
 
   if (!existing) {
-    currentHandler = newConvHandler;
-    await convs.createConversation(atKey, {
+    currentStatus = newConvStatus;
+    var createdRec = await convs.createConversation(atKey, {
       convId: convId, clientId: clientId, visitorName: displayName,
-      handler: currentHandler, historyLine: 'user: ' + text
+      handler: currentStatus, historyLine: 'user: ' + text
     });
+    convRecordId = createdRec && createdRec.id;
     created = true;
   } else if (reopen) {
-    currentHandler = newConvHandler;
+    currentStatus = newConvStatus;
+    convRecordId = existing.id;
     await convs.patchConversation(atKey, existing.id, {
-      handler: currentHandler, visitorName: displayName,
+      handler: currentStatus, visitorName: displayName,
       history: (existing.history || '') + '\nuser: ' + text
     });
   } else {
-    currentHandler = existing.handler || 'AI';
+    currentStatus = existing.handler || 'Bot';
+    convRecordId = existing.id;
     await convs.patchConversation(atKey, existing.id, {
       history: (existing.history || '') + '\nuser: ' + text
     });
   }
   announced = !(created || reopen); // already known to the inbox?
 
+  // Per-message log (Messages table) — best-effort, never blocks the flow.
+  await wamsg.logMessage(atKey, { convRecordId: convRecordId, sender: 'visitor', content: text, messageId: ev.messageId });
+
   var visitor = { name: displayName, page: 'WhatsApp', channel: 'whatsapp', phone: ev.from, phoneNumberId: ev.phoneNumberId };
   var ts = new Date().toISOString();
   var vMsg = { from: 'visitor', text: text, timestamp: ts, channel: 'whatsapp', messageId: ev.messageId };
 
   // ── Decide whether Luna answers ──
-  var botShouldAnswer = isText && aiEnabled() && (currentHandler === 'AI' || currentHandler === 'Bot');
+  var botShouldAnswer = isText && aiEnabled() && currentStatus === 'Bot';
 
   if (!botShouldAnswer) {
     // Human-handled, escalated, or non-text: just surface the message.
-    if (!announced) await announce(clientId, convId, mapHandlerToDash(currentHandler), visitor, [vMsg]);
+    if (!announced) await announce(clientId, convId, mapHandlerToDash(currentStatus), visitor, [vMsg]);
     else await ably.publish(chatChannel(clientId, convId), { name: 'message', data: vMsg });
     return;
   }
@@ -175,12 +183,19 @@ async function handleEvent(ctx, ev) {
   var aiMsg = { from: 'ai', text: replyText, timestamp: new Date().toISOString(), channel: 'whatsapp' };
 
   // Send to the customer (the user-visible action); the rest is best-effort.
+  var outId = '';
   try {
     var chunks = fmt.splitForWhatsApp(replyText);
-    for (var i = 0; i < chunks.length; i++) { await provider.sendText(cfg, ev.from, chunks[i]); }
+    for (var i = 0; i < chunks.length; i++) {
+      var sres = await provider.sendText(cfg, ev.from, chunks[i]);
+      if (!outId && sres && sres.messages && sres.messages[0]) outId = sres.messages[0].id || '';
+    }
   } catch (e) {
     console.error('[whatsapp-webhook] send failed:', e.message, e.detail ? JSON.stringify(e.detail).slice(0, 300) : '');
   }
+
+  // Log Luna's reply (Messages table) — best-effort.
+  await wamsg.logMessage(atKey, { convRecordId: convRecordId, sender: 'bot', content: replyText, messageId: outId });
 
   // Realtime: announce the new conversation (visitor + AI embedded) OR push to chat channel.
   if (!announced) {
@@ -193,12 +208,12 @@ async function handleEvent(ctx, ev) {
     if (escalate) await ably.publish(chatChannel(clientId, convId), { name: 'handler_change', data: { handler: 'waiting' } });
   }
 
-  // Persist the AI turn + (if escalating) flip the handler so the bot steps back.
+  // Persist the AI turn + (if escalating) flip status to Waiting so the bot steps back.
   var line = '\nluna: ' + replyText;
   var refreshed = await convs.getByConvId(atKey, convId);
-  await convs.patchConversation(atKey, refreshed.id, {
+  await convs.patchConversation(atKey, (refreshed && refreshed.id) || convRecordId, {
     handler: escalate ? 'Waiting' : undefined,
-    history: (refreshed.history || '') + line
+    history: ((refreshed && refreshed.history) || '') + line
   });
 
   // AI memory (best-effort).

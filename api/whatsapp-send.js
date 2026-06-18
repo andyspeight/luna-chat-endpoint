@@ -23,6 +23,7 @@ const auth = require('../lib/luna-auth');
 const provider = require('../lib/whatsapp-provider');
 const fmt = require('../lib/wa-format');
 const convs = require('../lib/wa-conversations');
+const wamsg = require('../lib/wa-messages');
 
 const AGENT_ORIGINS = ['https://chat.travelify.io', 'https://lunachat.travelify.io', 'https://luna-chat.travelify.io', 'https://luna-chat-endpoint.vercel.app'];
 
@@ -62,6 +63,7 @@ module.exports = async function handler(req, res) {
   try { session = await auth.validateSession(req.headers.cookie || ''); }
   catch (e) { return res.status(502).json({ error: 'Auth check failed' }); }
   if (!session.ok) return res.status(session.status || 401).json({ error: session.error || 'Unauthorised' });
+  var agentName = (session && (session.name || session.displayName || session.email || session.username)) || '';
 
   var rec;
   try { rec = await auth.resolveEntitledClient(atKey, session, clientId); }
@@ -82,9 +84,10 @@ module.exports = async function handler(req, res) {
   try {
     // ── Control actions ──
     if (control === 'takeover' || control === 'resolve') {
+      var nextStatus = control === 'resolve' ? 'Closed' : 'Active';
       var existingC = await convs.getByConvId(atKey, convId);
-      if (existingC) await convs.patchConversation(atKey, existingC.id, { handler: control === 'resolve' ? 'Resolved' : 'Agent' });
-      return res.status(200).json({ ok: true, handler: control === 'resolve' ? 'Resolved' : 'Agent' });
+      if (existingC) await convs.patchConversation(atKey, existingC.id, { handler: nextStatus });
+      return res.status(200).json({ ok: true, handler: nextStatus });
     }
 
     // ── Send a message ──
@@ -102,9 +105,10 @@ module.exports = async function handler(req, res) {
     var existing = await convs.getByConvId(atKey, convId);
     if (existing) {
       await convs.patchConversation(atKey, existing.id, {
-        handler: 'Agent',
+        handler: 'Active',
         history: (existing.history || '') + '\nagent: ' + text
       });
+      await wamsg.logMessage(atKey, { convRecordId: existing.id, sender: 'agent', content: text, messageId: firstId, agentName: agentName });
     }
     return res.status(200).json({ ok: true, sent: true, messageId: firstId });
 
