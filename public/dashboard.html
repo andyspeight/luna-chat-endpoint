@@ -2703,6 +2703,8 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
           lang: c.lang || null,
           rating: c.rating || null,
           unread: !!c.unread,
+          source: c.source || 'web',
+          waContact: c.waContact || null,
           lastAt: (last && last.timestamp) ? last.timestamp : (c.startedAt || new Date().toISOString()),
           messages: (c.messages || []).slice(-80)
         };
@@ -2730,6 +2732,8 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
         handler: s.handler,
         startedAt: s.startedAt,
         messages: s.messages || [],
+        source: s.source || 'web',
+        waContact: s.waContact || null,
         _silent: true
       });
       const conv = conversations[s.id];
@@ -3086,7 +3090,13 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       handler: data.handler || 'ai',
       unread: true,
       startedAt: data.startedAt || new Date().toISOString(),
-      channel: null
+      channel: null,
+      // Inbound medium: 'web' (widget, default) or 'whatsapp'. NOTE: `channel`
+      // above is the Ably channel object — `source` is the messaging channel.
+      source: data.source || 'web',
+      // WhatsApp routing so agent replies can be delivered via the Cloud API.
+      // (`data.contact` from the live event; `data.waContact` when rehydrated.)
+      waContact: data.contact || data.waContact || null
     };
 
     // Subscribe to this conversation's Ably channel
@@ -3231,11 +3241,14 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       const time = last ? formatTime(last.timestamp || c.startedAt) : '';
       const handlerLabel = c.handler === 'ai' ? 'Luna AI' : c.handler === 'human' ? 'Agent' : c.handler === 'closed' ? 'Message' : 'Waiting';
       const handlerClass = c.handler === 'ai' ? 'ai' : c.handler === 'human' ? 'human' : c.handler === 'closed' ? 'closed' : 'waiting';
+      const waTag = c.source === 'whatsapp'
+        ? ' <span title="WhatsApp" style="display:inline-block;font-size:9px;font-weight:700;letter-spacing:.04em;background:#25D366;color:#062e16;padding:1px 5px;border-radius:6px;vertical-align:middle;">WhatsApp</span>'
+        : '';
       return `<div class="conv-item ${c.id === activeConvId ? 'active' : ''} ${c.unread ? 'unread' : ''}"
                    data-id="${c.id}" onclick="window._selectConv('${c.id}')">
         <div class="conv-badge"></div>
         <div class="conv-item-top">
-          <span class="conv-name">${esc(c.visitor.name)}</span>
+          <span class="conv-name">${esc(c.visitor.name)}${waTag}</span>
           <span class="conv-time">${time}</span>
         </div>
         <div class="conv-preview">${esc(preview)}</div>
@@ -3508,6 +3521,31 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
 
   sendBtn.addEventListener('click', sendMessage);
 
+  // ─── WhatsApp delivery (agent → customer via Meta Cloud API) ───
+  // A WhatsApp customer has no widget, so anything an agent does in the
+  // dashboard for a WhatsApp conversation is mirrored to this server endpoint,
+  // which talks to the Meta Cloud API. Authenticated by the same session cookie
+  // the dashboard already uses (credentials:'include').
+  function waPost(payload) {
+    try {
+      return fetch('/api/whatsapp-outbound', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload)
+      }).then(function(r){ if (!r.ok) console.warn('WhatsApp outbound failed:', r.status); return r; })
+        .catch(function(e){ console.warn('WhatsApp outbound error:', e.message); });
+    } catch (e) { console.warn('WhatsApp outbound threw:', e.message); }
+  }
+  function waSend(conv, text) {
+    var to = (conv.waContact && conv.waContact.waId) || null;
+    return waPost({ clientId: CONFIG.CLIENT_ID, convId: conv.id, text: text, to: to });
+  }
+  function waControl(conv, control) {
+    var to = (conv.waContact && conv.waContact.waId) || null;
+    return waPost({ clientId: CONFIG.CLIENT_ID, convId: conv.id, control: control, to: to });
+  }
+
   function sendMessage() {
     const text = msgInput.value.trim();
     if (!text || !activeConvId) return;
@@ -3531,6 +3569,12 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       conv.channel.publish('message', msg);
     }
 
+    // WhatsApp conversations have no widget to render the reply — deliver it to
+    // the customer through the Cloud API as well.
+    if (conv.source === 'whatsapp') {
+      waSend(conv, text);
+    }
+
     // Also add locally
     conv.messages.push(msg);
     appendMessage(msg);
@@ -3548,6 +3592,8 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     const conv = conversations[activeConvId];
     conv.handler = 'human';
     if (conv.channel) conv.channel.publish('handler_change', { handler:'human', agentId:CONFIG.AGENT_ID });
+    // Tell the WhatsApp webhook to stop auto-replying with Luna for this chat.
+    if (conv.source === 'whatsapp') waControl(conv, 'takeover');
     renderConvList();
     updateChatHeader(conv);
     showVisitorInfo(conv);
@@ -3558,6 +3604,8 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     const conv = conversations[activeConvId];
     if (conv.channel) conv.channel.publish('conversation_resolved', { convId:activeConvId });
     if (dashboardChannel) dashboardChannel.publish('conversation_resolved', { convId:activeConvId });
+    // End the WhatsApp session so a later message starts a fresh conversation.
+    if (conv.source === 'whatsapp') waControl(conv, 'resolve');
     handleConversationResolved({ convId:activeConvId });
   });
 
