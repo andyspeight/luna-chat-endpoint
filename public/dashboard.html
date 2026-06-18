@@ -3093,7 +3093,8 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       channel: null,
       // Inbound medium: 'web' (widget, default) or 'whatsapp'. NOTE: `channel`
       // above is the Ably channel object — `source` is the messaging channel.
-      source: data.source || 'web',
+      // The WhatsApp webhook sends both `source` and `channel:'whatsapp'`.
+      source: data.source || (data.channel === 'whatsapp' ? 'whatsapp' : 'web'),
       // WhatsApp routing so agent replies can be delivered via the Cloud API.
       // (`data.contact` from the live event; `data.waContact` when rehydrated.)
       waContact: data.contact || data.waContact || null
@@ -3528,7 +3529,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
   // the dashboard already uses (credentials:'include').
   function waPost(payload) {
     try {
-      return fetch('/api/whatsapp-outbound', {
+      return fetch('/api/whatsapp-send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

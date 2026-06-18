@@ -1,83 +1,52 @@
-// Luna WhatsApp Webhook — Meta WhatsApp Cloud API → Luna inbox.
+// Luna WhatsApp Webhook — inbound pipe (360dialog, Meta-native).
 //
-// This is the server-side equivalent of the web widget for WhatsApp. A WhatsApp
-// customer has no widget and no Ably SDK, so THIS endpoint does everything the
-// widget does, server-side:
-//   • receives the customer's message from Meta,
-//   • resolves which Luna client owns the business number,
-//   • opens / continues a conversation (conv_… id, same format as the widget),
-//   • lets Luna answer (by calling our own /api/luna-chat) unless a human has
-//     taken over or auto-reply is disabled,
-//   • sends Luna's reply back to the customer via the Cloud API,
-//   • publishes the same Ably events the widget publishes
-//     (new_conversation on luna-dashboard:{clientId}; message / handler_change
-//      on luna-chat:{clientId}:{convId}) so the conversation shows up LIVE in
-//     the agent dashboard inbox, tagged as a WhatsApp channel,
-//   • persists the transcript to Airtable via /api/conversation (same as web).
+// A WhatsApp customer has no widget, so this endpoint does the widget's job
+// server-side: receive the message, attribute it to the right Luna client, open
+// or continue the conversation in Airtable, surface it LIVE in the agent inbox
+// over the same Ably channels the web widget uses, let Luna answer (unless a
+// human is handling it), and send Luna's reply back via 360dialog.
 //
-// GET  = Meta webhook verification handshake (hub.challenge).
-// POST = inbound messages + status callbacks.
+// Provider isolation: every 360dialog-specific detail lives in
+// lib/whatsapp-provider.js. This file only deals in the normalised shapes that
+// module returns, so a future cut-over to direct Meta touches the provider, not
+// this orchestration.
 //
-// Routing/secrets live in lib/whatsapp.js (env-driven, multi-tenant ready).
-// Hot session/routing state lives in Upstash via lib/wa-store.js. See
-// WHATSAPP-SETUP.md for the Meta provisioning + env vars.
+//   GET  = webhook verification handshake (hub.challenge).
+//   POST = inbound messages (?token= / x-webhook-token shared secret; fail-closed).
 //
-// Env: AIRTABLE_KEY, ABLY_ROOT_KEY, UPSTASH_REDIS_REST_*, plus the WhatsApp /
-// META_* vars documented in lib/whatsapp.js. ANTHROPIC_API_KEY is used
-// indirectly via /api/luna-chat.
+// Env: AIRTABLE_KEY, ABLY_ROOT_KEY, WHATSAPP_VERIFY_TOKEN, WHATSAPP_NUMBER_MAP
+// (+ send keys), UPSTASH_REDIS_REST_* (optional: dedupe + AI memory),
+// WHATSAPP_AI_AUTOREPLY (default on). ANTHROPIC_API_KEY via /api/luna-chat.
 
 const ratelimit = require('../lib/ratelimit');
 const auth = require('../lib/luna-auth');
-const wa = require('../lib/whatsapp');
+const provider = require('../lib/whatsapp-provider');
+const fmt = require('../lib/wa-format');
+const convs = require('../lib/wa-conversations');
 const store = require('../lib/wa-store');
 const ably = require('../lib/ably-rest');
 
-const SESS_TTL = 60 * 60 * 26;       // 26h — covers the WhatsApp 24h service window + slack
-const STATE_TTL = 60 * 60 * 24 * 30; // 30d — conversation routing/state
-const HIST_MAX = 20;                 // recent turns fed back to Luna
+const SESS_TTL = 60 * 60 * 26;   // AI memory window (~ WhatsApp 24h + slack)
+const HIST_MAX = 20;             // recent turns fed back to Luna
 
-function baseUrl(req) {
-  return process.env.LUNA_BASE_URL || ('https://' + (req.headers.host || 'luna-chat-endpoint.vercel.app'));
-}
-
-function nowIso() { return new Date().toISOString(); }
-
+function aiEnabled() { return String(process.env.WHATSAPP_AI_AUTOREPLY || 'true').toLowerCase() !== 'false'; }
+function baseUrl(req) { return process.env.LUNA_BASE_URL || ('https://' + (req.headers.host || 'luna-chat-endpoint.vercel.app')); }
+function digits(s) { return String(s || '').replace(/\D/g, ''); }
 function dashboardChannel(clientId) { return 'luna-dashboard:' + clientId; }
 function chatChannel(clientId, convId) { return 'luna-chat:' + clientId + ':' + convId; }
 
-// Read the raw request body so we can verify Meta's HMAC signature against the
-// exact bytes. bodyParser is disabled (see config export) so req.body is empty
-// and we consume the stream ourselves. { exact:false } means the original bytes
-// were unavailable (bodyParser ran anyway) and signature enforcement is skipped.
-function readRawBody(req) {
-  if (typeof req.body === 'string') return Promise.resolve({ raw: req.body, exact: true });
-  if (Buffer.isBuffer(req.body)) return Promise.resolve({ raw: req.body, exact: true });
-  if (req.body && typeof req.body === 'object' && Object.keys(req.body).length) {
-    return Promise.resolve({ raw: JSON.stringify(req.body), exact: false });
+// Airtable Handler (Title case) -> the dashboard's lowercase handler chip.
+function mapHandlerToDash(h) {
+  switch (h) {
+    case 'Agent': return 'human';
+    case 'Waiting': return 'waiting';
+    case 'Resolved': return 'resolved';
+    case 'Closed': return 'closed';
+    default: return 'ai'; // Bot / AI
   }
-  return new Promise(function (resolve) {
-    var chunks = [];
-    req.on('data', function (c) { chunks.push(c); });
-    req.on('end', function () { resolve({ raw: Buffer.concat(chunks), exact: true }); });
-    req.on('error', function () { resolve({ raw: '', exact: false }); });
-  });
 }
 
-// Pull readable text out of the supported inbound message shapes.
-function extractText(msg) {
-  if (!msg || typeof msg !== 'object') return null;
-  if (msg.type === 'text' && msg.text) return msg.text.body || '';
-  if (msg.type === 'button' && msg.button) return msg.button.text || '';
-  if (msg.type === 'interactive' && msg.interactive) {
-    var it = msg.interactive;
-    if (it.button_reply) return it.button_reply.title || it.button_reply.id || '';
-    if (it.list_reply) return it.list_reply.title || it.list_reply.id || '';
-  }
-  return null; // media / location / reactions etc. — unsupported for now
-}
-
-// Call our own Luna brain to generate a reply (full reuse of the web logic:
-// knowledge, FCDO, escalation detection, etc.). Returns the JSON or null.
+// Reuse the full web brain for the reply (knowledge, FCDO, escalation, etc.).
 async function lunaReply(base, payload) {
   try {
     var res = await fetch(base + '/api/luna-chat', {
@@ -92,10 +61,7 @@ async function lunaReply(base, payload) {
       }),
       signal: AbortSignal.timeout(25000)
     });
-    if (!res.ok) {
-      console.warn('[whatsapp-webhook] luna-chat HTTP', res.status);
-      return null;
-    }
+    if (!res.ok) { console.warn('[whatsapp-webhook] luna-chat HTTP', res.status); return null; }
     return await res.json().catch(function () { return null; });
   } catch (e) {
     console.warn('[whatsapp-webhook] luna-chat error:', e.message);
@@ -103,295 +69,177 @@ async function lunaReply(base, payload) {
   }
 }
 
-// Append to the running transcript (Upstash) and upsert it to Airtable through
-// the same server proxy the widget uses, so WhatsApp chats get the same durable
-// record + quality scoring as web chats.
-async function recordTurn(base, clientName, convId, lines, handler, visitorName) {
-  var key = 'wa:script:' + convId;
-  var prev = (await store.getStr(key)) || '[Channel: WhatsApp]';
-  var next = prev + '\n' + lines.join('\n');
-  if (next.length > 45000) next = next.slice(next.length - 45000);
-  await store.setStr(key, next, STATE_TTL);
-  try {
-    var body = { convId: convId, clientName: clientName, handler: handler, history: next };
-    if (visitorName) body.visitorName = visitorName;
-    await fetch(base + '/api/conversation', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(8000)
-    });
-  } catch (e) { /* durable record is best-effort here; never blocks the reply */ }
+// Publish a brand-new (or re-opened) conversation to the dashboard channel, with
+// its first message(s) embedded — this is when the dashboard subscribes to the
+// per-conversation channel, so later messages go there.
+async function announce(clientId, convId, dashHandler, visitor, messages) {
+  await ably.publish(dashboardChannel(clientId), {
+    name: 'new_conversation',
+    data: {
+      convId: convId,
+      visitor: visitor,
+      handler: dashHandler,
+      startedAt: new Date().toISOString(),
+      channel: 'whatsapp',
+      source: 'whatsapp',
+      contact: { waId: visitor.phone, phoneNumberId: visitor.phoneNumberId },
+      messages: messages || []
+    }
+  });
 }
 
-// Handle ONE inbound customer message end-to-end.
-async function processInbound(ctx) {
-  var base = ctx.base, atKey = ctx.atKey, cfg = ctx.cfg, clientId = ctx.clientId;
-  var msg = ctx.msg, profileName = ctx.profileName;
+async function handleEvent(ctx, ev) {
+  var base = ctx.base, atKey = ctx.atKey;
 
-  // Dedupe Meta's at-least-once retries (set the flag FIRST so a retry arriving
-  // mid-processing can't trigger a second send).
-  if (msg.id) {
-    var first = await store.setIfAbsent('wa:dedup:' + msg.id, '1', 3600);
-    if (!first && store.isConfigured()) return; // already handled
+  // Only text-bearing messages flow into the inbox; media/etc. get a placeholder.
+  var isText = typeof ev.text === 'string' && ev.text.length > 0;
+
+  // Dedupe 360dialog/Meta at-least-once retries (only when Redis is available).
+  if (ev.messageId && store.isConfigured()) {
+    var first = await store.setIfAbsent('wa:dedup:' + ev.messageId, '1', 3600);
+    if (!first) return;
   }
 
-  var waId = String(msg.from || '');
-  if (!waId) return;
-  var text = extractText(msg);
+  var cfg = provider.getNumberConfig(ev.phoneNumberId);
+  if (!cfg) { console.warn('[whatsapp-webhook] no client mapped for phone_number_id', ev.phoneNumberId); return; }
 
-  // Best-effort read receipt.
-  wa.markRead(cfg, msg.id).catch(function () {});
+  // Validate the mapped client really exists (mirrors the brief's RECORD_ID check).
+  var rec;
+  try {
+    var recs = await auth.fetchClients(atKey, "RECORD_ID()='" + auth.escFormula(cfg.clientId) + "'", 1);
+    rec = recs && recs[0];
+  } catch (e) { console.error('[whatsapp-webhook] client lookup error:', e.message); return; }
+  if (!rec) { console.error('[whatsapp-webhook] mapped clientId not found:', cfg.clientId); return; }
+  var clientId = rec.id;
+  var clientName = (rec.fields && rec.fields.ClientName) || '';
 
-  // Resolve / continue the conversation.
-  var sessKey = 'wa:sess:' + cfg.phoneNumberId + ':' + waId;
-  var convId = await store.getStr(sessKey);
-  var state = convId ? await store.getJson('wa:conv:' + convId) : null;
-  if (convId && !state) { convId = null; } // lost state -> start fresh so the dashboard re-announces
-  if (!convId) {
-    convId = wa.newConvId();
-    state = {
-      waId: waId,
-      phoneNumberId: cfg.phoneNumberId,
-      clientId: clientId,
-      clientName: cfg.clientName,
-      name: profileName || '',
-      handler: 'bot',
-      announced: false,
-      startedAt: nowIso()
-    };
-  }
-  if (profileName && !state.name) state.name = profileName;
-  await store.setStr(sessKey, convId, SESS_TTL);
+  var convId = 'wa_' + digits(ev.phoneNumberId) + '_' + digits(ev.from);
+  var displayName = ev.fromName || ('WhatsApp ' + ev.from);
+  var text = isText ? ev.text : ('[' + (ev.type || 'unsupported') + ' message received on WhatsApp — open WhatsApp to view it]');
 
-  var displayName = state.name || ('WhatsApp ' + waId);
+  // ── Upsert the Conversations row + decide the handler ──
+  var existing = await convs.getByConvId(atKey, convId);
+  var reopen = existing && (existing.handler === 'Resolved' || existing.handler === 'Closed');
+  var newConvHandler = aiEnabled() ? 'AI' : 'Waiting';
+  var currentHandler, created = false, announced;
 
-  // Unsupported message kind: keep the human in the loop with a clear note.
-  if (text === null || text === '') {
-    var note = '[' + (msg.type || 'unsupported') + ' message received on WhatsApp — open WhatsApp to view it]';
-    var vNote = { from: 'visitor', text: note, lang: 'English', timestamp: nowIso(), channel: 'whatsapp' };
-    await announceOrMessage(state, clientId, convId, [vNote], 'waiting', {
-      name: displayName, waId: waId, phoneNumberId: cfg.phoneNumberId, startedAt: state.startedAt
+  if (!existing) {
+    currentHandler = newConvHandler;
+    await convs.createConversation(atKey, {
+      convId: convId, clientId: clientId, visitorName: displayName,
+      handler: currentHandler, historyLine: 'user: ' + text
     });
-    state.handler = (state.handler === 'human') ? 'human' : 'waiting';
-    await store.setJson('wa:conv:' + convId, state, STATE_TTL);
-    await recordTurn(base, cfg.clientName, convId, ['Visitor: ' + note], state.handler === 'human' ? 'Agent' : 'Waiting', displayName);
-    return;
+    created = true;
+  } else if (reopen) {
+    currentHandler = newConvHandler;
+    await convs.patchConversation(atKey, existing.id, {
+      handler: currentHandler, visitorName: displayName,
+      history: (existing.history || '') + '\nuser: ' + text
+    });
+  } else {
+    currentHandler = existing.handler || 'AI';
+    await convs.patchConversation(atKey, existing.id, {
+      history: (existing.history || '') + '\nuser: ' + text
+    });
   }
+  announced = !(created || reopen); // already known to the inbox?
 
-  var botShouldAnswer = wa.autoReplyEnabled() && state.handler !== 'human' && state.handler !== 'waiting';
-  var ts = nowIso();
-  var vMsg = { from: 'visitor', text: text, lang: 'English', timestamp: ts, channel: 'whatsapp' };
+  var visitor = { name: displayName, page: 'WhatsApp', channel: 'whatsapp', phone: ev.from, phoneNumberId: ev.phoneNumberId };
+  var ts = new Date().toISOString();
+  var vMsg = { from: 'visitor', text: text, timestamp: ts, channel: 'whatsapp', messageId: ev.messageId };
+
+  // ── Decide whether Luna answers ──
+  var botShouldAnswer = isText && aiEnabled() && (currentHandler === 'AI' || currentHandler === 'Bot');
 
   if (!botShouldAnswer) {
-    // A human owns this conversation (or auto-reply is off): just surface the
-    // customer's message in the inbox; the agent replies via the dashboard.
-    var humanHandler = (state.handler === 'human') ? 'human' : 'waiting';
-    await announceOrMessage(state, clientId, convId, [vMsg], humanHandler, {
-      name: displayName, waId: waId, phoneNumberId: cfg.phoneNumberId, startedAt: state.startedAt
-    });
-    await store.setJson('wa:conv:' + convId, state, STATE_TTL);
-    await recordTurn(base, cfg.clientName, convId, ['Visitor: ' + text], humanHandler === 'human' ? 'Agent' : 'Waiting', displayName);
+    // Human-handled, escalated, or non-text: just surface the message.
+    if (!announced) await announce(clientId, convId, mapHandlerToDash(currentHandler), visitor, [vMsg]);
+    else await ably.publish(chatChannel(clientId, convId), { name: 'message', data: vMsg });
     return;
   }
 
   // ── Luna answers ──
   var history = (await store.getJson('wa:hist:' + convId)) || [];
-  var reply = await lunaReply(base, {
-    message: text, convId: convId, clientName: cfg.clientName, visitorName: displayName, history: history
-  });
+  var reply = await lunaReply(base, { message: text, convId: convId, clientName: clientName, visitorName: displayName, history: history });
 
-  var replyText, escalate, lang;
+  var replyText, escalate;
   if (reply && typeof reply.reply === 'string' && reply.reply.trim()) {
-    replyText = wa.toPlainText(reply.reply);
+    replyText = fmt.toPlainText(reply.reply);
     escalate = !!reply.escalate;
-    lang = reply.detectedLanguage || 'English';
   } else {
     replyText = 'Thanks for your message — I\'m just getting a colleague to help. We\'ll be right with you.';
     escalate = true;
-    lang = 'English';
   }
-  if (!replyText.trim()) {
-    replyText = 'Thanks for your message — one of our team will reply shortly.';
-    escalate = true;
-  }
-  vMsg.lang = lang;
-  var aiMsg = { from: 'ai', text: replyText, lang: lang, timestamp: nowIso() };
+  if (!replyText.trim()) { replyText = 'Thanks for your message — one of our team will reply shortly.'; escalate = true; }
 
-  // Send to the customer first (the user-visible action); realtime + persistence
-  // follow and are best-effort.
+  var aiMsg = { from: 'ai', text: replyText, timestamp: new Date().toISOString(), channel: 'whatsapp' };
+
+  // Send to the customer (the user-visible action); the rest is best-effort.
   try {
-    await wa.sendChunks(cfg, waId, replyText);
+    var chunks = fmt.splitForWhatsApp(replyText);
+    for (var i = 0; i < chunks.length; i++) { await provider.sendText(cfg, ev.from, chunks[i]); }
   } catch (e) {
     console.error('[whatsapp-webhook] send failed:', e.message, e.detail ? JSON.stringify(e.detail).slice(0, 300) : '');
   }
 
-  var newHandler = escalate ? 'waiting' : 'ai';
-  await announceOrMessage(state, clientId, convId, [vMsg, aiMsg], newHandler, {
-    name: displayName, waId: waId, phoneNumberId: cfg.phoneNumberId, startedAt: state.startedAt
-  });
-  // If the dashboard already knew this conversation, flip its handler chip too.
-  if (escalate && state.announced) {
-    await ably.publish(chatChannel(clientId, convId), { name: 'handler_change', data: { handler: 'waiting' } });
+  // Realtime: announce the new conversation (visitor + AI embedded) OR push to chat channel.
+  if (!announced) {
+    await announce(clientId, convId, escalate ? 'waiting' : 'ai', visitor, [vMsg, aiMsg]);
+  } else {
+    await ably.publish(chatChannel(clientId, convId), [
+      { name: 'message', data: vMsg },
+      { name: 'message', data: aiMsg }
+    ]);
+    if (escalate) await ably.publish(chatChannel(clientId, convId), { name: 'handler_change', data: { handler: 'waiting' } });
   }
 
-  state.handler = newHandler;
-  await store.setJson('wa:conv:' + convId, state, STATE_TTL);
+  // Persist the AI turn + (if escalating) flip the handler so the bot steps back.
+  var line = '\nluna: ' + replyText;
+  var refreshed = await convs.getByConvId(atKey, convId);
+  await convs.patchConversation(atKey, refreshed.id, {
+    handler: escalate ? 'Waiting' : undefined,
+    history: (refreshed.history || '') + line
+  });
 
+  // AI memory (best-effort).
   history.push({ role: 'user', content: text });
   history.push({ role: 'assistant', content: replyText });
   if (history.length > HIST_MAX) history = history.slice(history.length - HIST_MAX);
   await store.setJson('wa:hist:' + convId, history, SESS_TTL);
-
-  await recordTurn(base, cfg.clientName, convId, ['Visitor: ' + text, 'Luna: ' + replyText], escalate ? 'Waiting' : 'AI', displayName);
 }
 
-// Publish to the dashboard the same way the widget does: a brand-new
-// conversation is announced (with its first messages embedded) on the dashboard
-// channel — which is when the dashboard subscribes to the per-conversation
-// channel — and every later message goes on the per-conversation channel.
-async function announceOrMessage(state, clientId, convId, messages, handler, visitorMeta) {
-  if (!state.announced) {
-    await ably.publish(dashboardChannel(clientId), {
-      name: 'new_conversation',
-      data: {
-        convId: convId,
-        visitor: {
-          name: visitorMeta.name,
-          page: 'WhatsApp',
-          phone: visitorMeta.waId,
-          channel: 'whatsapp'
-        },
-        handler: handler,
-        startedAt: visitorMeta.startedAt,
-        source: 'whatsapp',
-        contact: { waId: visitorMeta.waId, phoneNumberId: visitorMeta.phoneNumberId },
-        messages: messages
-      }
-    });
-    state.announced = true;
-  } else {
-    var items = messages.map(function (m) { return { name: 'message', data: m }; });
-    await ably.publish(chatChannel(clientId, convId), items);
-  }
-}
-
-async function handler(req, res) {
+module.exports = async function handler(req, res) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Cache-Control', 'no-store');
 
-  // ── GET: Meta verification handshake ──
+  // ── GET: verification handshake ──
   if (req.method === 'GET') {
-    var q = req.query || {};
-    var mode = q['hub.mode'];
-    var token = q['hub.verify_token'];
-    var challenge = q['hub.challenge'];
-    if (mode === 'subscribe' && wa.verifyTokenMatches(token)) {
-      res.setHeader('Content-Type', 'text/plain');
-      return res.status(200).send(typeof challenge === 'undefined' ? '' : String(challenge));
-    }
+    var challenge = provider.verifyChallenge(req);
+    if (challenge !== null) { res.setHeader('Content-Type', 'text/plain'); return res.status(200).send(challenge); }
     return res.status(403).json({ error: 'Verification failed' });
   }
 
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  // Generous IP limit — Meta fans out across many source IPs, and we already
-  // dedupe by message id. This only stops pathological floods.
-  var rl = await ratelimit.checkIpAndKey(req, { ipKey: 'whatsapp-webhook', ipMax: 1200, ipWindowSecs: 60 });
+  // Shared-secret auth — FAIL CLOSED.
+  if (!provider.verifyInbound(req)) return res.status(401).json({ error: 'Unauthorized' });
+
+  // Rate limit the public endpoint (generous; dedupe handles retries).
+  var rl = await ratelimit.checkIpAndKey(req, { ipKey: 'wa-webhook', ipMax: 300, ipWindowSecs: 60 });
   if (!rl.allowed) return res.status(429).json({ error: 'Too many requests' });
 
   var atKey = process.env.AIRTABLE_KEY;
-  if (!atKey) {
-    console.error('[whatsapp-webhook] Missing AIRTABLE_KEY');
-    // Still 200 so Meta doesn't retry-storm a config error we must fix our side.
-    return res.status(200).json({ ok: false });
-  }
+  if (!atKey) { console.error('[whatsapp-webhook] Missing AIRTABLE_KEY'); return res.status(200).json({ ok: false }); }
 
-  // Read raw body + verify signature.
-  var bodyInfo = await readRawBody(req);
-  var sig = req.headers['x-hub-signature-256'] || req.headers['x-hub-signature-256'.toLowerCase()];
-  if (wa.appSecret()) {
-    if (bodyInfo.exact) {
-      var v = wa.verifySignature(bodyInfo.raw, sig);
-      if (!v.ok) {
-        console.warn('[whatsapp-webhook] signature verification failed');
-        return res.status(401).json({ error: 'Invalid signature' });
-      }
-    } else {
-      console.warn('[whatsapp-webhook] raw body unavailable; skipping signature check');
-    }
-  }
+  var events;
+  try { events = provider.parseInbound(req.body || {}); }
+  catch (e) { console.warn('[whatsapp-webhook] parse error:', e.message); return res.status(200).json({ ok: false }); }
 
-  var body;
-  try {
-    var rawStr = Buffer.isBuffer(bodyInfo.raw) ? bodyInfo.raw.toString('utf8') : String(bodyInfo.raw || '');
-    body = rawStr ? JSON.parse(rawStr) : (req.body || {});
-  } catch (e) {
-    console.warn('[whatsapp-webhook] bad JSON body');
-    return res.status(200).json({ ok: false });
-  }
-
-  if (!body || body.object !== 'whatsapp_business_account') {
-    return res.status(200).json({ ignored: true });
-  }
-
-  var base = baseUrl(req);
-  var entries = Array.isArray(body.entry) ? body.entry : [];
-
-  for (var ei = 0; ei < entries.length; ei++) {
-    var changes = (entries[ei] && entries[ei].changes) || [];
-    for (var ci = 0; ci < changes.length; ci++) {
-      var change = changes[ci] || {};
-      if (change.field !== 'messages') continue;
-      var value = change.value || {};
-      var metadata = value.metadata || {};
-
-      var cfg = wa.configByPhoneNumberId(metadata.phone_number_id);
-      if (!cfg) {
-        console.warn('[whatsapp-webhook] no client configured for phone_number_id', metadata.phone_number_id);
-        continue;
-      }
-
-      var messages = value.messages || [];
-      if (!messages.length) continue; // statuses (delivered/read) etc. — nothing to surface
-
-      var rec;
-      try {
-        rec = await auth.resolveClientByName(atKey, cfg.clientName);
-      } catch (e) {
-        console.error('[whatsapp-webhook] client resolve error:', e.message);
-        continue;
-      }
-      if (!rec) {
-        console.error('[whatsapp-webhook] unknown Luna client for WhatsApp number:', cfg.clientName);
-        continue;
-      }
-      var clientId = rec.id;
-
-      var contacts = value.contacts || [];
-      var nameByWa = {};
-      contacts.forEach(function (c) { if (c && c.wa_id) nameByWa[c.wa_id] = c.profile && c.profile.name; });
-
-      for (var mi = 0; mi < messages.length; mi++) {
-        try {
-          await processInbound({
-            base: base,
-            atKey: atKey,
-            cfg: cfg,
-            clientId: clientId,
-            msg: messages[mi],
-            profileName: nameByWa[messages[mi].from]
-          });
-        } catch (e) {
-          console.error('[whatsapp-webhook] processInbound error:', e.message);
-        }
-      }
-    }
+  var ctx = { base: baseUrl(req), atKey: atKey };
+  for (var i = 0; i < events.length; i++) {
+    try { await handleEvent(ctx, events[i]); }
+    catch (e) { console.error('[whatsapp-webhook] event error:', e.message); }
   }
 
   return res.status(200).json({ received: true });
-}
-
-module.exports = handler;
-// Disable Vercel's body parser so we can verify Meta's HMAC over the raw bytes.
-module.exports.config = { api: { bodyParser: false } };
+};
