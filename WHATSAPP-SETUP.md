@@ -1,4 +1,4 @@
-# Luna Chat — WhatsApp channel (via 360dialog)
+# Luna Chat — WhatsApp channel
 
 Brings WhatsApp into the **same agent inbox** Luna already uses for the web
 widget. A client's customer messages the client's own WhatsApp number → the
@@ -9,19 +9,21 @@ takes over → the agent's replies go back out over WhatsApp.
 It is **multi-tenant**: each Luna client connects **their own** WhatsApp number,
 and conversations are attributed to that client.
 
-## Provider: 360dialog (Meta-native)
+## Providers (pluggable)
 
-We go through **360dialog** (a Meta Solution Partner) rather than wiring up to
-Meta directly. 360dialog is a thin, **Meta-native** proxy: the webhook payloads
-and the send API are Meta's own Cloud API shapes, so a later move to direct Meta
-is mostly a base-URL + auth swap, not a rewrite.
+The provider is swappable via one env var — `WHATSAPP_PROVIDER` — and **all**
+provider-specific logic lives under `lib/providers/`. The rest of the app only
+sees normalised data, so changing provider (or later going direct to Meta) is a
+config change plus one file, never a rewrite.
 
-**All** 360dialog-specific logic lives in **`lib/whatsapp-provider.js`** — the
-rest of the codebase only sees normalised data. To migrate to direct Meta later,
-you change that one file (host `waba-v2.360dialog.io` → `graph.facebook.com/v{ver}`,
-`D360-API-KEY` → `Authorization: Bearer`, add `/{phone_number_id}` to the path,
-and switch inbound auth from the `?token=` shared secret to Meta's
-`X-Hub-Signature-256` — the `verifyMetaSignature` stub is already there for it).
+| `WHATSAPP_PROVIDER` | When | Cost shape | Migration to direct Meta |
+| --- | --- | --- | --- |
+| **`gupshup`** *(default)* | **Demo / initial setup** | **No fixed fee, no per-number licence** — pay-as-you-go wallet (~$0.001/msg + Meta) | Moderate (proprietary API; Gupshup offers a Meta-format "v3 passthrough") |
+| `360dialog` | Scale / clean exit | £500–1,000/mo partner fee + ~€25/number | Easiest — Meta-native proxy (host + auth swap) |
+
+We start on **Gupshup** because it's the cheapest to stand up and demo (no fixed
+monthly fee). We can flip to 360dialog later by changing `WHATSAPP_PROVIDER` and
+the number map — the integration code is unchanged.
 
 ## How it fits the existing architecture
 
@@ -31,18 +33,18 @@ A WhatsApp customer has no widget, so the server does the widget's job:
 Customer (WhatsApp)
    │ message
    ▼
-360dialog ──webhook(?token=…)──▶ /api/whatsapp-webhook
-                                     ├─ verify shared secret (fail-closed)
-                                     ├─ map phone_number_id → clientId   (WHATSAPP_NUMBER_MAP)
-                                     ├─ upsert Conversations row (by field id)  → Airtable
-                                     ├─ publish new_conversation / message      → Ably (live inbox)
-                                     ├─ ask Luna for a reply                     → /api/luna-chat
-                                     └─ send reply to customer                   → 360dialog
-                                     ▼
-                          Agent dashboard inbox (live, via Ably)
-                                     │ agent reply / take over / resolve
-                                     ▼
-                          /api/whatsapp-send ──▶ 360dialog ──▶ Customer
+Provider ──webhook(?token=…)──▶ /api/whatsapp-webhook
+                                   ├─ verify shared secret (fail-closed)
+                                   ├─ map number/app → clientId   (WHATSAPP_NUMBER_MAP)
+                                   ├─ upsert Conversations row (by field id)  → Airtable
+                                   ├─ publish new_conversation / message      → Ably (live inbox)
+                                   ├─ ask Luna for a reply                     → /api/luna-chat
+                                   └─ send reply to customer                   → Provider
+                                   ▼
+                        Agent dashboard inbox (live, via Ably)
+                                   │ agent reply / take over / resolve
+                                   ▼
+                        /api/whatsapp-send ──▶ Provider ──▶ Customer
 ```
 
 Ably channels/events are identical to the web widget, so the dashboard shows a
@@ -54,27 +56,29 @@ WhatsApp chat with no special handling: `new_conversation` on
 
 | File | Purpose |
 | --- | --- |
-| `lib/whatsapp-provider.js` | **The provider seam** — 360dialog config/routing, inbound verify + parse, send, and the `verifyMetaSignature` stub for the future direct-Meta cutover. |
+| `lib/whatsapp-provider.js` | **The provider seam (dispatcher)** — picks the impl by `WHATSAPP_PROVIDER`; exposes one interface to the rest of the app. |
+| `lib/providers/gupshup.js` | Gupshup impl (default). Proprietary API normalised onto the common contract. |
+| `lib/providers/360dialog.js` | 360dialog impl (Meta-native). |
+| `lib/providers/_shared.js` | Shared inbound auth (`?token=` / `x-webhook-token`, fail-closed) + helpers. |
 | `lib/wa-format.js` | Provider-agnostic: Luna rich reply → WhatsApp plain text, message chunking. |
-| `lib/wa-conversations.js` | Conversations-table upsert/read by **field id** (`returnFieldsByFieldId=true`). |
+| `lib/wa-conversations.js` | Conversations-table upsert/read by **field id** (`returnFieldsByFieldId`). |
 | `lib/wa-store.js` | Optional Upstash: dedupe + Luna's multi-turn memory. |
 | `lib/ably-rest.js` | Server-side Ably publish (the widget's job, done server-side). |
 | `api/whatsapp-webhook.js` | Inbound: verify → parse → upsert → publish → Luna reply. |
 | `api/whatsapp-send.js` | Agent outbound + takeover/resolve control plane. |
-| `public/dashboard.html` | WhatsApp badge + mirrors agent send/takeover/resolve to the Cloud API. |
 
 ## Data model (no schema change)
 
 Writes go to the existing **Conversations** table (`tblyin27D2J9ejHvf`) by field
-id. Conversation id is **`wa_<phoneNumberId>_<from>`** (deterministic, so the
-same customer always maps to the same conversation; the recipient for replies is
+id. Conversation id is **`wa_<businessNumber>_<customerNumber>`** (deterministic,
+so the same customer always maps to the same conversation; the reply recipient is
 derived straight from the id). `History` accumulates `role: text` lines
-(`user:` / `luna:` / `agent:`). Upsert rule: an existing conversation is only
-**re-opened** if its handler is `Resolved`/`Closed` — an active agent is never
-yanked out of a live chat.
+(`user:` / `luna:` / `agent:`). An existing conversation is only **re-opened** if
+its handler is `Resolved`/`Closed` — an active agent is never pulled out of a
+live chat.
 
-> Per-message logging to the **Messages** table (`tblGlvZLU8xub2LHK`) with
-> `direction`/`deliveryStatus` is a later phase and is **not** wired up here.
+> Per-message logging to the **Messages** table (`tblGlvZLU8xub2LHK`,
+> `direction`/`deliveryStatus`) is a later phase and is **not** wired up here.
 
 ## Environment variables
 
@@ -82,68 +86,90 @@ Set on the `luna-chat-endpoint` Vercel project. Reuse the existing
 `AIRTABLE_KEY`, `ABLY_ROOT_KEY`, `ANTHROPIC_API_KEY`, and (recommended)
 `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`.
 
+**Common**
+
 | Var | Required | Notes |
 | --- | --- | --- |
-| `WHATSAPP_VERIFY_TOKEN` | yes | Random secret. Appended to the 360dialog webhook URL as `?token=…` and used for the GET handshake. Server-only. |
-| `WHATSAPP_NUMBER_MAP` | yes | JSON mapping each `phone_number_id` to a client. Value is either the client's Airtable record id, or `{ "clientId":"rec…", "apiKey":"<D360 key>" }`. |
-| `WHATSAPP_D360_KEYS` | for sending | Optional JSON `{ phone_number_id: <D360-API-KEY> }` if you didn't put `apiKey` in the map above. |
-| `WHATSAPP_D360_API_KEY` | for sending | Optional single global D360 key (single-number setups). |
-| `WHATSAPP_API_BASE` | no | Default `https://waba-v2.360dialog.io`. Use `https://waba-sandbox.360dialog.io` for the sandbox. |
-| `WHATSAPP_AI_AUTOREPLY` | no | `false` sends every WhatsApp chat straight to a human (new chats open as **Waiting**). Default: Luna answers (new chats open as **AI**). |
-| `META_APP_SECRET` | no | Only used by the future direct-Meta `verifyMetaSignature` path. |
+| `WHATSAPP_PROVIDER` | no | `gupshup` (default) or `360dialog`. |
+| `WHATSAPP_VERIFY_TOKEN` | yes | Random secret. Appended to the provider's webhook/callback URL as `?token=…`. Server-only. |
+| `WHATSAPP_NUMBER_MAP` | yes | JSON mapping each number/app to a client (shape depends on provider — below). |
+| `WHATSAPP_AI_AUTOREPLY` | no | `false` sends every WhatsApp chat straight to a human (new chats open **Waiting**). Default: Luna answers (new chats open **AI**). |
 
-Example multi-tenant map (each number gets its own D360 key):
+**Gupshup (default)** — `WHATSAPP_NUMBER_MAP` is keyed by the **Gupshup app name**:
 
 ```
 WHATSAPP_NUMBER_MAP={
-  "1112223334445":{"clientId":"rec5zCfgH6dkvdClV","apiKey":"D360-aaa..."},
-  "9998887776665":{"clientId":"recAbc123...","apiKey":"D360-bbb..."}
+  "LunaDemoApp":{"clientId":"rec5zCfgH6dkvdClV","phone":"447700900000"}
 }
+GUPSHUP_API_KEY=<your Gupshup account API key>     # account-level; or put apiKey per entry
+# GUPSHUP_API_BASE  (optional, default https://api.gupshup.io/wa/api/v1)
 ```
 
-**Webhook URL to register in 360dialog:**
-`https://chat.travelify.io/api/whatsapp-webhook?token=<WHATSAPP_VERIFY_TOKEN>`
+**360dialog** — `WHATSAPP_NUMBER_MAP` is keyed by the **`phone_number_id`**:
 
-## Provisioning (Phase 0 — human/account tasks)
+```
+WHATSAPP_NUMBER_MAP={"111222333":{"clientId":"rec…","apiKey":"D360-…"}}
+# or WHATSAPP_D360_KEYS={"111222333":"D360-…"} / WHATSAPP_D360_API_KEY=…
+# WHATSAPP_API_BASE (optional, default https://waba-v2.360dialog.io)
+# META_APP_SECRET   (only for the future direct-Meta verifyMetaSignature path)
+```
 
-1. Verify the Travelgenix business in **Meta Business Manager** (long lead time — the critical path).
-2. Sign up to the **360dialog Partner Platform** and register as a **Meta Tech Provider** (required to onboard more than ~3 numbers; Meta caps onboarding at ~200 new clients / rolling 7 days).
-3. Onboard a client's number (Embedded Signup), grab its **`phone_number_id`** and per-number **`D360-API-KEY`**, and add them to `WHATSAPP_NUMBER_MAP` (+ keys).
-4. Set the env vars in Vercel and register the webhook URL above in 360dialog.
+## Quick start — Gupshup (demo)
 
-> **Diligence before scaling to ~300 clients** (sales-/login-walled, unverified here): EU data residency for Cloud API "Local Storage", ISO 27001/SOC 2, and the per-channel/partner-plan pricing at volume.
+1. Create a **Gupshup** account → create a **WhatsApp app** (use the free
+   **sandbox** to test instantly, or connect a real number).
+2. Copy your **API key** (Gupshup dashboard → *API key*) → `GUPSHUP_API_KEY`.
+   Note the app's **name** and its **source phone number**.
+3. Set env vars (above): `WHATSAPP_PROVIDER=gupshup`, `WHATSAPP_VERIFY_TOKEN`,
+   `WHATSAPP_NUMBER_MAP` (app name → `{clientId, phone}`).
+4. In Gupshup, set the app's **inbound/callback URL** to:
+   `https://chat.travelify.io/api/whatsapp-webhook?token=<WHATSAPP_VERIFY_TOKEN>`
+5. Message the app's number (or use the sandbox) — the chat appears in the inbox.
+
+> For the rollout to ~300 clients you'd move onto Gupshup's **Partner/ISV
+> program** (Embedded Signup, per-client onboarding) or switch
+> `WHATSAPP_PROVIDER=360dialog`. Diligence before scaling (sales-walled,
+> unverified here): negotiated partner per-message rate + any minimum; EU data
+> residency (`storageRegion` Germany/UK — but billing data reportedly stays in
+> India); SOC 2 / DPA; and the **+6% marketing markup from 1 Jan 2026** (largely
+> moot for service traffic).
 
 ## Behaviour
 
-- Inbound text, button replies, and interactive list replies are handled; other types post a placeholder into the inbox and route to a human.
-- **Luna answers** by default (reusing the full web brain), stripping `[BLOCK]` cards to clean WhatsApp text and splitting long replies. Turn off per-deployment with `WHATSAPP_AI_AUTOREPLY=false`.
+- Inbound text, button replies and list replies are handled; other types post a placeholder into the inbox and route to a human.
+- **Luna answers** by default (reusing the full web brain), stripping `[BLOCK]` cards to clean WhatsApp text and splitting long replies. Turn off with `WHATSAPP_AI_AUTOREPLY=false`.
 - **Escalation** flips the chat to *Waiting* and Luna stops; the agent picks it up.
 - **Take over** (dashboard) marks it *Agent* so Luna stops even before the agent's first message; **Resolve** ends it (a later message re-opens a fresh chat).
-- Meta's at-least-once webhook retries are de-duplicated by message id (needs Upstash).
+- Provider at-least-once webhook retries are de-duplicated by message id (needs Upstash).
 
 ### Limitations
 - **24-hour window**: WhatsApp only allows free-form replies within 24h of the customer's last message; outside it you need approved **templates** (not wired up here).
 - **Upstash recommended**: without it, dedupe and Luna's multi-turn memory degrade (each message answered statelessly).
+- Gupshup is a **proprietary** API (its Meta-format passthrough isn't wired here); a later move to direct Meta is easier from `360dialog`.
 - Outbound media/templates and delivery/read receipts are out of scope for this pass.
 
 ## Testing
 
-Verification handshake (echoes the challenge):
+Simulated inbound — **Gupshup** shape (note the `?token=`):
 
 ```bash
-curl "https://chat.travelify.io/api/whatsapp-webhook?hub.mode=subscribe&hub.verify_token=YOUR_TOKEN&hub.challenge=12345"
-# → 12345
+curl -X POST "https://chat.travelify.io/api/whatsapp-webhook?token=YOUR_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"app":"LunaDemoApp","type":"message","timestamp":1718000000000,"version":2,
+       "payload":{"id":"gBEG-TEST-1","source":"447700900123","type":"text",
+       "payload":{"text":"Do you have summer holidays to Crete?"},
+       "sender":{"phone":"447700900123","name":"Test User"}}}'
 ```
 
-Simulated inbound (360dialog/Meta-native shape; note the `?token=`):
+Simulated inbound — **360dialog / Meta-native** shape:
 
 ```bash
 curl -X POST "https://chat.travelify.io/api/whatsapp-webhook?token=YOUR_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"entry":[{"changes":[{"field":"messages","value":{
     "metadata":{"phone_number_id":"YOUR_PHONE_NUMBER_ID"},
-    "contacts":[{"profile":{"name":"Test User"},"wa_id":"447700900000"}],
-    "messages":[{"from":"447700900000","id":"wamid.TEST1","type":"text","text":{"body":"Do you have summer holidays to Crete?"}}]
+    "contacts":[{"profile":{"name":"Test User"},"wa_id":"447700900123"}],
+    "messages":[{"from":"447700900123","id":"wamid.TEST1","type":"text","text":{"body":"Hi"}}]
   }}]}]}'
 ```
 
