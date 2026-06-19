@@ -2204,6 +2204,17 @@ function injectCSS() {
   +'#tgx-cw .tgx-input-wrap{padding:12px 16px 14px;border-top:1px solid rgba(15,26,61,0.06);background:#fff;flex-shrink:0;display:flex;gap:8px;align-items:flex-end}'
   +'#tgx-cw .tgx-input-inner{flex:1;display:flex;align-items:center;gap:8px;background:#FAFAF6;border:1px solid rgba(15,26,61,0.10);border-radius:999px;padding:4px 4px 4px 16px;transition:all .2s ease}'
   +'#tgx-cw .tgx-input-inner:focus-within{background:#fff;border-color:'+C.accentColor+';box-shadow:0 0 0 4px '+C.accentColor+'1A}'
+  +'#tgx-cw .tgx-attach{width:34px;height:34px;border:none;background:transparent;color:'+C.accentColor+';border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;padding:0;transition:background .15s}'
+  +'#tgx-cw .tgx-attach:hover{background:'+C.accentColor+'1A}'
+  +'#tgx-cw .tgx-attach:disabled{opacity:.5;cursor:default}'
+  +'#tgx-cw .tgx-att-img{display:block;margin-top:4px;max-width:220px}'
+  +'#tgx-cw .tgx-att-img img{display:block;max-width:100%;max-height:240px;border-radius:12px;border:1px solid rgba(15,26,61,0.08)}'
+  +'#tgx-cw .tgx-att-file{display:inline-flex;align-items:center;gap:10px;margin-top:4px;padding:10px 12px;background:#fff;border:1px solid rgba(15,26,61,0.10);border-radius:12px;text-decoration:none;max-width:240px}'
+  +'#tgx-cw .tgx-msg-row.user .tgx-att-file{background:'+C.brandColor+'14}'
+  +'#tgx-cw .tgx-att-ic{width:30px;height:30px;border-radius:8px;background:'+C.accentColor+';display:flex;align-items:center;justify-content:center;flex-shrink:0}'
+  +'#tgx-cw .tgx-att-meta{display:flex;flex-direction:column;min-width:0}'
+  +'#tgx-cw .tgx-att-name{font-size:13px;font-weight:600;color:#0F1A3D;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+  +'#tgx-cw .tgx-att-size{font-size:11px;color:#6B7280}'
   +'#tgx-cw .tgx-input{flex:1;background:none;border:none;padding:9px 0;font-size:14px;color:'+C.brandColor+';outline:none;line-height:1.4;font-family:inherit}'
   +'#tgx-cw .tgx-input::placeholder{color:#8A92A0;opacity:1}'
   +'#tgx-cw .tgx-send{width:38px;height:38px;border-radius:50%;background:'+C.accentColor+';border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:transform .15s,box-shadow .2s;box-shadow:0 4px 10px '+C.accentColor+'40,inset 0 1px 0 rgba(255,255,255,0.18)}'
@@ -2730,7 +2741,7 @@ function buildDOM() {
       +'<div class="tgx-typing-row" id="tgxTypingRow"><div id="tgxTypingAvatar"></div><div class="tgx-typing" id="tgxTyping"><span></span><span></span><span></span></div><div class="tgx-typing-status" id="tgxTypingStatus"></div></div>'
       +'<div id="tgxPills" class="tgx-pills"></div>'
       +'<div class="tgx-email-bar" id="tgxEmailBar"><span class="tgx-email-link" id="tgxEmailLink">&#128231; Email this chat</span></div>'
-      +'<div class="tgx-input-wrap"><div class="tgx-input-inner"><input class="tgx-input" id="tgxInput" placeholder="Ask me anything..." autocomplete="off"><button class="tgx-mic" id="tgxChatMic" type="button" aria-label="Voice input" title="Voice input"></button></div><button class="tgx-send" id="tgxSend"></button></div>'
+      +'<div class="tgx-input-wrap"><div class="tgx-input-inner"><input class="tgx-input" id="tgxInput" placeholder="Ask me anything..." autocomplete="off"><button class="tgx-attach" id="tgxAttach" type="button" aria-label="Attach a file" title="Attach a file"></button><button class="tgx-mic" id="tgxChatMic" type="button" aria-label="Voice input" title="Voice input"></button></div><button class="tgx-send" id="tgxSend"></button></div><input type="file" id="tgxFileInput" accept="'+ATT_ACCEPT+'" style="display:none">'
       +'<div class="tgx-esc-bar" id="tgxEscBar"><button class="tgx-esc-btn human" id="tgxHuman"></button><button class="tgx-esc-btn leave" id="tgxLeave"></button></div>'
       +'<div class="tgx-footer" id="tgxFooterChat"></div>'
     +'</div>'
@@ -3295,6 +3306,115 @@ function addMsg(role, text, noStore, originalText, pendingPills, blocks) {
   if ($emailBar && msgs.length >= 3) $emailBar.style.display = "block";
 }
 
+/* ─── FILE / IMAGE ATTACHMENTS ───────────────────────────────
+   Visitors can send images and documents. Files upload to /api/upload
+   (Vercel Blob) and are shared with the agent over Ably as a `message`
+   carrying an `attachment` {url,name,contentType,size}. */
+var ATT_MAX = 4 * 1024 * 1024;
+var ATT_ACCEPT = "image/jpeg,image/png,image/gif,image/webp,application/pdf,.doc,.docx,.xls,.xlsx,.csv,.txt";
+var ATT_TYPES = { "image/jpeg":1,"image/png":1,"image/gif":1,"image/webp":1,"application/pdf":1,"application/msword":1,"application/vnd.openxmlformats-officedocument.wordprocessingml.document":1,"application/vnd.ms-excel":1,"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":1,"text/csv":1,"text/plain":1 };
+function fmtSize(n){ n = n || 0; return n < 1024 ? n + "B" : n < 1048576 ? (n/1024).toFixed(1) + "KB" : (n/1048576).toFixed(1) + "MB"; }
+
+/* Downscale big JPEG/PNG/WebP photos so they fit comfortably under the cap. */
+async function downscaleImage(file){
+  try {
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type)) return file;
+    var bmp = await createImageBitmap(file);
+    var maxDim = 1600, scale = Math.min(1, maxDim / Math.max(bmp.width, bmp.height));
+    if (scale >= 1 && file.size <= ATT_MAX) { if (bmp.close) bmp.close(); return file; }
+    var w = Math.round(bmp.width * scale), h = Math.round(bmp.height * scale);
+    var cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+    cv.getContext("2d").drawImage(bmp, 0, 0, w, h); if (bmp.close) bmp.close();
+    var blob = await new Promise(function(r){ cv.toBlob(r, "image/jpeg", 0.85); });
+    if (blob && blob.size < file.size) { blob.name = (file.name || "image").replace(/\.[^.]+$/, "") + ".jpg"; return blob; }
+    return file;
+  } catch(e){ return file; }
+}
+
+async function uploadFile(file){
+  var f = file;
+  if (/^image\//.test(file.type)) f = await downscaleImage(file);
+  var type = f.type || file.type || "";
+  var name = f.name || file.name || "file";
+  if (!ATT_TYPES[type]) { sysMsg("Sorry — that file type isn't supported."); return null; }
+  if (f.size > ATT_MAX) { sysMsg("That file is too large (max 4MB)."); return null; }
+  try {
+    var url = C.endpoint.replace("/api/luna-chat", "/api/upload") + "?clientName=" + encodeURIComponent(C.clientName || "");
+    var res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": type, "X-Filename": name.replace(/[^\x20-\x7E]/g, "_").slice(0, 180) },
+      body: f
+    });
+    if (!res.ok) { var e = await res.json().catch(function(){ return {}; }); sysMsg(e.error || "Upload failed."); return null; }
+    return await res.json(); // { url, name, contentType, size }
+  } catch(e){ sysMsg("Upload failed — please try again."); return null; }
+}
+
+function buildAttachmentEl(att){
+  var a = document.createElement("a");
+  a.href = att.url; a.target = "_blank"; a.rel = "noopener";
+  if (att && /^image\//.test(att.contentType || "")) {
+    a.className = "tgx-att-img";
+    var img = document.createElement("img"); img.src = att.url; img.alt = att.name || "image"; img.loading = "lazy";
+    a.appendChild(img);
+  } else {
+    a.className = "tgx-att-file";
+    var ic = document.createElement("span"); ic.className = "tgx-att-ic";
+    ic.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+    var meta = document.createElement("span"); meta.className = "tgx-att-meta";
+    var nm = document.createElement("span"); nm.className = "tgx-att-name"; nm.textContent = att.name || "file";
+    var sz = document.createElement("span"); sz.className = "tgx-att-size"; sz.textContent = fmtSize(att.size);
+    meta.appendChild(nm); meta.appendChild(sz); a.appendChild(ic); a.appendChild(meta);
+  }
+  return a;
+}
+
+function appendAttachmentRow(role, att, caption){
+  var row = document.createElement("div");
+  row.className = "tgx-msg-row" + (role === "user" ? " user" : "");
+  if (role === "bot" || role === "agent") row.appendChild(makeAvatar(26, false));
+  var col = document.createElement("div"); col.className = "tgx-msg-col";
+  if (caption) { var b = document.createElement("div"); b.className = "tgx-msg " + role; renderSafeMarkdown(b, caption); col.appendChild(b); }
+  col.appendChild(buildAttachmentEl(att));
+  var t = document.createElement("span"); t.className = "tgx-msg-time";
+  var now = new Date(); t.textContent = ("0"+now.getHours()).slice(-2)+":"+("0"+now.getMinutes()).slice(-2);
+  col.appendChild(t);
+  row.appendChild(col); $msgs.appendChild(row);
+  return row;
+}
+
+function sendAttachment(att, caption){
+  ensureConversationStarted();
+  var _mid = newMsgId();
+  rememberInteraction(caption || ("[shared a file: " + (att.name || "file") + "]"));
+  appendAttachmentRow("user", att, caption);
+  attachReceipt($msgs.lastElementChild, _mid, "sent");
+  msgs.push({ role: "user", content: caption || "", attachment: att, id: _mid, status: "sent", ts: Date.now() });
+  saveSession();
+  scrollBottom();
+  publishMessage("visitor", caption || "", _mid, att);
+}
+
+/* Wire the attach button + hidden file input (DOM created in buildDOM). */
+function wireFileAttach(){
+  var btn = document.getElementById("tgxAttach");
+  var input = document.getElementById("tgxFileInput");
+  if (!btn || !input) return;
+  btn.addEventListener("click", function(){ if (currentScreen !== "chat") switchToChat(); input.click(); });
+  input.addEventListener("change", async function(){
+    var file = input.files && input.files[0];
+    input.value = "";
+    if (!file) return;
+    var caption = ($input && $input.value.trim()) || "";
+    btn.disabled = true;
+    var att = await uploadFile(file);
+    btn.disabled = false;
+    if (!att) return;
+    if (caption && $input) $input.value = "";
+    sendAttachment(att, caption);
+  });
+}
+
 /* ─── HELPER: appendBubbleRow — renders a single prose message bubble ─── */
 function appendBubbleRow(role, text) {
   var row = document.createElement("div");
@@ -3731,6 +3851,15 @@ function initAbly() {
         if (panelOpen && document.visibilityState === "visible") publishReceipt([d.id], "read");
         else pendingReadIds.push(d.id);
       }
+      // Agent shared a file/image.
+      if (d.attachment) {
+        appendAttachmentRow("agent", d.attachment, d.text || "");
+        msgs.push({ role: "agent", content: d.text || "", attachment: d.attachment, ts: Date.now() });
+        saveSession();
+        scrollBottom();
+        if (!panelOpen) { unread++; $badge.textContent = unread; $badge.style.display = "flex"; }
+        return;
+      }
       // Show the agent's reply in the visitor's language. Prefer the dashboard's
       // hint (translateTo); otherwise fall back to the language we detected for
       // THIS visitor (conversationLang). The widget is the reliable source of the
@@ -3886,10 +4015,11 @@ function persistConversation(payload) {
   } catch (e) { console.warn("Luna widget: conversation persist error:", e.message); }
 }
 
-function publishMessage(from, text, id) {
+function publishMessage(from, text, id, attachment) {
   if (!chatChannel) return;
   var payload = { from: from, text: text, lang: conversationLang || "English", timestamp: new Date().toISOString() };
   if (id) payload.id = id;
+  if (attachment) payload.attachment = attachment;
   chatChannel.publish("message", payload);
 }
 
@@ -5470,6 +5600,10 @@ async function boot() {
   $escBar = document.getElementById("tgxEscBar");
   $emailBar = document.getElementById("tgxEmailBar");
 
+  var _attachBtn = document.getElementById("tgxAttach");
+  if (_attachBtn) _attachBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>';
+  wireFileAttach();
+
   /* Replay stored messages if session was restored */
   if (sessionRestored && msgs.length > 0) {
     // Sanitise the welcome bubble: if visitor hasn't interacted (just the
@@ -5494,7 +5628,10 @@ async function boot() {
     var storedMsgs = msgs.slice();
     msgs = []; /* clear so addMsg re-pushes them */
     storedMsgs.forEach(function(m) {
-      if (m.role === "widget") {
+      if (m.attachment) {
+        appendAttachmentRow(m.role, m.attachment, m.content);
+        msgs.push({ role: m.role, content: m.content || "", attachment: m.attachment, id: m.id, status: m.status, ts: m.ts || Date.now() });
+      } else if (m.role === "widget") {
         /* "content" is the descriptor object — pass through as text param */
         addMsg("widget", m.content, false);
       } else if (m.blocks && Array.isArray(m.blocks) && m.blocks.length > 0) {

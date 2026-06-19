@@ -3344,9 +3344,23 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
 
     return '<div class="msg ' + type + '">'
       + (label ? '<span class="msg-label">' + label + '</span>' : '')
-      + '<div class="msg-bubble">' + bubbleContent + '</div>'
+      + '<div class="msg-bubble">' + bubbleContent + (m.attachment ? renderAttachment(m.attachment) : '') + '</div>'
       + '<div class="msg-meta"><span>' + time + '</span>' + (m.from === 'agent' && m.status ? renderReceipt(m.status) : '') + '</div>'
       + '</div>';
+  }
+
+  function fmtBytes(n){ n = n || 0; return n < 1024 ? n + 'B' : n < 1048576 ? (n/1024).toFixed(1) + 'KB' : (n/1048576).toFixed(1) + 'MB'; }
+  function renderAttachment(att){
+    if (!att || !att.url) return '';
+    var url = esc(att.url);
+    var ct = att.contentType || att.type || '';
+    if (/^image\//.test(ct)) {
+      return '<a href="' + url + '" target="_blank" rel="noopener" class="msg-att-img"><img src="' + url + '" alt="' + esc(att.name || 'image') + '" loading="lazy" style="display:block;max-width:240px;max-height:260px;border-radius:10px;margin-top:6px;border:1px solid rgba(0,0,0,0.08)"></a>';
+    }
+    var size = att.size ? ' · ' + fmtBytes(att.size) : '';
+    return '<a href="' + url + '" target="_blank" rel="noopener" class="msg-att-file" style="display:inline-flex;align-items:center;gap:8px;margin-top:6px;padding:8px 10px;border:1px solid rgba(0,0,0,0.12);border-radius:10px;text-decoration:none;color:inherit">'
+      + '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>'
+      + '<span style="font-size:13px">' + esc(att.name || 'file') + size + '</span></a>';
   }
 
   function renderReceipt(status){
@@ -3567,7 +3581,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   });
 
-  sendBtn.addEventListener('click', sendMessage);
+  sendBtn.addEventListener('click', function(){ sendMessage(); }); // late-bound: picks up the file-aware override
 
   // ─── WhatsApp delivery (agent → customer via Meta Cloud API) ───
   // A WhatsApp customer has no widget, so anything an agent does in the
@@ -6169,8 +6183,9 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
   window._handleFileSelect = function(input) {
     var file = input.files && input.files[0];
     if (!file) return;
-    var maxSize = 10 * 1024 * 1024; // 10MB
-    if (file.size > maxSize) { alert('File too large. Maximum size is 10MB.'); input.value = ''; return; }
+    var isImg = file.type && file.type.indexOf('image/') === 0;
+    var maxSize = isImg ? 15 * 1024 * 1024 : 4 * 1024 * 1024; // images are downscaled before upload
+    if (file.size > maxSize) { alert(isImg ? 'Image too large (max 15MB).' : 'File too large (max 4MB).'); input.value = ''; return; }
 
     pendingFile = { name: file.name, size: file.size, type: file.type, file: file };
     var sizeStr = file.size < 1024 ? file.size + 'B' : file.size < 1048576 ? (file.size / 1024).toFixed(1) + 'KB' : (file.size / 1048576).toFixed(1) + 'MB';
@@ -6195,39 +6210,65 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     bar.innerHTML = '';
   };
 
-  // Override sendMessage to include file attachment
+  // Override sendMessage to upload + attach the pending file (Vercel Blob).
+  async function dashDownscale(file){
+    try {
+      if (!/^image\/(jpeg|png|webp)$/.test(file.type)) return file;
+      var bmp = await createImageBitmap(file);
+      var maxDim = 1600, scale = Math.min(1, maxDim / Math.max(bmp.width, bmp.height));
+      if (scale >= 1 && file.size <= 4*1024*1024) { if (bmp.close) bmp.close(); return file; }
+      var w = Math.round(bmp.width*scale), h = Math.round(bmp.height*scale);
+      var cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+      cv.getContext('2d').drawImage(bmp, 0, 0, w, h); if (bmp.close) bmp.close();
+      var blob = await new Promise(function(r){ cv.toBlob(r, 'image/jpeg', 0.85); });
+      if (blob && blob.size < file.size) { blob.name = (file.name||'image').replace(/\.[^.]+$/,'') + '.jpg'; return blob; }
+      return file;
+    } catch(e){ return file; }
+  }
+  async function uploadAttachment(file){
+    var f = (file.type && file.type.indexOf('image/') === 0) ? await dashDownscale(file) : file;
+    var url = '/api/upload?clientName=' + encodeURIComponent(CONFIG.CLIENT_NAME || '');
+    var res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': f.type || 'application/octet-stream', 'X-Filename': (f.name || file.name || 'file').replace(/[^\x20-\x7E]/g, '_').slice(0, 180) },
+      body: f
+    });
+    if (!res.ok) { var e = await res.json().catch(function(){ return {}; }); throw new Error(e.error || 'Upload failed'); }
+    return await res.json();
+  }
   var _origSendMessage = sendMessage;
-  sendMessage = function() {
-    if (pendingFile) {
-      var text = msgInput.value.trim();
-      var fileInfo = { name: pendingFile.name, size: pendingFile.size, type: pendingFile.type };
+  sendMessage = async function() {
+    if (!pendingFile) { _origSendMessage(); return; }
+    if (!activeConvId) return;
+    var conv = conversations[activeConvId];
+    if (!conv) return;
+    var text = msgInput.value.trim();
+    var theFile = pendingFile.file;
+    sendBtn.disabled = true;
+    var att;
+    try { att = await uploadAttachment(theFile); }
+    catch (e) { alert(e.message || 'Upload failed'); sendBtn.disabled = false; return; }
 
-      var msg = {
-        from: 'agent',
-        text: (text ? text + '\n' : '') + '📎 ' + pendingFile.name,
-        agentId: CONFIG.AGENT_ID,
-        agentName: CONFIG.AGENT_NAME,
-        timestamp: new Date().toISOString(),
-        attachment: fileInfo
-      };
+    var msg = {
+      id: 'm_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
+      from: 'agent', text: text,
+      agentId: CONFIG.AGENT_ID, agentName: CONFIG.AGENT_NAME,
+      timestamp: new Date().toISOString(),
+      status: conv.source === 'whatsapp' ? null : 'sent',
+      attachment: { url: att.url, name: att.name, contentType: att.contentType, size: att.size }
+    };
+    if (conv.channel) conv.channel.publish('message', msg);
+    // WhatsApp has no widget to render the file; share the link as text.
+    if (conv.source === 'whatsapp') waSend(conv, (text ? text + '\n' : '') + att.url);
+    conv.messages.push(msg);
+    appendMessage(msg);
+    scrollChat();
+    renderConvList();
 
-      var conv = conversations[activeConvId];
-      if (conv) {
-        if (conv.channel) conv.channel.publish('message', msg);
-        conv.messages.push(msg);
-        appendMessage(msg);
-        scrollChat();
-        renderConvList();
-      }
-
-      msgInput.value = '';
-      msgInput.style.height = 'auto';
-      sendBtn.disabled = true;
-      window._removeFile();
-      return;
-    }
-    // No file — use original send
-    _origSendMessage();
+    msgInput.value = '';
+    msgInput.style.height = 'auto';
+    sendBtn.disabled = true;
+    window._removeFile();
   };
 
   // ─── QUICK REPLIES DRAWER TOGGLE ───
