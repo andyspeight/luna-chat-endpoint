@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Luna widget — preview test</title>
+<style>
+  body { font-family: system-ui, "Segoe UI", Roboto, Arial, sans-serif; margin: 0; color: #0F1A3D; background: #FAFAF6; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 40px 24px; }
+  h1 { font-size: 22px; }
+  .note { background: #fff; border: 1px solid rgba(15,26,61,.1); border-radius: 12px; padding: 16px 18px; margin: 18px 0; line-height: 1.5; }
+  code { background: #eef1f8; padding: 2px 6px; border-radius: 6px; font-size: 13px; }
+  .filler { height: 1600px; background: linear-gradient(#ffffff, #eef1f8); border-radius: 12px; margin: 18px 0; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 16px; color: #6B7280; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Luna widget — preview test page</h1>
+  <div class="note" id="status"></div>
+  <div class="note">
+    <strong>How to test</strong> (this page points the widget at <em>this preview deployment</em>, so the new APIs are exercised):
+    <ul>
+      <li>Open the chat bubble (corner), send a message, and try the <strong>📎 attach</strong> button (needs a Vercel Blob store linked, else it shows a friendly "not configured").</li>
+      <li>Open <code>/dashboard.html</code> in another tab to watch the chat live — <strong>read receipts</strong> (✓ / ✓✓), files, and the <strong>CSAT</strong> card under Analytics.</li>
+      <li>Close/resolve the chat to get the <strong>star rating</strong>; reload this page to check <strong>returning‑visitor memory</strong> ("Welcome back").</li>
+      <li><strong>Scroll down</strong> to test the scroll‑depth trigger; move the mouse to the top edge for exit‑intent (enable these in Dashboard → Settings → Advanced → Auto‑Trigger).</li>
+    </ul>
+  </div>
+  <p>Scroll down — the empty space below is deliberate, so you can test the scroll‑depth auto‑trigger.</p>
+  <div class="filler">↓ keep scrolling ↓</div>
+  <p>End of page.</p>
+</div>
+<script>
+  (function () {
+    var params = new URLSearchParams(location.search);
+    var client = params.get('client') || params.get('clientName') || '';
+    var status = document.getElementById('status');
+    if (!client) {
+      status.innerHTML = '<strong>No client set.</strong> Add <code>?client=YOUR CLIENT NAME</code> to the URL ' +
+        '(the exact ClientName from Airtable) to load the widget, e.g. <code>?client=Sunshine%20Travel</code>.';
+      return;
+    }
+    status.innerHTML = 'Loading the Luna widget for <code>' + client.replace(/[<>&]/g, '') + '</code> against this preview deployment.';
+    // Point the widget at THIS origin so the new endpoints (upload, visitor-history,
+    // rating persistence, visitorContext) are exercised — not the default production endpoint.
+    window.__LUNA_CONFIG = {
+      clientName: client,
+      endpoint: location.origin + '/api/luna-chat',
+      ablyTokenEndpoint: location.origin + '/api/ably-token'
+    };
+    var s = document.createElement('script');
+    s.src = '/widget-core.js';
+    s.setAttribute('data-clientName', client);
+    s.async = true;
+    document.body.appendChild(s);
+  })();
+</script>
+</body>
+</html>
