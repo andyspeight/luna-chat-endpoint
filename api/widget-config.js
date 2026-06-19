@@ -161,7 +161,10 @@ module.exports = async function handler(req, res) {
       config.autoTrigger = {
         enabled: true,
         delay: f.AutoTriggerDelay || 30,
-        message: f.AutoTriggerMessage || 'Hi there! Can I help you find anything?'
+        message: f.AutoTriggerMessage || 'Hi there! Can I help you find anything?',
+        scrollDepth: f.AutoTriggerScrollDepth || 0,
+        exitIntent: !!f.AutoTriggerExitIntent,
+        urlPatterns: (f.AutoTriggerUrlPatterns || '').split(/[\n,]/).map(function(s){ return s.trim(); }).filter(Boolean)
       };
     }
 

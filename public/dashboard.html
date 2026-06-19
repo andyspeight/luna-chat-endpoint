@@ -2507,7 +2507,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
 
     <div class="settings-section">
       <h4>Auto-Trigger</h4>
-      <div class="settings-hint" style="margin-bottom:8px">Automatically open the chat widget after a visitor has been on your page for a set time. Great for increasing engagement.</div>
+      <div class="settings-hint" style="margin-bottom:8px">Automatically open the chat widget based on what visitors do — after a set time, when they scroll far enough, or on exit intent — optionally only on certain pages. The first condition met opens the chat.</div>
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
           <input type="checkbox" id="setAutoTriggerEnabled" style="width:18px;height:18px;accent-color:var(--teal)">
@@ -2523,6 +2523,22 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
         <label class="settings-label">Trigger Message</label>
         <input class="settings-input" id="setAutoTriggerMessage" placeholder="Hi there! I noticed you've been browsing. Can I help you find anything?">
         <div class="settings-hint">The message Luna displays when the chat auto-opens. Make it relevant and helpful.</div>
+      </div>
+      <div class="settings-row">
+        <label class="settings-label">Scroll depth (%)</label>
+        <input class="settings-input" id="setAutoTriggerScrollDepth" type="number" min="0" max="100" value="0" style="width:100px">
+        <div class="settings-hint">Open once the visitor scrolls this far down the page. 0 = off.</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="setAutoTriggerExitIntent" style="width:18px;height:18px;accent-color:var(--teal)">
+          <span style="font-size:13px;font-weight:600">Trigger on exit intent (desktop)</span>
+        </label>
+      </div>
+      <div class="settings-row">
+        <label class="settings-label">Only on pages</label>
+        <input class="settings-input" id="setAutoTriggerUrlPatterns" placeholder="/pricing, /tours  (leave blank for all pages)">
+        <div class="settings-hint">Comma-separated URL path fragments. Leave blank to trigger on every page.</div>
       </div>
     </div>
 
@@ -2703,6 +2719,8 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
           lang: c.lang || null,
           rating: c.rating || null,
           unread: !!c.unread,
+          source: c.source || 'web',
+          waContact: c.waContact || null,
           lastAt: (last && last.timestamp) ? last.timestamp : (c.startedAt || new Date().toISOString()),
           messages: (c.messages || []).slice(-80)
         };
@@ -2730,6 +2748,8 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
         handler: s.handler,
         startedAt: s.startedAt,
         messages: s.messages || [],
+        source: s.source || 'web',
+        waContact: s.waContact || null,
         _silent: true
       });
       const conv = conversations[s.id];
@@ -3086,7 +3106,14 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       handler: data.handler || 'ai',
       unread: true,
       startedAt: data.startedAt || new Date().toISOString(),
-      channel: null
+      channel: null,
+      // Inbound medium: 'web' (widget, default) or 'whatsapp'. NOTE: `channel`
+      // above is the Ably channel object — `source` is the messaging channel.
+      // The WhatsApp webhook sends both `source` and `channel:'whatsapp'`.
+      source: data.source || (data.channel === 'whatsapp' ? 'whatsapp' : 'web'),
+      // WhatsApp routing so agent replies can be delivered via the Cloud API.
+      // (`data.contact` from the live event; `data.waContact` when rehydrated.)
+      waContact: data.contact || data.waContact || null
     };
 
     // Subscribe to this conversation's Ably channel
@@ -3095,6 +3122,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       conv.channel.subscribe('message', msg => onConvMessage(convId, msg.data));
       conv.channel.subscribe('typing', msg => onConvTyping(convId, msg.data));
       conv.channel.subscribe('handler_change', msg => onHandlerChange(convId, msg.data));
+      conv.channel.subscribe('receipt', msg => onConvReceipt(convId, msg.data));
       conv.channel.subscribe('rating', msg => {
         const c = conversations[convId];
         if (c && msg.data && msg.data.rating) {
@@ -3121,6 +3149,15 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     if (data.detectedLanguage && data.detectedLanguage !== 'English') conv.lang = data.detectedLanguage;
 
     conv.messages.push(data);
+
+    // Read receipts (web chats): acknowledge the visitor's message back to the widget.
+    if (data.from === 'visitor' && data.id && conv.source !== 'whatsapp' && conv.channel) {
+      conv.channel.publish('receipt', { ids:[data.id], status:'delivered', by:'agent' });
+      if (convId === activeConvId && !document.hidden && document.hasFocus()) {
+        conv.channel.publish('receipt', { ids:[data.id], status:'read', by:'agent' });
+      }
+    }
+
     if (convId !== activeConvId) {
       conv.unread = true;
       if (data.from === 'visitor') lunaAlertSignal('message', conv.visitor.name, data.text?.slice(0,80) || 'New message');
@@ -3231,11 +3268,14 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       const time = last ? formatTime(last.timestamp || c.startedAt) : '';
       const handlerLabel = c.handler === 'ai' ? 'Luna AI' : c.handler === 'human' ? 'Agent' : c.handler === 'closed' ? 'Message' : 'Waiting';
       const handlerClass = c.handler === 'ai' ? 'ai' : c.handler === 'human' ? 'human' : c.handler === 'closed' ? 'closed' : 'waiting';
+      const waTag = c.source === 'whatsapp'
+        ? ' <span title="WhatsApp" style="display:inline-block;font-size:9px;font-weight:700;letter-spacing:.04em;background:#25D366;color:#062e16;padding:1px 5px;border-radius:6px;vertical-align:middle;">WhatsApp</span>'
+        : '';
       return `<div class="conv-item ${c.id === activeConvId ? 'active' : ''} ${c.unread ? 'unread' : ''}"
                    data-id="${c.id}" onclick="window._selectConv('${c.id}')">
         <div class="conv-badge"></div>
         <div class="conv-item-top">
-          <span class="conv-name">${esc(c.visitor.name)}</span>
+          <span class="conv-name">${esc(c.visitor.name)}${waTag}</span>
           <span class="conv-time">${time}</span>
         </div>
         <div class="conv-preview">${esc(preview)}</div>
@@ -3251,10 +3291,17 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     const conv = conversations[convId];
     if (!conv) return;
     conv.unread = false;
+    markConvRead(conv);
     renderConvList();
     restoreChatInput();
     showChatActive(conv);
   };
+
+  // When the agent refocuses the tab, mark the open conversation's visitor
+  // messages as read so the widget shows "Read".
+  window.addEventListener('focus', function(){
+    if (activeConvId && conversations[activeConvId]) markConvRead(conversations[activeConvId]);
+  });
 
   // ─── CHAT VIEW ───
   function showChatEmpty() {
@@ -3313,9 +3360,53 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
 
     return '<div class="msg ' + type + '">'
       + (label ? '<span class="msg-label">' + label + '</span>' : '')
-      + '<div class="msg-bubble">' + bubbleContent + '</div>'
-      + '<div class="msg-meta"><span>' + time + '</span></div>'
+      + '<div class="msg-bubble">' + bubbleContent + (m.attachment ? renderAttachment(m.attachment) : '') + '</div>'
+      + '<div class="msg-meta"><span>' + time + '</span>' + (m.from === 'agent' && m.status ? renderReceipt(m.status) : '') + '</div>'
       + '</div>';
+  }
+
+  function fmtBytes(n){ n = n || 0; return n < 1024 ? n + 'B' : n < 1048576 ? (n/1024).toFixed(1) + 'KB' : (n/1048576).toFixed(1) + 'MB'; }
+  function renderAttachment(att){
+    if (!att || !att.url) return '';
+    var url = esc(att.url);
+    var ct = att.contentType || att.type || '';
+    if (/^image\//.test(ct)) {
+      return '<a href="' + url + '" target="_blank" rel="noopener" class="msg-att-img"><img src="' + url + '" alt="' + esc(att.name || 'image') + '" loading="lazy" style="display:block;max-width:240px;max-height:260px;border-radius:10px;margin-top:6px;border:1px solid rgba(0,0,0,0.08)"></a>';
+    }
+    var size = att.size ? ' · ' + fmtBytes(att.size) : '';
+    return '<a href="' + url + '" target="_blank" rel="noopener" class="msg-att-file" style="display:inline-flex;align-items:center;gap:8px;margin-top:6px;padding:8px 10px;border:1px solid rgba(0,0,0,0.12);border-radius:10px;text-decoration:none;color:inherit">'
+      + '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>'
+      + '<span style="font-size:13px">' + esc(att.name || 'file') + size + '</span></a>';
+  }
+
+  function renderReceipt(status){
+    var read = status === 'read';
+    var glyph = status === 'sent' ? '✓' : '✓✓';
+    var label = read ? 'Read' : (status === 'delivered' ? 'Delivered' : 'Sent');
+    return '<span class="msg-rcpt" title="' + label + '" style="margin-left:6px;font-size:11px;color:' + (read ? '#3b82f6' : '#94a3b8') + '">' + glyph + '</span>';
+  }
+
+  // A 'receipt' from the visitor acknowledges OUR (agent) messages -> update ticks.
+  function onConvReceipt(convId, data){
+    if (!data || data.by !== 'visitor' || !Array.isArray(data.ids)) return;
+    const conv = conversations[convId];
+    if (!conv) return;
+    const rank = { sent:0, delivered:1, read:2 };
+    let changed = false;
+    conv.messages.forEach(function(m){
+      if (m.from === 'agent' && m.id && data.ids.indexOf(m.id) !== -1 && (rank[data.status]||0) > (rank[m.status]||0)) {
+        m.status = data.status; changed = true;
+      }
+    });
+    if (changed && convId === activeConvId) renderMessages(conv);
+  }
+
+  // Tell the widget the agent has read the visitor's messages (web chats only;
+  // WhatsApp has no widget on the other end).
+  function markConvRead(conv){
+    if (!conv || !conv.channel || conv.source === 'whatsapp') return;
+    var ids = conv.messages.filter(function(m){ return m.from === 'visitor' && m.id; }).map(function(m){ return m.id; });
+    if (ids.length) conv.channel.publish('receipt', { ids: ids, status: 'read', by: 'agent' });
   }
 
   // Toggle a translated message bubble between the English translation and the original language.
@@ -3506,7 +3597,32 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   });
 
-  sendBtn.addEventListener('click', sendMessage);
+  sendBtn.addEventListener('click', function(){ sendMessage(); }); // late-bound: picks up the file-aware override
+
+  // ─── WhatsApp delivery (agent → customer via Meta Cloud API) ───
+  // A WhatsApp customer has no widget, so anything an agent does in the
+  // dashboard for a WhatsApp conversation is mirrored to this server endpoint,
+  // which talks to the Meta Cloud API. Authenticated by the same session cookie
+  // the dashboard already uses (credentials:'include').
+  function waPost(payload) {
+    try {
+      return fetch('/api/whatsapp-send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload)
+      }).then(function(r){ if (!r.ok) console.warn('WhatsApp outbound failed:', r.status); return r; })
+        .catch(function(e){ console.warn('WhatsApp outbound error:', e.message); });
+    } catch (e) { console.warn('WhatsApp outbound threw:', e.message); }
+  }
+  function waSend(conv, text) {
+    var to = (conv.waContact && conv.waContact.waId) || null;
+    return waPost({ clientId: CONFIG.CLIENT_ID, convId: conv.id, text: text, to: to });
+  }
+  function waControl(conv, control) {
+    var to = (conv.waContact && conv.waContact.waId) || null;
+    return waPost({ clientId: CONFIG.CLIENT_ID, convId: conv.id, control: control, to: to });
+  }
 
   function sendMessage() {
     const text = msgInput.value.trim();
@@ -3514,11 +3630,13 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
 
     const conv = conversations[activeConvId];
     const msg = {
+      id: 'm_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
       from: 'agent',
       text: text,
       agentId: CONFIG.AGENT_ID,
       agentName: CONFIG.AGENT_NAME,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      status: conv.source === 'whatsapp' ? null : 'sent'
     };
 
     // If multilingual conversation, tell the widget to translate
@@ -3529,6 +3647,12 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     // Publish via Ably
     if (conv.channel) {
       conv.channel.publish('message', msg);
+    }
+
+    // WhatsApp conversations have no widget to render the reply — deliver it to
+    // the customer through the Cloud API as well.
+    if (conv.source === 'whatsapp') {
+      waSend(conv, text);
     }
 
     // Also add locally
@@ -3548,6 +3672,8 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     const conv = conversations[activeConvId];
     conv.handler = 'human';
     if (conv.channel) conv.channel.publish('handler_change', { handler:'human', agentId:CONFIG.AGENT_ID });
+    // Tell the WhatsApp webhook to stop auto-replying with Luna for this chat.
+    if (conv.source === 'whatsapp') waControl(conv, 'takeover');
     renderConvList();
     updateChatHeader(conv);
     showVisitorInfo(conv);
@@ -3558,6 +3684,8 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     const conv = conversations[activeConvId];
     if (conv.channel) conv.channel.publish('conversation_resolved', { convId:activeConvId });
     if (dashboardChannel) dashboardChannel.publish('conversation_resolved', { convId:activeConvId });
+    // End the WhatsApp session so a later message starts a fresh conversation.
+    if (conv.source === 'whatsapp') waControl(conv, 'resolve');
     handleConversationResolved({ convId:activeConvId });
   });
 
@@ -3604,6 +3732,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       conv.channel.subscribe('message', msg => onConvMessage(convId, msg.data));
       conv.channel.subscribe('typing', msg => onConvTyping(convId, msg.data));
       conv.channel.subscribe('handler_change', msg => onHandlerChange(convId, msg.data));
+      conv.channel.subscribe('receipt', msg => onConvReceipt(convId, msg.data));
       conv.channel.subscribe('rating', msg => {
         const c = conversations[convId];
         if (c && msg.data && msg.data.rating) {
@@ -5040,6 +5169,9 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       document.getElementById('setAutoTriggerEnabled').checked = !!p.autoTriggerEnabled;
       document.getElementById('setAutoTriggerDelay').value = p.autoTriggerDelay || 30;
       document.getElementById('setAutoTriggerMessage').value = p.autoTriggerMessage || '';
+      document.getElementById('setAutoTriggerScrollDepth').value = p.autoTriggerScrollDepth || 0;
+      document.getElementById('setAutoTriggerExitIntent').checked = !!p.autoTriggerExitIntent;
+      document.getElementById('setAutoTriggerUrlPatterns').value = p.autoTriggerUrlPatterns || '';
 
       // Chat settings
       document.getElementById('setBotName').value = p.widgetBotName || 'Luna AI';
@@ -5121,6 +5253,9 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
           autoTriggerEnabled: document.getElementById('setAutoTriggerEnabled').checked,
           autoTriggerDelay: document.getElementById('setAutoTriggerDelay').value,
           autoTriggerMessage: document.getElementById('setAutoTriggerMessage').value,
+          autoTriggerScrollDepth: document.getElementById('setAutoTriggerScrollDepth').value,
+          autoTriggerExitIntent: document.getElementById('setAutoTriggerExitIntent').checked,
+          autoTriggerUrlPatterns: document.getElementById('setAutoTriggerUrlPatterns').value,
           privacyPolicyUrl: document.getElementById('setPrivacyUrl').value,
           emailPlatform: selectedEmailPlatform,
           emailPlatformApiKey: document.getElementById('setEmailApiKey').value,
@@ -5348,7 +5483,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       +   '<div class="stat-card"><span class="stat-label">AI Resolution</span><span class="stat-value teal">' + aiPct + '%</span><span class="stat-detail">' + aiOnly + ' without escalation</span></div>'
       +   '<div class="stat-card"><span class="stat-label">Avg Duration</span><span class="stat-value green">' + avgDuration + 'm</span><span class="stat-detail">' + (total > 0 ? 'Per conversation' : 'No data') + '</span></div>'
       +   '<div class="stat-card"><span class="stat-label">Avg Messages</span><span class="stat-value">' + avgMessages + '</span><span class="stat-detail">' + (total > 0 ? 'Per conversation' : 'No data') + '</span></div>'
-      +   '<div class="stat-card"><span class="stat-label">Quality Score</span><span class="stat-value" style="color:var(--amber)">' + avgRating + (avgRating !== '—' ? '/5' : '') + '</span><span class="stat-detail">' + ratedCount + ' scored' + (ratedCount===1?'':'') + '</span></div>'
+      +   '<div class="stat-card"><span class="stat-label">CSAT</span><span class="stat-value" style="color:var(--amber)">' + avgRating + (avgRating !== '—' ? '/5' : '') + '</span><span class="stat-detail">' + ratedCount + ' rated</span></div>'
       +   '<div class="stat-card"><span class="stat-label">Escalated</span><span class="stat-value" style="color:var(--amber)">' + escalated + '</span><span class="stat-detail">' + (total > 0 ? 'To a human agent' : 'No data') + '</span></div>'
       +   '<div class="stat-card"><span class="stat-label">Peak Hour</span><span class="stat-value" style="font-size:var(--text-xl)">' + peakStr + '</span><span class="stat-detail">' + (peakCount > 0 ? peakCount + ' conversation' + (peakCount!==1?'s':'') : 'No data') + '</span></div>'
       + '</div>'
@@ -5384,7 +5519,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
           +     '</div>'
           +   '</div>'
           +   '<div class="split-card">'
-          +     '<h4>Quality Distribution</h4>'
+          +     '<h4>Customer Satisfaction (CSAT)</h4>'
           +     (ratedCount > 0
                 ? ('<div style="display:flex;align-items:flex-end;gap:var(--space-2);height:80px;margin-top:var(--space-2)">'
                   + ratingDist.map(function(count, i) {
@@ -5395,7 +5530,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
                         + '</div>';
                     }).join('')
                   + '</div>')
-                : '<div style="font-size:var(--text-sm);color:var(--text-muted);padding:var(--space-5) 0">Quality scoring runs when conversations close — scores will appear here.</div>')
+                : '<div style="font-size:var(--text-sm);color:var(--text-muted);padding:var(--space-5) 0">Visitor ratings appear here once visitors rate their chats.</div>')
           +   '</div>'
           + '</div>')
         : '')
@@ -6070,8 +6205,9 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
   window._handleFileSelect = function(input) {
     var file = input.files && input.files[0];
     if (!file) return;
-    var maxSize = 10 * 1024 * 1024; // 10MB
-    if (file.size > maxSize) { alert('File too large. Maximum size is 10MB.'); input.value = ''; return; }
+    var isImg = file.type && file.type.indexOf('image/') === 0;
+    var maxSize = isImg ? 15 * 1024 * 1024 : 4 * 1024 * 1024; // images are downscaled before upload
+    if (file.size > maxSize) { alert(isImg ? 'Image too large (max 15MB).' : 'File too large (max 4MB).'); input.value = ''; return; }
 
     pendingFile = { name: file.name, size: file.size, type: file.type, file: file };
     var sizeStr = file.size < 1024 ? file.size + 'B' : file.size < 1048576 ? (file.size / 1024).toFixed(1) + 'KB' : (file.size / 1048576).toFixed(1) + 'MB';
@@ -6096,39 +6232,65 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     bar.innerHTML = '';
   };
 
-  // Override sendMessage to include file attachment
+  // Override sendMessage to upload + attach the pending file (Vercel Blob).
+  async function dashDownscale(file){
+    try {
+      if (!/^image\/(jpeg|png|webp)$/.test(file.type)) return file;
+      var bmp = await createImageBitmap(file);
+      var maxDim = 1600, scale = Math.min(1, maxDim / Math.max(bmp.width, bmp.height));
+      if (scale >= 1 && file.size <= 4*1024*1024) { if (bmp.close) bmp.close(); return file; }
+      var w = Math.round(bmp.width*scale), h = Math.round(bmp.height*scale);
+      var cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+      cv.getContext('2d').drawImage(bmp, 0, 0, w, h); if (bmp.close) bmp.close();
+      var blob = await new Promise(function(r){ cv.toBlob(r, 'image/jpeg', 0.85); });
+      if (blob && blob.size < file.size) { blob.name = (file.name||'image').replace(/\.[^.]+$/,'') + '.jpg'; return blob; }
+      return file;
+    } catch(e){ return file; }
+  }
+  async function uploadAttachment(file){
+    var f = (file.type && file.type.indexOf('image/') === 0) ? await dashDownscale(file) : file;
+    var url = '/api/upload?clientName=' + encodeURIComponent(CONFIG.CLIENT_NAME || '');
+    var res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': f.type || 'application/octet-stream', 'X-Filename': (f.name || file.name || 'file').replace(/[^\x20-\x7E]/g, '_').slice(0, 180) },
+      body: f
+    });
+    if (!res.ok) { var e = await res.json().catch(function(){ return {}; }); throw new Error(e.error || 'Upload failed'); }
+    return await res.json();
+  }
   var _origSendMessage = sendMessage;
-  sendMessage = function() {
-    if (pendingFile) {
-      var text = msgInput.value.trim();
-      var fileInfo = { name: pendingFile.name, size: pendingFile.size, type: pendingFile.type };
+  sendMessage = async function() {
+    if (!pendingFile) { _origSendMessage(); return; }
+    if (!activeConvId) return;
+    var conv = conversations[activeConvId];
+    if (!conv) return;
+    var text = msgInput.value.trim();
+    var theFile = pendingFile.file;
+    sendBtn.disabled = true;
+    var att;
+    try { att = await uploadAttachment(theFile); }
+    catch (e) { alert(e.message || 'Upload failed'); sendBtn.disabled = false; return; }
 
-      var msg = {
-        from: 'agent',
-        text: (text ? text + '\n' : '') + '📎 ' + pendingFile.name,
-        agentId: CONFIG.AGENT_ID,
-        agentName: CONFIG.AGENT_NAME,
-        timestamp: new Date().toISOString(),
-        attachment: fileInfo
-      };
+    var msg = {
+      id: 'm_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
+      from: 'agent', text: text,
+      agentId: CONFIG.AGENT_ID, agentName: CONFIG.AGENT_NAME,
+      timestamp: new Date().toISOString(),
+      status: conv.source === 'whatsapp' ? null : 'sent',
+      attachment: { url: att.url, name: att.name, contentType: att.contentType, size: att.size }
+    };
+    if (conv.channel) conv.channel.publish('message', msg);
+    // WhatsApp has no widget to render the file; share the link as text.
+    if (conv.source === 'whatsapp') waSend(conv, (text ? text + '\n' : '') + att.url);
+    conv.messages.push(msg);
+    appendMessage(msg);
+    scrollChat();
+    renderConvList();
 
-      var conv = conversations[activeConvId];
-      if (conv) {
-        if (conv.channel) conv.channel.publish('message', msg);
-        conv.messages.push(msg);
-        appendMessage(msg);
-        scrollChat();
-        renderConvList();
-      }
-
-      msgInput.value = '';
-      msgInput.style.height = 'auto';
-      sendBtn.disabled = true;
-      window._removeFile();
-      return;
-    }
-    // No file — use original send
-    _origSendMessage();
+    msgInput.value = '';
+    msgInput.style.height = 'auto';
+    sendBtn.disabled = true;
+    window._removeFile();
   };
 
   // ─── QUICK REPLIES DRAWER TOGGLE ───

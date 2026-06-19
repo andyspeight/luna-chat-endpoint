@@ -106,6 +106,9 @@ module.exports = async function handler(req, res) {
           autoTriggerEnabled: !!fields.AutoTriggerEnabled,
           autoTriggerDelay: fields.AutoTriggerDelay || 30,
           autoTriggerMessage: fields.AutoTriggerMessage || '',
+          autoTriggerScrollDepth: fields.AutoTriggerScrollDepth || 0,
+          autoTriggerExitIntent: !!fields.AutoTriggerExitIntent,
+          autoTriggerUrlPatterns: fields.AutoTriggerUrlPatterns || '',
           privacyPolicyUrl: fields.PrivacyPolicyUrl || '',
           emailPlatform: fields.EmailPlatform ? (typeof fields.EmailPlatform === 'object' ? fields.EmailPlatform.name : fields.EmailPlatform) : 'none',
           emailPlatformApiKey: fields.EmailPlatformApiKey || '',
@@ -166,6 +169,9 @@ module.exports = async function handler(req, res) {
       if (body.autoTriggerEnabled !== undefined) updateFields.AutoTriggerEnabled = body.autoTriggerEnabled;
       if (body.autoTriggerDelay !== undefined) updateFields.AutoTriggerDelay = parseInt(body.autoTriggerDelay) || 30;
       if (body.autoTriggerMessage !== undefined) updateFields.AutoTriggerMessage = body.autoTriggerMessage;
+      if (body.autoTriggerScrollDepth !== undefined) updateFields.AutoTriggerScrollDepth = Math.max(0, Math.min(100, parseInt(body.autoTriggerScrollDepth) || 0));
+      if (body.autoTriggerExitIntent !== undefined) updateFields.AutoTriggerExitIntent = !!body.autoTriggerExitIntent;
+      if (body.autoTriggerUrlPatterns !== undefined) updateFields.AutoTriggerUrlPatterns = String(body.autoTriggerUrlPatterns || '').slice(0, 500);
       if (body.privacyPolicyUrl !== undefined) updateFields.PrivacyPolicyUrl = body.privacyPolicyUrl;
       if (body.emailPlatform !== undefined) updateFields.EmailPlatform = body.emailPlatform;
       if (body.emailPlatformApiKey !== undefined) updateFields.EmailPlatformApiKey = body.emailPlatformApiKey;

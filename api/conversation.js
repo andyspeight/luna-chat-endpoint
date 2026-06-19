@@ -32,7 +32,9 @@ const F = {
   startedAt: 'fldSoy7BMqyzVb5pp', // StartedAt
   updatedAt: 'fld1GghMiUnAmdtow', // UpdatedAt
   history:   'fldZ38GYN4XbHGl03', // History (long text)
-  email:     'fldZXcvl7k3FS5Gu7'  // Email
+  email:     'fldZXcvl7k3FS5Gu7', // Email
+  visitorId: 'fldHkuGAIZMHYLWoC', // VisitorId (for returning/cross-device recall)
+  rating:    'fldw186Uuq2CP4hIc'  // VisitorRating (CSAT, 1-5)
 };
 
 const HANDLERS = ['Bot', 'AI', 'Waiting', 'Agent', 'Closed', 'Resolved'];
@@ -105,6 +107,13 @@ module.exports = async function handler(req, res) {
   }
   if (body.email && isValidEmail(body.email.trim())) {
     fields[F.email] = body.email.trim();
+  }
+  if (typeof body.visitorId === 'string' && /^[A-Za-z0-9_\-]{6,64}$/.test(body.visitorId.trim())) {
+    fields[F.visitorId] = body.visitorId.trim();
+  }
+  var _rating = Number(body.rating);
+  if (Number.isInteger(_rating) && _rating >= 1 && _rating <= 5) {
+    fields[F.rating] = _rating; // visitor CSAT
   }
   if (typeof body.handler === 'string' && HANDLERS.indexOf(body.handler) !== -1) {
     fields[F.handler] = body.handler;

@@ -21,6 +21,7 @@ const F = {
   lastMessageAt: 'fld1GghMiUnAmdtow',
   transcript: 'fld8fMjyXWmKcacoB',
   qualityScore: 'fld4mQMkFTccEE4T4',
+  visitorRating: 'fldw186Uuq2CP4hIc',
   wasAnswered: 'fldvmBP6C6MBa95K6',
   wasEscalated: 'fld3JapxKxGsBxPCQ',
   topicTags: 'fldQNFhnyo3W2ngTZ',
@@ -101,6 +102,7 @@ function shapeRecord(rec) {
     durationMins: durationMins,
     messageCount: countMessagesInTranscript(f.Transcript || ''),
     qualityScore: typeof f.QualityScore === 'number' ? f.QualityScore : null,
+    visitorRating: typeof f.VisitorRating === 'number' ? f.VisitorRating : null,
     wasAnswered: !!f.WasAnswered,
     wasEscalated: !!f.WasEscalated,
     topicTags: tags,
@@ -129,15 +131,15 @@ function computeMetrics(records) {
     ? (msgCounts.reduce(function(s,n){ return s + n; }, 0) / msgCounts.length)
     : 0;
 
-  // Quality score buckets (1..5) — using QualityScore as the rating proxy until we add a real visitor-rating field
+  // Visitor CSAT (1..5) from the real VisitorRating field (distinct from the AI QualityScore).
   var ratingDist = [0, 0, 0, 0, 0];
   var ratedCount = 0;
   var ratingSum = 0;
   shaped.forEach(function(r){
-    if (r.qualityScore && r.qualityScore >= 1 && r.qualityScore <= 5) {
-      ratingDist[r.qualityScore - 1]++;
+    if (r.visitorRating && r.visitorRating >= 1 && r.visitorRating <= 5) {
+      ratingDist[r.visitorRating - 1]++;
       ratedCount++;
-      ratingSum += r.qualityScore;
+      ratingSum += r.visitorRating;
     }
   });
   var avgRating = ratedCount > 0 ? (ratingSum / ratedCount) : null;

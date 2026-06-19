@@ -1683,6 +1683,8 @@ var visitorId = "";
 var autoTriggerTimer = null;
 var autoTriggered = false;
 var visitorInteracted = false;
+var autoTriggerScrollHandler = null;
+var autoTriggerExitHandler = null;
 var conversationLang = "";
 var currentScreen = "home"; /* "home" or "chat" */
 var sessionRestored = false;
@@ -1794,6 +1796,8 @@ function restoreSession() {
 /* ─── AUTO-TRIGGER HELPERS ───────────────────────────────── */
 function cancelAutoTrigger() {
   if (autoTriggerTimer) { clearTimeout(autoTriggerTimer); autoTriggerTimer = null; }
+  if (autoTriggerScrollHandler) { window.removeEventListener("scroll", autoTriggerScrollHandler); autoTriggerScrollHandler = null; }
+  if (autoTriggerExitHandler) { document.removeEventListener("mouseout", autoTriggerExitHandler); autoTriggerExitHandler = null; }
   visitorInteracted = true;
 }
 
@@ -2204,6 +2208,17 @@ function injectCSS() {
   +'#tgx-cw .tgx-input-wrap{padding:12px 16px 14px;border-top:1px solid rgba(15,26,61,0.06);background:#fff;flex-shrink:0;display:flex;gap:8px;align-items:flex-end}'
   +'#tgx-cw .tgx-input-inner{flex:1;display:flex;align-items:center;gap:8px;background:#FAFAF6;border:1px solid rgba(15,26,61,0.10);border-radius:999px;padding:4px 4px 4px 16px;transition:all .2s ease}'
   +'#tgx-cw .tgx-input-inner:focus-within{background:#fff;border-color:'+C.accentColor+';box-shadow:0 0 0 4px '+C.accentColor+'1A}'
+  +'#tgx-cw .tgx-attach{width:34px;height:34px;border:none;background:transparent;color:'+C.accentColor+';border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;padding:0;transition:background .15s}'
+  +'#tgx-cw .tgx-attach:hover{background:'+C.accentColor+'1A}'
+  +'#tgx-cw .tgx-attach:disabled{opacity:.5;cursor:default}'
+  +'#tgx-cw .tgx-att-img{display:block;margin-top:4px;max-width:220px}'
+  +'#tgx-cw .tgx-att-img img{display:block;max-width:100%;max-height:240px;border-radius:12px;border:1px solid rgba(15,26,61,0.08)}'
+  +'#tgx-cw .tgx-att-file{display:inline-flex;align-items:center;gap:10px;margin-top:4px;padding:10px 12px;background:#fff;border:1px solid rgba(15,26,61,0.10);border-radius:12px;text-decoration:none;max-width:240px}'
+  +'#tgx-cw .tgx-msg-row.user .tgx-att-file{background:'+C.brandColor+'14}'
+  +'#tgx-cw .tgx-att-ic{width:30px;height:30px;border-radius:8px;background:'+C.accentColor+';display:flex;align-items:center;justify-content:center;flex-shrink:0}'
+  +'#tgx-cw .tgx-att-meta{display:flex;flex-direction:column;min-width:0}'
+  +'#tgx-cw .tgx-att-name{font-size:13px;font-weight:600;color:#0F1A3D;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+  +'#tgx-cw .tgx-att-size{font-size:11px;color:#6B7280}'
   +'#tgx-cw .tgx-input{flex:1;background:none;border:none;padding:9px 0;font-size:14px;color:'+C.brandColor+';outline:none;line-height:1.4;font-family:inherit}'
   +'#tgx-cw .tgx-input::placeholder{color:#8A92A0;opacity:1}'
   +'#tgx-cw .tgx-send{width:38px;height:38px;border-radius:50%;background:'+C.accentColor+';border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:transform .15s,box-shadow .2s;box-shadow:0 4px 10px '+C.accentColor+'40,inset 0 1px 0 rgba(255,255,255,0.18)}'
@@ -2730,7 +2745,7 @@ function buildDOM() {
       +'<div class="tgx-typing-row" id="tgxTypingRow"><div id="tgxTypingAvatar"></div><div class="tgx-typing" id="tgxTyping"><span></span><span></span><span></span></div><div class="tgx-typing-status" id="tgxTypingStatus"></div></div>'
       +'<div id="tgxPills" class="tgx-pills"></div>'
       +'<div class="tgx-email-bar" id="tgxEmailBar"><span class="tgx-email-link" id="tgxEmailLink">&#128231; Email this chat</span></div>'
-      +'<div class="tgx-input-wrap"><div class="tgx-input-inner"><input class="tgx-input" id="tgxInput" placeholder="Ask me anything..." autocomplete="off"><button class="tgx-mic" id="tgxChatMic" type="button" aria-label="Voice input" title="Voice input"></button></div><button class="tgx-send" id="tgxSend"></button></div>'
+      +'<div class="tgx-input-wrap"><div class="tgx-input-inner"><input class="tgx-input" id="tgxInput" placeholder="Ask me anything..." autocomplete="off"><button class="tgx-attach" id="tgxAttach" type="button" aria-label="Attach a file" title="Attach a file"></button><button class="tgx-mic" id="tgxChatMic" type="button" aria-label="Voice input" title="Voice input"></button></div><button class="tgx-send" id="tgxSend"></button></div><input type="file" id="tgxFileInput" accept="'+ATT_ACCEPT+'" style="display:none">'
       +'<div class="tgx-esc-bar" id="tgxEscBar"><button class="tgx-esc-btn human" id="tgxHuman"></button><button class="tgx-esc-btn leave" id="tgxLeave"></button></div>'
       +'<div class="tgx-footer" id="tgxFooterChat"></div>'
     +'</div>'
@@ -3295,6 +3310,115 @@ function addMsg(role, text, noStore, originalText, pendingPills, blocks) {
   if ($emailBar && msgs.length >= 3) $emailBar.style.display = "block";
 }
 
+/* ─── FILE / IMAGE ATTACHMENTS ───────────────────────────────
+   Visitors can send images and documents. Files upload to /api/upload
+   (Vercel Blob) and are shared with the agent over Ably as a `message`
+   carrying an `attachment` {url,name,contentType,size}. */
+var ATT_MAX = 4 * 1024 * 1024;
+var ATT_ACCEPT = "image/jpeg,image/png,image/gif,image/webp,application/pdf,.doc,.docx,.xls,.xlsx,.csv,.txt";
+var ATT_TYPES = { "image/jpeg":1,"image/png":1,"image/gif":1,"image/webp":1,"application/pdf":1,"application/msword":1,"application/vnd.openxmlformats-officedocument.wordprocessingml.document":1,"application/vnd.ms-excel":1,"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":1,"text/csv":1,"text/plain":1 };
+function fmtSize(n){ n = n || 0; return n < 1024 ? n + "B" : n < 1048576 ? (n/1024).toFixed(1) + "KB" : (n/1048576).toFixed(1) + "MB"; }
+
+/* Downscale big JPEG/PNG/WebP photos so they fit comfortably under the cap. */
+async function downscaleImage(file){
+  try {
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type)) return file;
+    var bmp = await createImageBitmap(file);
+    var maxDim = 1600, scale = Math.min(1, maxDim / Math.max(bmp.width, bmp.height));
+    if (scale >= 1 && file.size <= ATT_MAX) { if (bmp.close) bmp.close(); return file; }
+    var w = Math.round(bmp.width * scale), h = Math.round(bmp.height * scale);
+    var cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+    cv.getContext("2d").drawImage(bmp, 0, 0, w, h); if (bmp.close) bmp.close();
+    var blob = await new Promise(function(r){ cv.toBlob(r, "image/jpeg", 0.85); });
+    if (blob && blob.size < file.size) { blob.name = (file.name || "image").replace(/\.[^.]+$/, "") + ".jpg"; return blob; }
+    return file;
+  } catch(e){ return file; }
+}
+
+async function uploadFile(file){
+  var f = file;
+  if (/^image\//.test(file.type)) f = await downscaleImage(file);
+  var type = f.type || file.type || "";
+  var name = f.name || file.name || "file";
+  if (!ATT_TYPES[type]) { sysMsg("Sorry — that file type isn't supported."); return null; }
+  if (f.size > ATT_MAX) { sysMsg("That file is too large (max 4MB)."); return null; }
+  try {
+    var url = C.endpoint.replace("/api/luna-chat", "/api/upload") + "?clientName=" + encodeURIComponent(C.clientName || "");
+    var res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": type, "X-Filename": name.replace(/[^\x20-\x7E]/g, "_").slice(0, 180) },
+      body: f
+    });
+    if (!res.ok) { var e = await res.json().catch(function(){ return {}; }); sysMsg(e.error || "Upload failed."); return null; }
+    return await res.json(); // { url, name, contentType, size }
+  } catch(e){ sysMsg("Upload failed — please try again."); return null; }
+}
+
+function buildAttachmentEl(att){
+  var a = document.createElement("a");
+  a.href = att.url; a.target = "_blank"; a.rel = "noopener";
+  if (att && /^image\//.test(att.contentType || "")) {
+    a.className = "tgx-att-img";
+    var img = document.createElement("img"); img.src = att.url; img.alt = att.name || "image"; img.loading = "lazy";
+    a.appendChild(img);
+  } else {
+    a.className = "tgx-att-file";
+    var ic = document.createElement("span"); ic.className = "tgx-att-ic";
+    ic.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+    var meta = document.createElement("span"); meta.className = "tgx-att-meta";
+    var nm = document.createElement("span"); nm.className = "tgx-att-name"; nm.textContent = att.name || "file";
+    var sz = document.createElement("span"); sz.className = "tgx-att-size"; sz.textContent = fmtSize(att.size);
+    meta.appendChild(nm); meta.appendChild(sz); a.appendChild(ic); a.appendChild(meta);
+  }
+  return a;
+}
+
+function appendAttachmentRow(role, att, caption){
+  var row = document.createElement("div");
+  row.className = "tgx-msg-row" + (role === "user" ? " user" : "");
+  if (role === "bot" || role === "agent") row.appendChild(makeAvatar(26, false));
+  var col = document.createElement("div"); col.className = "tgx-msg-col";
+  if (caption) { var b = document.createElement("div"); b.className = "tgx-msg " + role; renderSafeMarkdown(b, caption); col.appendChild(b); }
+  col.appendChild(buildAttachmentEl(att));
+  var t = document.createElement("span"); t.className = "tgx-msg-time";
+  var now = new Date(); t.textContent = ("0"+now.getHours()).slice(-2)+":"+("0"+now.getMinutes()).slice(-2);
+  col.appendChild(t);
+  row.appendChild(col); $msgs.appendChild(row);
+  return row;
+}
+
+function sendAttachment(att, caption){
+  ensureConversationStarted();
+  var _mid = newMsgId();
+  rememberInteraction(caption || ("[shared a file: " + (att.name || "file") + "]"));
+  appendAttachmentRow("user", att, caption);
+  attachReceipt($msgs.lastElementChild, _mid, "sent");
+  msgs.push({ role: "user", content: caption || "", attachment: att, id: _mid, status: "sent", ts: Date.now() });
+  saveSession();
+  scrollBottom();
+  publishMessage("visitor", caption || "", _mid, att);
+}
+
+/* Wire the attach button + hidden file input (DOM created in buildDOM). */
+function wireFileAttach(){
+  var btn = document.getElementById("tgxAttach");
+  var input = document.getElementById("tgxFileInput");
+  if (!btn || !input) return;
+  btn.addEventListener("click", function(){ if (currentScreen !== "chat") switchToChat(); input.click(); });
+  input.addEventListener("change", async function(){
+    var file = input.files && input.files[0];
+    input.value = "";
+    if (!file) return;
+    var caption = ($input && $input.value.trim()) || "";
+    btn.disabled = true;
+    var att = await uploadFile(file);
+    btn.disabled = false;
+    if (!att) return;
+    if (caption && $input) $input.value = "";
+    sendAttachment(att, caption);
+  });
+}
+
 /* ─── HELPER: appendBubbleRow — renders a single prose message bubble ─── */
 function appendBubbleRow(role, text) {
   var row = document.createElement("div");
@@ -3725,6 +3849,21 @@ function initAbly() {
   chatChannel.subscribe("message", function(msg){
     var d = msg.data;
     if (d && d.from === "agent") {
+      // Acknowledge receipt so the agent sees delivered/read on their message.
+      if (d.id) {
+        publishReceipt([d.id], "delivered");
+        if (panelOpen && document.visibilityState === "visible") publishReceipt([d.id], "read");
+        else pendingReadIds.push(d.id);
+      }
+      // Agent shared a file/image.
+      if (d.attachment) {
+        appendAttachmentRow("agent", d.attachment, d.text || "");
+        msgs.push({ role: "agent", content: d.text || "", attachment: d.attachment, ts: Date.now() });
+        saveSession();
+        scrollBottom();
+        if (!panelOpen) { unread++; $badge.textContent = unread; $badge.style.display = "flex"; }
+        return;
+      }
       // Show the agent's reply in the visitor's language. Prefer the dashboard's
       // hint (translateTo); otherwise fall back to the language we detected for
       // THIS visitor (conversationLang). The widget is the reliable source of the
@@ -3774,6 +3913,27 @@ function initAbly() {
       typingTimeout = setTimeout(function(){ $typing.classList.remove("active"); }, 2000);
     }
   });
+
+  /* Agent acking OUR (visitor) messages -> update ticks + persist for restore. */
+  chatChannel.subscribe("receipt", function(msg){
+    var d = msg.data;
+    if (!d || d.by !== "agent" || !Array.isArray(d.ids)) return;
+    d.ids.forEach(function(id){ setReceipt(id, d.status); });
+    if (msgs && msgs.length){
+      msgs.forEach(function(m){
+        if (m.id && d.ids.indexOf(m.id) !== -1 && rcptRank(d.status) > rcptRank(m.status)) m.status = d.status;
+      });
+      saveSession();
+    }
+  });
+
+  /* When the visitor returns to the tab with the panel open, send pending reads. */
+  if (!_visHooked) {
+    _visHooked = true;
+    document.addEventListener("visibilitychange", function(){
+      if (document.visibilityState === "visible" && panelOpen) flushReadReceipts();
+    });
+  }
 
   ably.connection.on("connected", function(){
     console.log("Luna widget: Ably connected (token auth), convId=" + convId);
@@ -3847,6 +4007,10 @@ function persistConversation(payload) {
     var url = C.endpoint.replace("/api/luna-chat", "/api/conversation");
     var data = { convId: convId, clientName: C.clientName || "" };
     if (payload) { for (var k in payload) { if (payload[k] !== undefined && payload[k] !== null) data[k] = payload[k]; } }
+    // Always carry the visitor identity so the record supports returning /
+    // cross-device recall (server reads these back via /api/visitor-history).
+    if (visitorId) data.visitorId = visitorId;
+    if (visitorEmail && !data.email) data.email = visitorEmail;
     return fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -3855,9 +4019,48 @@ function persistConversation(payload) {
   } catch (e) { console.warn("Luna widget: conversation persist error:", e.message); }
 }
 
-function publishMessage(from, text) {
+function publishMessage(from, text, id, attachment) {
   if (!chatChannel) return;
-  chatChannel.publish("message", { from: from, text: text, lang: conversationLang || "English", timestamp: new Date().toISOString() });
+  var payload = { from: from, text: text, lang: conversationLang || "English", timestamp: new Date().toISOString() };
+  if (id) payload.id = id;
+  if (attachment) payload.attachment = attachment;
+  chatChannel.publish("message", payload);
+}
+
+/* ─── READ RECEIPTS ──────────────────────────────────────────
+   Visitor messages carry an id; the dashboard acks them with a
+   'receipt' (by:"agent") which we render as ticks under the bubble.
+   Conversely we ack the agent's messages (by:"visitor"). Ticks:
+   ✓ sent · ✓✓ delivered · ✓✓ (accent) read. */
+var receiptEls = {};        /* visitor msgId -> status <span> element */
+var pendingReadIds = [];    /* agent msg ids received while panel closed/hidden */
+var _visHooked = false;
+function newMsgId(){ return "m_" + Date.now() + "_" + Math.random().toString(36).slice(2,8); }
+function rcptRank(s){ return s === "read" ? 2 : s === "delivered" ? 1 : 0; }
+function setReceipt(id, status){
+  var el = receiptEls[id];
+  if (!el || rcptRank(status) < rcptRank(el._st)) return; /* monotonic */
+  el._st = status;
+  el.textContent = status === "sent" ? "✓" : "✓✓";
+  el.title = status === "read" ? "Read" : status === "delivered" ? "Delivered" : "Sent";
+  el.style.color = status === "read" ? (C.accentColor || "#3b82f6") : "rgba(15,26,61,0.35)";
+}
+function attachReceipt(rowEl, id, status){
+  if (!rowEl || !id) return;
+  var col = rowEl.querySelector(".tgx-msg-col") || rowEl;
+  var span = document.createElement("span");
+  span.className = "tgx-rcpt";
+  span.style.cssText = "display:block;text-align:right;font-size:11px;line-height:1;margin:2px 2px 0";
+  receiptEls[id] = span;
+  col.appendChild(span);
+  setReceipt(id, status || "sent");
+}
+function publishReceipt(ids, status){
+  if (!chatChannel || !ids || !ids.length) return;
+  chatChannel.publish("receipt", { ids: ids, status: status, by: "visitor" });
+}
+function flushReadReceipts(){
+  if (pendingReadIds.length){ publishReceipt(pendingReadIds.slice(), "read"); pendingReadIds = []; }
 }
 
 function publishHandlerChange(handler) {
@@ -3900,6 +4103,7 @@ function showNameOverlay() {
       visitorEmail = ei.value.trim();
       marketingConsent = mi.checked;
       nameCollected = true;
+      try { var _p = ensureProfile(); if (userName) _p.name = userName; if (visitorEmail) _p.email = visitorEmail; _p.marketingConsent = marketingConsent; saveVisitorProfile(_p); } catch(e){}
       var emailValid = visitorEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(visitorEmail);
       if (emailValid && marketingConsent) {
         fetch(C.endpoint.replace("/api/luna-chat", "/api/subscribe"), {
@@ -3907,6 +4111,9 @@ function showNameOverlay() {
           body: JSON.stringify({ clientName: C.clientName, name: userName, email: visitorEmail })
         }).catch(function(e){ console.warn("Luna widget: subscribe error:", e); });
       }
+      // Cross-device recall: now that we have an email, see if this person has
+      // chatted with this client before (possibly on another device).
+      if (emailValid) { try { fetchServerMemory(); } catch(e){} }
       saveSession();
       ov.remove();
       /* Home screen is already visible underneath — no need to switch */
@@ -4162,6 +4369,7 @@ function showRatingOverlay(ratingChannel) {
       star.addEventListener("click", function(){
         var val = parseInt(this.getAttribute("data-v"));
         if (ratingChannel) ratingChannel.publish("rating", {rating: val});
+        try { persistConversation({ rating: val }); } catch(e){}
         ov.innerHTML = '<h3>Thanks for your feedback!</h3><p>You can start a new chat anytime.</p>';
         setTimeout(function(){ if (ov.parentNode) ov.remove(); }, 2000);
       });
@@ -4196,6 +4404,7 @@ async function streamFromLuna(userText) {
   var requestBody = {
     message: userText, convId: convId, visitorName: userName || undefined,
     clientName: C.clientName, history: history.slice(-16), page: window.location.pathname,
+    visitorContext: visitorMemoryContext || undefined,
     stream: true,
     useAck: true,
     // useTwoPass disabled 21 May 2026. The parallel two-call architecture
@@ -4566,7 +4775,8 @@ async function callLuna(userText) {
   try {
     var requestBody = {
       message: userText, convId: convId, visitorName: userName || undefined,
-      clientName: C.clientName, history: history.slice(-16), page: window.location.pathname
+      clientName: C.clientName, history: history.slice(-16), page: window.location.pathname,
+      visitorContext: visitorMemoryContext || undefined
     };
     /* Attach the redacted booking summary if the visitor has retrieved a
        booking earlier in this session. Lets Luna answer follow-up questions
@@ -4677,7 +4887,11 @@ async function sendToAI(text) {
   clearPills();
   /* Ensure we're on chat screen */
   if (currentScreen !== "chat") switchToChat();
+  var _mid = newMsgId();
+  rememberInteraction(text);
   addMsg("user", text);
+  attachReceipt($msgs.lastElementChild, _mid, "sent");
+  if (msgs.length) { msgs[msgs.length-1].id = _mid; msgs[msgs.length-1].status = "sent"; saveSession(); }
   $input.value = "";
   $input.disabled = true;
   $typing.classList.add("active");
@@ -4685,7 +4899,7 @@ async function sendToAI(text) {
   scrollBottom();
 
   ensureConversationStarted();
-  publishMessage("visitor", text);
+  publishMessage("visitor", text, _mid);
 
   // Streaming is on by default. Gracefully degrades to non-streaming if the
   // server doesn't honour stream=true (older deployments) or the browser
@@ -4792,9 +5006,13 @@ async function sendToAI(text) {
 /* ─── SEND MESSAGE (Live mode) ───────────────────────────── */
 function sendToAgent(text) {
   if (!text.trim()) return;
+  var _mid = newMsgId();
+  rememberInteraction(text);
   clearPills(); addMsg("user", text);
+  attachReceipt($msgs.lastElementChild, _mid, "sent");
+  if (msgs.length) { msgs[msgs.length-1].id = _mid; msgs[msgs.length-1].status = "sent"; saveSession(); }
   $input.value = "";
-  publishMessage("visitor", text);
+  publishMessage("visitor", text, _mid);
 }
 
 /* ─── ESCALATE TO HUMAN ─────────────────────────────────── */
@@ -4855,9 +5073,100 @@ async function escalateToHuman() {
 }
 
 /* ─── START CHAT ─────────────────────────────────────────── */
+/* ─── RETURNING-VISITOR MEMORY ───────────────────────────────
+   A per-client profile in the visitor's OWN localStorage lets Luna
+   recognise a returning visitor across days (same browser) and recall
+   what they were interested in. Purely client-side — nothing extra is
+   stored server-side; the data lives only in the visitor's browser. */
+var visitorProfile = null;
+var isReturningVisitor = false;
+var visitorMemoryContext = "";
+function profileKey(){ return "luna_visitor_" + (C.clientName || "default"); }
+function loadVisitorProfile(){
+  try { var raw = localStorage.getItem(profileKey()); return raw ? JSON.parse(raw) : null; }
+  catch(e){ return null; }
+}
+function saveVisitorProfile(p){
+  try { localStorage.setItem(profileKey(), JSON.stringify(p)); } catch(e){}
+}
+function ensureProfile(){
+  if (!visitorProfile) visitorProfile = loadVisitorProfile() || { memory: [], visits: 0 };
+  if (!Array.isArray(visitorProfile.memory)) visitorProfile.memory = [];
+  return visitorProfile;
+}
+function rememberInteraction(text){
+  if (!text) return;
+  var p = ensureProfile();
+  var t = String(text).replace(/\s+/g, " ").trim().slice(0, 140);
+  if (t && p.memory[p.memory.length - 1] !== t) p.memory.push(t);
+  if (p.memory.length > 8) p.memory = p.memory.slice(-8);
+  p.lastSeen = Date.now();
+  if (userName) p.name = userName;
+  if (visitorEmail) p.email = visitorEmail;
+  if (typeof marketingConsent === "boolean") p.marketingConsent = marketingConsent;
+  saveVisitorProfile(p);
+}
+function buildVisitorMemoryContext(p){
+  if (!p) return "";
+  var parts = [];
+  if (p.name) parts.push("Name: " + p.name);
+  if (p.serverSummary) parts.push(p.serverSummary);
+  if (p.memory && p.memory.length) parts.push("Recently they mentioned or asked about: " + p.memory.slice(-6).join(" | "));
+  if (!parts.length) return "";
+  return "This is a RETURNING visitor (not their first conversation). " + parts.join(". ")
+    + ". Welcome them back warmly when it reads naturally, and draw on this only when relevant. Do NOT invent past details beyond what is stated here.";
+}
+
+/* Cross-device recall: ask the server whether this email / visitorId has chatted
+   with this client before, and merge that memory in (best-effort, async). */
+function fetchServerMemory(){
+  try {
+    var email = visitorEmail || (visitorProfile && visitorProfile.email) || "";
+    if (!email && !visitorId) return;
+    var url = C.endpoint.replace("/api/luna-chat", "/api/visitor-history");
+    fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientName: C.clientName, email: email || undefined, visitorId: visitorId || undefined })
+    })
+    .then(function(r){ return (r && r.ok) ? r.json() : null; })
+    .then(function(dd){
+      if (!dd || !dd.found) return;
+      var p = ensureProfile();
+      if (dd.name && !p.name) p.name = dd.name;
+      if (email && !p.email) p.email = email;
+      if (dd.summary) p.serverSummary = String(dd.summary).slice(0, 500);
+      saveVisitorProfile(p);
+      visitorProfile = p;
+      isReturningVisitor = true;
+      if (p.name && !userName) { userName = p.name; nameCollected = true; }
+      visitorMemoryContext = buildVisitorMemoryContext(p);
+      maybeRegreet();
+    })
+    .catch(function(){});
+  } catch(e){}
+}
+
+/* If only the welcome bubble is showing, upgrade it to a returning-visitor
+   greeting once we learn (possibly async) that this is a returning visitor. */
+function maybeRegreet(){
+  try {
+    if (!isReturningVisitor || !userName || !$msgs) return;
+    if (msgs.length === 1 && (msgs[0].role === "bot" || msgs[0].role === "assistant")) {
+      var bubble = $msgs.querySelector(".tgx-msg.bot");
+      var text = "Welcome back, " + userName + "! How can I help today?";
+      msgs[0].content = text;
+      if (bubble) renderSafeMarkdown(bubble, text);
+      saveSession();
+    }
+  } catch(e){}
+}
+
 function startChat() {
   var welcomeText = C.welcome;
-  if (userName) {
+  if (isReturningVisitor && userName) {
+    welcomeText = "Welcome back, " + userName + "! " + welcomeText.replace(/^Hey there[!,. ]*/i, "").replace(/^Hi there[!,. ]*/i, "");
+  } else if (userName) {
     welcomeText = "Hey " + userName + "! " + welcomeText.replace(/^Hey there! /, "").replace(/^Hey there\b/, "");
   } else {
     welcomeText = applyTimeAwareGreeting(welcomeText);
@@ -5251,6 +5560,28 @@ async function boot() {
     visitorId = "v_" + Date.now() + "_" + Math.random().toString(36).substr(2,9);
   }
 
+  /* Returning-visitor memory — recognise the visitor across days (same browser)
+     and recall their prior context so Luna has continuity. */
+  try {
+    visitorProfile = loadVisitorProfile();
+    if (visitorProfile) {
+      isReturningVisitor = !!((visitorProfile.memory && visitorProfile.memory.length) || visitorProfile.name);
+      visitorMemoryContext = buildVisitorMemoryContext(visitorProfile);
+      if (visitorProfile.name && !userName) userName = visitorProfile.name;
+      if (visitorProfile.email && !visitorEmail) visitorEmail = visitorProfile.email;
+      if (typeof visitorProfile.marketingConsent === "boolean") marketingConsent = visitorProfile.marketingConsent;
+      if (userName) nameCollected = true; /* we already know them — skip the name prompt */
+    }
+    var _vp = ensureProfile();
+    _vp.visits = (_vp.visits || 0) + 1;
+    if (!_vp.firstSeen) _vp.firstSeen = Date.now();
+    _vp.lastSeen = Date.now();
+    saveVisitorProfile(_vp);
+    // If we already know an email (returning same-device visitor), pull richer
+    // cross-device memory from the server. New devices recall at email capture.
+    if ((visitorProfile && visitorProfile.email) || visitorEmail) fetchServerMemory();
+  } catch(e) {}
+
   /* Country detection */
   try {
     var geoRes = await fetch("https://ipapi.co/json/");
@@ -5273,6 +5604,10 @@ async function boot() {
   $badge = document.getElementById("tgxBadge");
   $escBar = document.getElementById("tgxEscBar");
   $emailBar = document.getElementById("tgxEmailBar");
+
+  var _attachBtn = document.getElementById("tgxAttach");
+  if (_attachBtn) _attachBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>';
+  wireFileAttach();
 
   /* Replay stored messages if session was restored */
   if (sessionRestored && msgs.length > 0) {
@@ -5298,7 +5633,10 @@ async function boot() {
     var storedMsgs = msgs.slice();
     msgs = []; /* clear so addMsg re-pushes them */
     storedMsgs.forEach(function(m) {
-      if (m.role === "widget") {
+      if (m.attachment) {
+        appendAttachmentRow(m.role, m.attachment, m.content);
+        msgs.push({ role: m.role, content: m.content || "", attachment: m.attachment, id: m.id, status: m.status, ts: m.ts || Date.now() });
+      } else if (m.role === "widget") {
         /* "content" is the descriptor object — pass through as text param */
         addMsg("widget", m.content, false);
       } else if (m.blocks && Array.isArray(m.blocks) && m.blocks.length > 0) {
@@ -5306,6 +5644,11 @@ async function boot() {
         addMsg(m.role, m.content, false, m.original, null, m.blocks);
       } else {
         addMsg(m.role, m.content, false, m.original);
+      }
+      /* Re-show the read-receipt tick on restored visitor messages. */
+      if (m.role === "user" && m.id) {
+        if (msgs.length) { msgs[msgs.length-1].id = m.id; msgs[msgs.length-1].status = m.status || "sent"; }
+        attachReceipt($msgs.lastElementChild, m.id, m.status || "sent");
       }
     });
     if (currentScreen === "chat") {
@@ -5364,6 +5707,7 @@ async function boot() {
     opts = opts || {};
     cancelAutoTrigger();
     panelOpen = true;
+    flushReadReceipts();
     // Always refresh page context on open — visitor may have navigated.
     _currentPageContext = gatherPageContext();
     if (opts.expanded) {
@@ -5939,15 +6283,19 @@ async function boot() {
 
   loadAbly(function(){ initAbly(); });
 
-  /* Auto-trigger */
+  /* Auto-trigger — proactive outreach by time, scroll depth or exit intent,
+     optionally limited to matching URLs. The first condition to fire wins. */
   var at = C.autoTrigger;
-  if (at && at.enabled && at.delay && at.message) {
+  if (at && at.enabled && at.message) {
     var alreadyTriggered = false;
     try { alreadyTriggered = sessionStorage.getItem("luna_auto_triggered") === "1"; } catch(e) {}
     var isMobileHidden = C.mobileBubble === "hidden" && window.innerWidth < 440;
+    var atPath = (window.location.pathname || "/") + (window.location.search || "");
+    var urlOk = !(at.urlPatterns && at.urlPatterns.length) || at.urlPatterns.some(function(p){ return p && atPath.indexOf(p) !== -1; });
 
-    if (!alreadyTriggered && !isMobileHidden) {
-      autoTriggerTimer = setTimeout(function() {
+    if (!alreadyTriggered && !isMobileHidden && urlOk) {
+      var fireAutoTrigger = function() {
+        cancelAutoTrigger(); // stop the other conditions; only fire once
         if (visitorInteracted || panelOpen || msgs.length > 0 || autoTriggered) return;
         autoTriggered = true;
         try { sessionStorage.setItem("luna_auto_triggered", "1"); } catch(e) {}
@@ -5961,7 +6309,28 @@ async function boot() {
         addMsg("bot", at.message);
         if (C.hints && C.hints.length > 0) showPills(C.hints, function(h){ sendToAI(h); });
         if (!document.hidden) playNotifSound();
-      }, at.delay * 1000);
+      };
+
+      // Time delay
+      if (at.delay && at.delay > 0) {
+        autoTriggerTimer = setTimeout(fireAutoTrigger, at.delay * 1000);
+      }
+      // Scroll depth — fire once the visitor scrolls past N% of the page
+      if (at.scrollDepth && at.scrollDepth > 0) {
+        autoTriggerScrollHandler = function() {
+          var sh = document.documentElement.scrollHeight - window.innerHeight;
+          var pct = sh > 0 ? (window.scrollY / sh) * 100 : 0;
+          if (pct >= at.scrollDepth) fireAutoTrigger();
+        };
+        window.addEventListener("scroll", autoTriggerScrollHandler, { passive: true });
+      }
+      // Exit intent (desktop only) — mouse leaves toward the top of the viewport
+      if (at.exitIntent && !('ontouchstart' in window)) {
+        autoTriggerExitHandler = function(e) {
+          if (!e.relatedTarget && !e.toElement && (e.clientY == null || e.clientY <= 0)) fireAutoTrigger();
+        };
+        document.addEventListener("mouseout", autoTriggerExitHandler);
+      }
     }
   }
 }

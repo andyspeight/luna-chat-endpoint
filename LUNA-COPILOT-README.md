@@ -32,4 +32,6 @@ and inserts text into `#msgInput` the same way canned responses do.
 ## Next stages (in build order)
 2. Customer file/image upload (Vercel Blob + signed upload + Messages attachment + widget drop-zone).
 3. Co-browse (replace the "coming soon" stub).
-4. Omnichannel WhatsApp into the inbox (channel model + Meta Cloud API webhook; needs Meta provisioning to go fully live).
+4. ✅ Omnichannel WhatsApp into the inbox — built. Meta Cloud API webhook +
+   channel model wired into the existing Ably inbox. See `WHATSAPP-SETUP.md`
+   for provisioning + env vars (needs Meta provisioning to go fully live).
