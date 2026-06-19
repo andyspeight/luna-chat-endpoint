@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Luna Chat — Live Showcase</title>
+<style>
+  :root{
+    --ink:#0F1A3D; --ink2:#3B4668; --muted:#8A93AD; --line:#E7EAF3;
+    --bg:#0B1020; --panel:#FAFAFB; --teal:#13C2C2; --teal-d:#0E9C9C;
+    --amber:#F5A623; --green:#22C55E; --brand:#2D5F8C; --accent:#13C2C2;
+    --visitor:#2D5F8C; --shadow:0 12px 40px -12px rgba(15,26,61,.35);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:radial-gradient(1200px 800px at 80% -10%, #16224a 0%, #0B1020 60%);color:#fff;overflow:hidden}
+  .stage{display:flex;flex-direction:column;height:100vh}
+
+  /* Top bar */
+  .bar{display:flex;align-items:center;gap:16px;padding:14px 22px;background:rgba(255,255,255,.04);
+    border-bottom:1px solid rgba(255,255,255,.08);backdrop-filter:blur(8px);flex-shrink:0}
+  .brand{display:flex;align-items:center;gap:12px;font-weight:800;font-size:20px;letter-spacing:.2px}
+  .brand .logo{width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,var(--brand),var(--teal));
+    display:flex;align-items:center;justify-content:center;font-weight:900;box-shadow:0 6px 16px -4px rgba(19,194,194,.6)}
+  .brand small{display:block;font-weight:600;font-size:11px;color:var(--teal);letter-spacing:2px}
+  .controls{margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+  .btn{appearance:none;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.06);color:#fff;
+    padding:9px 14px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;transition:.15s;display:flex;align-items:center;gap:7px}
+  .btn:hover{background:rgba(255,255,255,.13)}
+  .btn.go{background:linear-gradient(135deg,var(--teal),var(--teal-d));border:none;font-size:15px;padding:11px 22px;
+    box-shadow:0 8px 20px -6px rgba(19,194,194,.7)}
+  .btn.go.running{background:linear-gradient(135deg,#ef4444,#dc2626);box-shadow:0 8px 20px -6px rgba(239,68,68,.6)}
+  select,.seg{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);color:#fff;border-radius:10px;
+    padding:9px 12px;font-size:14px;font-weight:600;cursor:pointer}
+  .pill{font-size:12px;color:var(--muted);border:1px solid rgba(255,255,255,.12);padding:5px 10px;border-radius:999px}
+
+  /* Main split */
+  .main{flex:1;display:grid;grid-template-columns:1.05fr .95fr;gap:22px;padding:22px;min-height:0}
+  .pane{background:var(--panel);border-radius:20px;display:flex;flex-direction:column;min-height:0;color:var(--ink);box-shadow:var(--shadow);overflow:hidden}
+
+  /* Agent pane */
+  .ag-head{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--line);flex-shrink:0}
+  .ag-head .dot{width:10px;height:10px;border-radius:50%;background:var(--green);box-shadow:0 0 0 4px rgba(34,197,94,.18)}
+  .ag-title{font-weight:800;font-size:16px}
+  .ag-sub{font-size:12px;color:var(--muted)}
+  .handoff{margin-left:auto;font-size:12px;font-weight:700;padding:6px 12px;border-radius:999px;background:#E9FBF6;color:var(--teal-d);border:1px solid #BdF0E8}
+  .handoff.human{background:#FFF4E0;color:#B26B00;border-color:#FAD79B}
+  .ag-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:14px 20px;border-bottom:1px solid var(--line);flex-shrink:0}
+  .stat{background:#fff;border:1px solid var(--line);border-radius:14px;padding:10px 12px;text-align:center}
+  .stat .v{font-size:22px;font-weight:800;line-height:1.1}
+  .stat .v.teal{color:var(--teal-d)} .stat .v.amber{color:#C9820A} .stat .v.green{color:#179A52}
+  .stat .l{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:3px}
+
+  /* shared transcript */
+  .msgs{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:14px;scroll-behavior:smooth}
+  .msgs.visitor-bg{background:linear-gradient(#F3F5FB,#FBFCFE)}
+  .row{display:flex;gap:10px;max-width:88%}
+  .row.me{align-self:flex-end;flex-direction:row-reverse}
+  .av{width:30px;height:30px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:13px}
+  .av.luna{background:linear-gradient(135deg,var(--brand),var(--teal))}
+  .av.agent{background:linear-gradient(135deg,#7C3AED,#9333EA)}
+  .bub{padding:11px 15px;border-radius:16px;font-size:15px;line-height:1.5;box-shadow:0 2px 8px rgba(15,26,61,.05)}
+  .row.visitor .bub{background:var(--visitor);color:#fff;border-bottom-right-radius:5px}
+  .row.luna .bub{background:#fff;border:1px solid var(--line);border-bottom-left-radius:5px}
+  .row.agent .bub{background:#F3ECFE;border:1px solid #E2D4Fb;border-bottom-left-radius:5px}
+  .row.you .bub{background:linear-gradient(135deg,#7C3AED,#9333EA);color:#fff;border-bottom-right-radius:5px}
+  .nm{font-size:11px;font-weight:700;color:var(--muted);margin:0 0 4px 2px}
+  .typing{display:inline-flex;gap:4px;padding:4px 2px}
+  .typing i{width:7px;height:7px;border-radius:50%;background:#B9C0D4;animation:bl 1.2s infinite}
+  .typing i:nth-child(2){animation-delay:.2s}.typing i:nth-child(3){animation-delay:.4s}
+  @keyframes bl{0%,60%,100%{opacity:.3;transform:translateY(0)}30%{opacity:1;transform:translateY(-3px)}}
+  .card{margin-top:8px;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#fff;max-width:300px}
+  .card img{display:block;width:100%;height:130px;object-fit:cover}
+  .card .cc{padding:10px 12px}
+  .card .ct{font-weight:800;font-size:14px} .card .cd{font-size:12.5px;color:var(--ink2);margin-top:2px}
+  .card .cp{font-size:13px;font-weight:800;color:var(--teal-d);margin-top:6px}
+
+  /* visitor pane header (mimic widget) */
+  .vw-head{background:linear-gradient(135deg,var(--brand),#27507a);color:#fff;padding:16px 20px;display:flex;align-items:center;gap:12px;flex-shrink:0}
+  .vw-head .av{width:40px;height:40px;background:rgba(255,255,255,.18)}
+  .vw-head .t{font-weight:800;font-size:16px}.vw-head .s{font-size:12px;opacity:.85}
+  .vw-foot{padding:12px 16px;border-top:1px solid var(--line);display:flex;gap:10px;flex-shrink:0}
+  .vw-foot input{flex:1;border:1px solid var(--line);border-radius:999px;padding:11px 16px;font-size:15px;outline:none}
+  .vw-foot .send{width:44px;height:44px;border-radius:50%;border:none;background:var(--visitor);color:#fff;font-size:18px;cursor:pointer}
+
+  .agentbox{padding:12px 16px;border-top:1px solid var(--line);display:flex;gap:10px;flex-shrink:0;background:#fff}
+  .agentbox input{flex:1;border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-size:14px;outline:none}
+  .agentbox .send{padding:0 18px;border-radius:10px;border:none;background:#7C3AED;color:#fff;font-weight:700;cursor:pointer}
+
+  /* footer / QR / end card */
+  .foot{display:flex;align-items:center;gap:18px;padding:10px 22px;background:rgba(255,255,255,.04);border-top:1px solid rgba(255,255,255,.08);flex-shrink:0}
+  .foot .msg{font-size:13px;color:var(--muted)}
+  .qr{margin-left:auto;display:flex;align-items:center;gap:12px;font-size:13px;color:#cfd6ea}
+  .qr img{width:54px;height:54px;border-radius:8px;background:#fff;padding:3px}
+  .endcard{position:fixed;inset:0;background:rgba(11,16,32,.92);backdrop-filter:blur(10px);display:none;align-items:center;justify-content:center;z-index:50}
+  .endcard.show{display:flex}
+  .endcard .c{text-align:center;max-width:620px;padding:40px}
+  .endcard h1{font-size:40px;margin:0 0 12px;background:linear-gradient(135deg,#fff,var(--teal));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  .endcard p{font-size:19px;color:#cfd6ea;line-height:1.5}
+  .hint{position:fixed;bottom:78px;left:50%;transform:translateX(-50%);background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);
+    padding:8px 16px;border-radius:999px;font-size:13px;color:#cfd6ea;z-index:40}
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="bar">
+    <div class="brand"><div class="logo">L</div><div>Luna Chat<small>LIVE SHOWCASE</small></div></div>
+    <div class="controls">
+      <span class="pill" id="modePill">live + fallback</span>
+      <select id="scenario" title="Scenario"></select>
+      <button class="btn go" id="goBtn">▶ GO — auto demo</button>
+      <button class="btn" id="nextBtn" title="Next line (→)">⏭</button>
+      <button class="btn" id="resetBtn" title="Reset (R)">↺</button>
+      <button class="btn" id="soundBtn" title="Sound">🔊</button>
+      <button class="btn" id="fsBtn" title="Fullscreen (F)">⛶</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <!-- AGENT PANE -->
+    <div class="pane">
+      <div class="ag-head">
+        <span class="dot"></span>
+        <div><div class="ag-title">Agent dashboard</div><div class="ag-sub" id="agSub">Sunshine Travel · live inbox</div></div>
+        <span class="handoff" id="handoff">Luna is handling</span>
+      </div>
+      <div class="ag-stats">
+        <div class="stat"><div class="v" id="stConv">0</div><div class="l">Chats today</div></div>
+        <div class="stat"><div class="v teal" id="stAi">100%</div><div class="l">Solved by AI</div></div>
+        <div class="stat"><div class="v green" id="stResp">8s</div><div class="l">Avg response</div></div>
+        <div class="stat"><div class="v amber" id="stCsat">4.9★</div><div class="l">CSAT</div></div>
+      </div>
+      <div class="msgs" id="agMsgs"></div>
+      <div class="agentbox">
+        <input id="agInput" placeholder="Type a reply as the agent… (Enter to send)">
+        <button class="send" id="agSend">Send</button>
+      </div>
+    </div>
+
+    <!-- VISITOR (widget mock) PANE -->
+    <div class="pane">
+      <div class="vw-head">
+        <div class="av luna">L</div>
+        <div><div class="t">Luna</div><div class="s" id="vwSub">Travel assistant · online</div></div>
+      </div>
+      <div class="msgs visitor-bg" id="vwMsgs"></div>
+      <div class="vw-foot">
+        <input id="vwInput" placeholder="Ask Luna anything…">
+        <button class="send" id="vwSend">➤</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <span class="msg" id="footMsg">Press <b>GO</b> for a hands‑free demo · type in either box to drive it yourself · Space = pause, → = next, R = reset, F = fullscreen</span>
+    <div class="qr" id="qrWrap" style="display:none">Try it on your phone →<img id="qrImg" alt="QR"></div>
+  </div>
+</div>
+
+<div class="hint" id="hint" style="display:none"></div>
+<div class="endcard" id="endcard"><div class="c"><h1 id="ecH">Handled in 38 seconds. 24/7. In any language.</h1><p id="ecP">Want Luna answering your customers — and only passing the right ones to your team?</p></div></div>
+
+<script>
+(function(){
+  "use strict";
+  var params = new URLSearchParams(location.search);
+  var CLIENT = params.get('client') || params.get('clientName') || 'Travelgenix';
+  var ENDPOINT = location.origin + '/api/luna-chat';
+  var LIVE = params.get('live') !== '0';            // ?live=0 forces scripted-only
+  var AGENT_NAME = 'Sarah';
+  var DEMO_URL = location.origin + '/widget-demo.html?client=' + encodeURIComponent(CLIENT);
+
+  document.getElementById('agSub').textContent = CLIENT + ' · live inbox';
+  document.getElementById('modePill').textContent = LIVE ? 'live + fallback' : 'scripted';
+
+  // ---------- helpers ----------
+  function el(html){ var d=document.createElement('div'); d.innerHTML=html.trim(); return d.firstChild; }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function sleep(ms){ return new Promise(function(r){ var t=setTimeout(r,ms); pending.push(function(){clearTimeout(t);r();}); }); }
+  function scrollDown(box){ box.scrollTop = box.scrollHeight; }
+  var agMsgs=document.getElementById('agMsgs'), vwMsgs=document.getElementById('vwMsgs');
+
+  // strip Luna's internal markers so only clean prose shows
+  function clean(t){
+    return String(t||'')
+      .replace(/\[BLOCK\][\s\S]*?\[\/BLOCK\]/g,' ')
+      .replace(/\[\/?(?:LANG|FQ|OPT|ACK|BOOKING_LOOKUP)[^\]]*\]/gi,' ')
+      .replace(/\s+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
+  }
+  function extractBlocks(t){
+    var out=[], re=/\[BLOCK\]([\s\S]*?)\[\/BLOCK\]/g, m;
+    while((m=re.exec(t))){ try{ out.push(JSON.parse(m[1])); }catch(e){} }
+    return out;
+  }
+
+  // ---------- rendering ----------
+  function addBubble(side, who, text, opts){
+    opts=opts||{};
+    var isMe = (side==='vw' && who==='visitor') || (side==='ag' && (who==='agent'||who==='you'));
+    var box = side==='vw'?vwMsgs:agMsgs;
+    var avatar = who==='visitor' ? '' : (who==='agent'||who==='you') ? '<div class="av agent">'+AGENT_NAME[0]+'</div>' : '<div class="av luna">L</div>';
+    var nm = who==='luna'?'Luna':who==='agent'||who==='you'?AGENT_NAME+' (agent)':'';
+    var row = el('<div class="row '+who+(isMe?' me':'')+'">'+avatar+'<div><div class="bub">'+(nm?'<div class="nm">'+nm+'</div>':'')+'<span class="txt"></span></div></div></div>');
+    row.querySelector('.txt').innerHTML = text!=null ? esc(text).replace(/\n/g,'<br>') : '';
+    box.appendChild(row); scrollDown(box);
+    return row;
+  }
+  function addCardsTo(row, blocks){
+    blocks.forEach(function(b){
+      var p=b.props||b||{}; var title=p.name||p.title||p.destination||p.headline; if(!title) return;
+      var img=p.image||p.imageUrl||p.photo||''; var desc=p.description||p.summary||p.tagline||''; var price=p.price||p.priceFrom||p.from||'';
+      var c=el('<div class="card">'+(img?'<img src="'+esc(img)+'" onerror="this.style.display=\'none\'">':'')+'<div class="cc"><div class="ct">'+esc(title)+'</div>'+(desc?'<div class="cd">'+esc(desc)+'</div>':'')+(price?'<div class="cp">'+esc(price)+'</div>':'')+'</div></div>');
+      row.querySelector('.bub').appendChild(c); scrollDown(vwMsgs);
+    });
+  }
+  function typingRow(side){
+    var who='luna'; var box=side==='vw'?vwMsgs:agMsgs;
+    var row=el('<div class="row '+who+'"><div class="av luna">L</div><div><div class="bub"><span class="typing"><i></i><i></i><i></i></span></div></div></div>');
+    box.appendChild(row); scrollDown(box); return row;
+  }
+  // type text into a bubble char-by-char (mirrors to the other pane simultaneously)
+  async function typeInto(rows, text){
+    var spans = rows.map(function(r){ return r.querySelector('.txt'); });
+    var html=''; var chars=String(text).split('');
+    for(var i=0;i<chars.length;i++){
+      if(stopFlag) break;
+      html += chars[i]==='\n'?'<br>':esc(chars[i]);
+      spans.forEach(function(s){ s.innerHTML=html; });
+      scrollDown(vwMsgs); scrollDown(agMsgs);
+      await sleep(speed.type + (/[.,!?]/.test(chars[i])?120:0));
+    }
+    spans.forEach(function(s){ s.innerHTML = esc(text).replace(/\n/g,'<br>'); });
+  }
+
+  // ---------- live Luna (with scripted fallback) ----------
+  var history=[];
+  async function askLuna(message, fallback){
+    if(LIVE){
+      try{
+        var ctrl=new AbortController(); var to=setTimeout(function(){ctrl.abort();}, 12000);
+        var res=await fetch(ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json'},signal:ctrl.signal,
+          body:JSON.stringify({message:message,convId:CONV,clientName:CLIENT,visitorName:'Guest',history:history.slice(-12),page:'/showcase'})});
+        clearTimeout(to);
+        if(res.ok){ var d=await res.json(); if(d&&d.reply){ history.push({role:'user',content:message}); history.push({role:'assistant',content:clean(d.reply)});
+          return {text:clean(d.reply), blocks:extractBlocks(d.reply), escalate:!!d.escalate, live:true}; } }
+      }catch(e){}
+    }
+    // fallback
+    history.push({role:'user',content:message}); history.push({role:'assistant',content:fallback?fallback.text:''});
+    return {text:fallback?fallback.text:"Let me get a colleague to help you with that.", blocks:(fallback&&fallback.blocks)||[], escalate:fallback?!!fallback.escalate:true, live:false};
+  }
+  var CONV='demo_'+Date.now();
+
+  // ---------- conversation primitives ----------
+  var pending=[], stopFlag=false, sound=true;
+  function clearPending(){ pending.forEach(function(f){try{f();}catch(e){}}); pending=[]; }
+  function beep(kind){ if(!sound) return; try{ var a=new (window.AudioContext||window.webkitAudioContext)(); var o=a.createOscillator(),g=a.createGain();
+    o.connect(g);g.connect(a.destination);o.frequency.value=kind==='in'?660:880;g.gain.value=.04;o.start();setTimeout(function(){o.stop();a.close();},120);}catch(e){} }
+
+  async function visitorSays(text){
+    addBubble('vw','visitor',text); addBubble('ag','visitor',text); beep('in');
+    await sleep(280);
+  }
+  async function lunaReplies(message, fallback){
+    var t1=typingRow('vw'), t2=typingRow('ag'); await sleep(speed.think);
+    var ans=await askLuna(message, fallback);
+    t1.remove(); t2.remove();
+    var r1=addBubble('vw','luna',null), r2=addBubble('ag','luna',null);
+    await typeInto([r1,r2], ans.text);
+    if(ans.blocks&&ans.blocks.length) addCardsTo(r1, ans.blocks);
+    beep('out');
+    return ans;
+  }
+  function setHandler(state){ // 'ai' | 'human'
+    var h=document.getElementById('handoff');
+    if(state==='human'){ h.textContent=AGENT_NAME+' has taken over'; h.classList.add('human'); document.getElementById('vwSub').textContent='You\'re chatting with '+AGENT_NAME; }
+    else { h.textContent='Luna is handling'; h.classList.remove('human'); document.getElementById('vwSub').textContent='Travel assistant · online'; }
+  }
+  async function agentSays(text){
+    addBubble('ag','you',text); addBubble('vw','agent',text); beep('out'); await sleep(280);
+  }
+
+  // ---------- ROI ticker ----------
+  var roi={conv:128, csat:4.9};
+  function bumpRoi(){ roi.conv++; document.getElementById('stConv').textContent=roi.conv;
+    document.getElementById('stAi').textContent=(82+Math.floor(Math.random()*6))+'%';
+    document.getElementById('stResp').textContent=(6+Math.floor(Math.random()*6))+'s';
+    document.getElementById('stCsat').textContent=roi.csat.toFixed(1)+'★'; }
+  document.getElementById('stConv').textContent=roi.conv;
+
+  // ---------- scenarios ----------
+  // Each step: {v:"visitor text", fb:{text,blocks,escalate}} or {agent:"..."} or {handler:'human'|'ai'} or {csat:true}
+  var SCENARIOS = {
+    inspire: { label:'✨ Holiday inspiration', steps:[
+      {v:"Hi! We're a family of four wanting guaranteed sunshine in late October, budget around £3,500. Any ideas?",
+       fb:{text:"Lovely — late October is perfect for reliable warmth. Three favourites for families on ~£3,500:\n\n• Costa Adeje, Tenerife — 24°C, short flights, great kids' clubs\n• Paphos, Cyprus — warm sea, easy resorts, good value\n• Marrakech & coast — sunshine plus a bit of adventure\n\nWant me to pull a few all‑inclusive options for one of these?",
+        blocks:[{props:{name:"Tenerife",description:"24°C in Oct · 4½h flight · superb for families",price:"7 nts AI from £2,980",image:"https://images.unsplash.com/photo-1568797629192-789acf8e4df3?w=600"}}]}},
+      {v:"Tenerife sounds great — what's included?",
+       fb:{text:"All‑inclusive there typically covers flights, transfers, meals, snacks and local drinks. I can hold a quote and have one of our travel experts confirm live availability — shall I do that?"}}
+    ]},
+    multilingual: { label:'🌍 Multilingual', steps:[
+      {v:"Bonjour ! Faites‑vous des séjours tout compris en Crète au mois de juin ?",
+       fb:{text:"Bonjour ! Oui, absolument — la Crète en juin est idéale (mer chaude, ~28°C). Nous proposons de nombreux séjours tout compris à Héraklion et La Canée. Souhaitez‑vous que je vous montre quelques options pour deux personnes ?"}},
+      {v:"Parfait, pour 2 personnes, première semaine de juin.",
+       fb:{text:"Très bien — je prépare une sélection pour la première semaine de juin et un conseiller confirmera les disponibilités. Puis‑je avoir votre e‑mail pour vous envoyer les détails ?"}}
+    ]},
+    safety: { label:'🛡️ Safety / expertise', steps:[
+      {v:"Is it safe to travel to Egypt right now, and do I need a visa from the UK?",
+       fb:{text:"Great question. UK travellers do need a visa for Egypt — usually a straightforward e‑visa, or visa‑on‑arrival for many resorts. On safety, the main Red Sea resort areas (Hurghada, Sharm el‑Sheikh) are popular and well‑served, while the FCDO advises against travel to certain border regions. I always check the latest FCDO advice for your exact dates — want me to summarise it and suggest resorts that fit?"}}
+    ]},
+    handoff: { label:'🤝 AI → human takeover', steps:[
+      {v:"I need to change the lead passenger name on my booking, reference SUN‑48213.",
+       fb:{text:"That's something our team handles directly so we get it exactly right on the airline's system. Let me bring in a colleague for you now — one moment.", escalate:true}},
+      {handler:'human'},
+      {agent:"Hi, it's "+'Sarah'+" from the team 👋 I've got booking SUN‑48213 open. I can update the lead name — could you confirm the correct full name as it appears on the passport?"},
+      {v:"Yes — it should be Jonathan A. Whitfield."},
+      {agent:"Perfect, updating that now… done ✅ You'll get a fresh confirmation by email within a few minutes. Anything else I can help with?"},
+      {v:"That's brilliant, thank you!"},
+      {csat:true}
+    ]}
+  };
+  var ORDER=['inspire','multilingual','safety','handoff'];
+
+  // ---------- runner ----------
+  var speed={type:22, think:700, between:1100};
+  var running=false, stopFlag2=false, attract=false;
+  function setGo(on){ running=on; var b=document.getElementById('goBtn'); b.classList.toggle('running',on);
+    b.textContent = on?'⏸ Stop':'▶ GO — auto demo'; }
+
+  async function runScenario(key){
+    var sc=SCENARIOS[key]; if(!sc) return;
+    for(var i=0;i<sc.steps.length;i++){
+      if(stopFlag) return;
+      var s=sc.steps[i];
+      if(s.v){ await visitorSays(s.v); if(stopFlag)return; var ans=await lunaReplies(s.v, s.fb||null);
+        if(ans.escalate){ /* visual cue handled by next handler step */ } }
+      else if(s.agent){ await agentSays(s.agent); }
+      else if(s.handler){ setHandler(s.handler); document.getElementById('hint').style.display='none'; await sleep(500); }
+      else if(s.csat){ showCsat(); }
+      await sleep(speed.between);
+      bumpRoi();
+    }
+  }
+  function showCsat(){ roi.csat=Math.min(5,(roi.csat*roi.conv+5)/(roi.conv+1)); var r=addBubble('vw','luna','⭐⭐⭐⭐⭐  Thanks! You rated this chat 5/5.'); document.getElementById('stCsat').textContent='5.0★'; }
+
+  async function runAll(){
+    setGo(true); stopFlag=false;
+    do{
+      for(var i=0;i<ORDER.length;i++){
+        if(stopFlag) break;
+        document.getElementById('scenario').value=ORDER[i];
+        softReset(); setHandler('ai');
+        await runScenario(ORDER[i]);
+        if(stopFlag) break;
+        await sleep(1800);
+        if(!attract) { /* one pass per scenario in manual GO of single scenario handled elsewhere */ }
+      }
+      if(stopFlag) break;
+      flashEnd();
+      await sleep(attract?6000:4000);
+    } while(attract && !stopFlag);
+    setGo(false);
+  }
+
+  function flashEnd(){ var e=document.getElementById('endcard'); e.classList.add('show'); setTimeout(function(){ e.classList.remove('show'); },4000); }
+
+  function softReset(){ agMsgs.innerHTML=''; vwMsgs.innerHTML=''; history=[]; CONV='demo_'+Date.now(); setHandler('ai'); }
+  function fullReset(){ stopFlag=true; clearPending(); setGo(false); attract=false; softReset(); document.getElementById('endcard').classList.remove('show'); }
+
+  // ---------- manual driving ----------
+  async function manualVisitor(text){ if(!text.trim())return; document.getElementById('vwInput').value='';
+    await visitorSays(text); await lunaReplies(text, null); bumpRoi(); }
+  function manualAgent(text){ if(!text.trim())return; document.getElementById('agInput').value=''; setHandler('human'); agentSays(text); }
+
+  // ---------- controls ----------
+  var selEl=document.getElementById('scenario');
+  ORDER.forEach(function(k){ var o=document.createElement('option'); o.value=k; o.textContent=SCENARIOS[k].label; selEl.appendChild(o); });
+  var goBtn=document.getElementById('goBtn');
+  goBtn.addEventListener('click', function(){
+    if(running){ fullReset(); return; }
+    // GO with modifier / long context = run all + attract loop; plain = run all once
+    attract = true; runAll();
+  });
+  document.getElementById('resetBtn').addEventListener('click', fullReset);
+  document.getElementById('nextBtn').addEventListener('click', function(){ /* skip current wait */ clearPending(); });
+  document.getElementById('soundBtn').addEventListener('click', function(){ sound=!sound; this.textContent=sound?'🔊':'🔇'; });
+  document.getElementById('fsBtn').addEventListener('click', function(){ if(!document.fullscreenElement) document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen(); else document.exitFullscreen&&document.exitFullscreen(); });
+  selEl.addEventListener('change', function(){ fullReset(); attract=false; setGo(true); stopFlag=false; (async function(){ softReset(); await runScenario(selEl.value); setGo(false); })(); });
+
+  document.getElementById('vwSend').addEventListener('click', function(){ manualVisitor(document.getElementById('vwInput').value); });
+  document.getElementById('vwInput').addEventListener('keydown', function(e){ if(e.key==='Enter'){ manualVisitor(this.value); } });
+  document.getElementById('agSend').addEventListener('click', function(){ manualAgent(document.getElementById('agInput').value); });
+  document.getElementById('agInput').addEventListener('keydown', function(e){ if(e.key==='Enter'){ manualAgent(this.value); } });
+
+  document.addEventListener('keydown', function(e){
+    if(e.target && /input|textarea/i.test(e.target.tagName)) return;
+    if(e.code==='Space'){ e.preventDefault(); if(running){ fullReset(); } else { attract=true; runAll(); } }
+    else if(e.key==='ArrowRight'){ clearPending(); }
+    else if(e.key.toLowerCase()==='r'){ fullReset(); }
+    else if(e.key.toLowerCase()==='f'){ document.getElementById('fsBtn').click(); }
+  });
+
+  // QR (graceful if blocked)
+  try{ var q=document.getElementById('qrImg'); q.src='https://api.qrserver.com/v1/create-qr-code/?size=120x120&data='+encodeURIComponent(DEMO_URL);
+    q.onload=function(){ document.getElementById('qrWrap').style.display='flex'; }; }catch(e){}
+
+  // greeting
+  addBubble('vw','luna','Hi there! 👋 I\'m Luna. Where are you dreaming of going?');
+})();
+</script>
+</body>
+</html>
