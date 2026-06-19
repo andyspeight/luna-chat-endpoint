@@ -2507,7 +2507,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
 
     <div class="settings-section">
       <h4>Auto-Trigger</h4>
-      <div class="settings-hint" style="margin-bottom:8px">Automatically open the chat widget after a visitor has been on your page for a set time. Great for increasing engagement.</div>
+      <div class="settings-hint" style="margin-bottom:8px">Automatically open the chat widget based on what visitors do — after a set time, when they scroll far enough, or on exit intent — optionally only on certain pages. The first condition met opens the chat.</div>
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
           <input type="checkbox" id="setAutoTriggerEnabled" style="width:18px;height:18px;accent-color:var(--teal)">
@@ -2523,6 +2523,22 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
         <label class="settings-label">Trigger Message</label>
         <input class="settings-input" id="setAutoTriggerMessage" placeholder="Hi there! I noticed you've been browsing. Can I help you find anything?">
         <div class="settings-hint">The message Luna displays when the chat auto-opens. Make it relevant and helpful.</div>
+      </div>
+      <div class="settings-row">
+        <label class="settings-label">Scroll depth (%)</label>
+        <input class="settings-input" id="setAutoTriggerScrollDepth" type="number" min="0" max="100" value="0" style="width:100px">
+        <div class="settings-hint">Open once the visitor scrolls this far down the page. 0 = off.</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="setAutoTriggerExitIntent" style="width:18px;height:18px;accent-color:var(--teal)">
+          <span style="font-size:13px;font-weight:600">Trigger on exit intent (desktop)</span>
+        </label>
+      </div>
+      <div class="settings-row">
+        <label class="settings-label">Only on pages</label>
+        <input class="settings-input" id="setAutoTriggerUrlPatterns" placeholder="/pricing, /tours  (leave blank for all pages)">
+        <div class="settings-hint">Comma-separated URL path fragments. Leave blank to trigger on every page.</div>
       </div>
     </div>
 
@@ -5153,6 +5169,9 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       document.getElementById('setAutoTriggerEnabled').checked = !!p.autoTriggerEnabled;
       document.getElementById('setAutoTriggerDelay').value = p.autoTriggerDelay || 30;
       document.getElementById('setAutoTriggerMessage').value = p.autoTriggerMessage || '';
+      document.getElementById('setAutoTriggerScrollDepth').value = p.autoTriggerScrollDepth || 0;
+      document.getElementById('setAutoTriggerExitIntent').checked = !!p.autoTriggerExitIntent;
+      document.getElementById('setAutoTriggerUrlPatterns').value = p.autoTriggerUrlPatterns || '';
 
       // Chat settings
       document.getElementById('setBotName').value = p.widgetBotName || 'Luna AI';
@@ -5234,6 +5253,9 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
           autoTriggerEnabled: document.getElementById('setAutoTriggerEnabled').checked,
           autoTriggerDelay: document.getElementById('setAutoTriggerDelay').value,
           autoTriggerMessage: document.getElementById('setAutoTriggerMessage').value,
+          autoTriggerScrollDepth: document.getElementById('setAutoTriggerScrollDepth').value,
+          autoTriggerExitIntent: document.getElementById('setAutoTriggerExitIntent').checked,
+          autoTriggerUrlPatterns: document.getElementById('setAutoTriggerUrlPatterns').value,
           privacyPolicyUrl: document.getElementById('setPrivacyUrl').value,
           emailPlatform: selectedEmailPlatform,
           emailPlatformApiKey: document.getElementById('setEmailApiKey').value,

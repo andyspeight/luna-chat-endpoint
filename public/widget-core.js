@@ -1683,6 +1683,8 @@ var visitorId = "";
 var autoTriggerTimer = null;
 var autoTriggered = false;
 var visitorInteracted = false;
+var autoTriggerScrollHandler = null;
+var autoTriggerExitHandler = null;
 var conversationLang = "";
 var currentScreen = "home"; /* "home" or "chat" */
 var sessionRestored = false;
@@ -1794,6 +1796,8 @@ function restoreSession() {
 /* ─── AUTO-TRIGGER HELPERS ───────────────────────────────── */
 function cancelAutoTrigger() {
   if (autoTriggerTimer) { clearTimeout(autoTriggerTimer); autoTriggerTimer = null; }
+  if (autoTriggerScrollHandler) { window.removeEventListener("scroll", autoTriggerScrollHandler); autoTriggerScrollHandler = null; }
+  if (autoTriggerExitHandler) { document.removeEventListener("mouseout", autoTriggerExitHandler); autoTriggerExitHandler = null; }
   visitorInteracted = true;
 }
 
@@ -6279,15 +6283,19 @@ async function boot() {
 
   loadAbly(function(){ initAbly(); });
 
-  /* Auto-trigger */
+  /* Auto-trigger — proactive outreach by time, scroll depth or exit intent,
+     optionally limited to matching URLs. The first condition to fire wins. */
   var at = C.autoTrigger;
-  if (at && at.enabled && at.delay && at.message) {
+  if (at && at.enabled && at.message) {
     var alreadyTriggered = false;
     try { alreadyTriggered = sessionStorage.getItem("luna_auto_triggered") === "1"; } catch(e) {}
     var isMobileHidden = C.mobileBubble === "hidden" && window.innerWidth < 440;
+    var atPath = (window.location.pathname || "/") + (window.location.search || "");
+    var urlOk = !(at.urlPatterns && at.urlPatterns.length) || at.urlPatterns.some(function(p){ return p && atPath.indexOf(p) !== -1; });
 
-    if (!alreadyTriggered && !isMobileHidden) {
-      autoTriggerTimer = setTimeout(function() {
+    if (!alreadyTriggered && !isMobileHidden && urlOk) {
+      var fireAutoTrigger = function() {
+        cancelAutoTrigger(); // stop the other conditions; only fire once
         if (visitorInteracted || panelOpen || msgs.length > 0 || autoTriggered) return;
         autoTriggered = true;
         try { sessionStorage.setItem("luna_auto_triggered", "1"); } catch(e) {}
@@ -6301,7 +6309,28 @@ async function boot() {
         addMsg("bot", at.message);
         if (C.hints && C.hints.length > 0) showPills(C.hints, function(h){ sendToAI(h); });
         if (!document.hidden) playNotifSound();
-      }, at.delay * 1000);
+      };
+
+      // Time delay
+      if (at.delay && at.delay > 0) {
+        autoTriggerTimer = setTimeout(fireAutoTrigger, at.delay * 1000);
+      }
+      // Scroll depth — fire once the visitor scrolls past N% of the page
+      if (at.scrollDepth && at.scrollDepth > 0) {
+        autoTriggerScrollHandler = function() {
+          var sh = document.documentElement.scrollHeight - window.innerHeight;
+          var pct = sh > 0 ? (window.scrollY / sh) * 100 : 0;
+          if (pct >= at.scrollDepth) fireAutoTrigger();
+        };
+        window.addEventListener("scroll", autoTriggerScrollHandler, { passive: true });
+      }
+      // Exit intent (desktop only) — mouse leaves toward the top of the viewport
+      if (at.exitIntent && !('ontouchstart' in window)) {
+        autoTriggerExitHandler = function(e) {
+          if (!e.relatedTarget && !e.toElement && (e.clientY == null || e.clientY <= 0)) fireAutoTrigger();
+        };
+        document.addEventListener("mouseout", autoTriggerExitHandler);
+      }
     }
   }
 }
