@@ -5461,7 +5461,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       +   '<div class="stat-card"><span class="stat-label">AI Resolution</span><span class="stat-value teal">' + aiPct + '%</span><span class="stat-detail">' + aiOnly + ' without escalation</span></div>'
       +   '<div class="stat-card"><span class="stat-label">Avg Duration</span><span class="stat-value green">' + avgDuration + 'm</span><span class="stat-detail">' + (total > 0 ? 'Per conversation' : 'No data') + '</span></div>'
       +   '<div class="stat-card"><span class="stat-label">Avg Messages</span><span class="stat-value">' + avgMessages + '</span><span class="stat-detail">' + (total > 0 ? 'Per conversation' : 'No data') + '</span></div>'
-      +   '<div class="stat-card"><span class="stat-label">Quality Score</span><span class="stat-value" style="color:var(--amber)">' + avgRating + (avgRating !== '—' ? '/5' : '') + '</span><span class="stat-detail">' + ratedCount + ' scored' + (ratedCount===1?'':'') + '</span></div>'
+      +   '<div class="stat-card"><span class="stat-label">CSAT</span><span class="stat-value" style="color:var(--amber)">' + avgRating + (avgRating !== '—' ? '/5' : '') + '</span><span class="stat-detail">' + ratedCount + ' rated</span></div>'
       +   '<div class="stat-card"><span class="stat-label">Escalated</span><span class="stat-value" style="color:var(--amber)">' + escalated + '</span><span class="stat-detail">' + (total > 0 ? 'To a human agent' : 'No data') + '</span></div>'
       +   '<div class="stat-card"><span class="stat-label">Peak Hour</span><span class="stat-value" style="font-size:var(--text-xl)">' + peakStr + '</span><span class="stat-detail">' + (peakCount > 0 ? peakCount + ' conversation' + (peakCount!==1?'s':'') : 'No data') + '</span></div>'
       + '</div>'
@@ -5497,7 +5497,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
           +     '</div>'
           +   '</div>'
           +   '<div class="split-card">'
-          +     '<h4>Quality Distribution</h4>'
+          +     '<h4>Customer Satisfaction (CSAT)</h4>'
           +     (ratedCount > 0
                 ? ('<div style="display:flex;align-items:flex-end;gap:var(--space-2);height:80px;margin-top:var(--space-2)">'
                   + ratingDist.map(function(count, i) {
@@ -5508,7 +5508,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
                         + '</div>';
                     }).join('')
                   + '</div>')
-                : '<div style="font-size:var(--text-sm);color:var(--text-muted);padding:var(--space-5) 0">Quality scoring runs when conversations close — scores will appear here.</div>')
+                : '<div style="font-size:var(--text-sm);color:var(--text-muted);padding:var(--space-5) 0">Visitor ratings appear here once visitors rate their chats.</div>')
           +   '</div>'
           + '</div>')
         : '')

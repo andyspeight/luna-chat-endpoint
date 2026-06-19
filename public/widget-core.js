@@ -4365,6 +4365,7 @@ function showRatingOverlay(ratingChannel) {
       star.addEventListener("click", function(){
         var val = parseInt(this.getAttribute("data-v"));
         if (ratingChannel) ratingChannel.publish("rating", {rating: val});
+        try { persistConversation({ rating: val }); } catch(e){}
         ov.innerHTML = '<h3>Thanks for your feedback!</h3><p>You can start a new chat anytime.</p>';
         setTimeout(function(){ if (ov.parentNode) ov.remove(); }, 2000);
       });
