@@ -2346,6 +2346,7 @@ module.exports = async function handler(req, res) {
   // handles it the same way as any other turn.
   const openerRequest = body.openerRequest === true;
   const clientName = sanitizeInput(body.clientName);
+  const visitorContext = sanitizeInput(body.visitorContext);
   const bookingContext = sanitizeBookingContext(body.bookingContext);
   const history = Array.isArray(body.history) ? body.history.map(h => ({
     role: h.role === 'user' ? 'user' : 'assistant',
@@ -2499,6 +2500,13 @@ module.exports = async function handler(req, res) {
   // Give Luna a precise, factual "now" so she never guesses the date or season.
   // High salience near the top of the assembled prompt. See buildTemporalContext.
   systemPrompt += buildTemporalContext();
+
+  // Returning-visitor memory: the widget passes a compact, client-side summary
+  // of who this visitor is and what they discussed in prior chats (same-browser
+  // recall). Lets Luna greet them as a returning customer with continuity.
+  if (visitorContext) {
+    systemPrompt += '\n\n## Returning visitor\n' + visitorContext;
+  }
 
   // -- Multilingual: ON for every client, always -------------------------
   // Luna detects the visitor's language and replies in it, for all clients,

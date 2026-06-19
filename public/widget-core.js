@@ -3965,6 +3965,7 @@ function showNameOverlay() {
       visitorEmail = ei.value.trim();
       marketingConsent = mi.checked;
       nameCollected = true;
+      try { var _p = ensureProfile(); if (userName) _p.name = userName; if (visitorEmail) _p.email = visitorEmail; _p.marketingConsent = marketingConsent; saveVisitorProfile(_p); } catch(e){}
       var emailValid = visitorEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(visitorEmail);
       if (emailValid && marketingConsent) {
         fetch(C.endpoint.replace("/api/luna-chat", "/api/subscribe"), {
@@ -4261,6 +4262,7 @@ async function streamFromLuna(userText) {
   var requestBody = {
     message: userText, convId: convId, visitorName: userName || undefined,
     clientName: C.clientName, history: history.slice(-16), page: window.location.pathname,
+    visitorContext: visitorMemoryContext || undefined,
     stream: true,
     useAck: true,
     // useTwoPass disabled 21 May 2026. The parallel two-call architecture
@@ -4631,7 +4633,8 @@ async function callLuna(userText) {
   try {
     var requestBody = {
       message: userText, convId: convId, visitorName: userName || undefined,
-      clientName: C.clientName, history: history.slice(-16), page: window.location.pathname
+      clientName: C.clientName, history: history.slice(-16), page: window.location.pathname,
+      visitorContext: visitorMemoryContext || undefined
     };
     /* Attach the redacted booking summary if the visitor has retrieved a
        booking earlier in this session. Lets Luna answer follow-up questions
@@ -4743,6 +4746,7 @@ async function sendToAI(text) {
   /* Ensure we're on chat screen */
   if (currentScreen !== "chat") switchToChat();
   var _mid = newMsgId();
+  rememberInteraction(text);
   addMsg("user", text);
   attachReceipt($msgs.lastElementChild, _mid, "sent");
   if (msgs.length) { msgs[msgs.length-1].id = _mid; msgs[msgs.length-1].status = "sent"; saveSession(); }
@@ -4861,6 +4865,7 @@ async function sendToAI(text) {
 function sendToAgent(text) {
   if (!text.trim()) return;
   var _mid = newMsgId();
+  rememberInteraction(text);
   clearPills(); addMsg("user", text);
   attachReceipt($msgs.lastElementChild, _mid, "sent");
   if (msgs.length) { msgs[msgs.length-1].id = _mid; msgs[msgs.length-1].status = "sent"; saveSession(); }
@@ -4926,9 +4931,54 @@ async function escalateToHuman() {
 }
 
 /* ─── START CHAT ─────────────────────────────────────────── */
+/* ─── RETURNING-VISITOR MEMORY ───────────────────────────────
+   A per-client profile in the visitor's OWN localStorage lets Luna
+   recognise a returning visitor across days (same browser) and recall
+   what they were interested in. Purely client-side — nothing extra is
+   stored server-side; the data lives only in the visitor's browser. */
+var visitorProfile = null;
+var isReturningVisitor = false;
+var visitorMemoryContext = "";
+function profileKey(){ return "luna_visitor_" + (C.clientName || "default"); }
+function loadVisitorProfile(){
+  try { var raw = localStorage.getItem(profileKey()); return raw ? JSON.parse(raw) : null; }
+  catch(e){ return null; }
+}
+function saveVisitorProfile(p){
+  try { localStorage.setItem(profileKey(), JSON.stringify(p)); } catch(e){}
+}
+function ensureProfile(){
+  if (!visitorProfile) visitorProfile = loadVisitorProfile() || { memory: [], visits: 0 };
+  if (!Array.isArray(visitorProfile.memory)) visitorProfile.memory = [];
+  return visitorProfile;
+}
+function rememberInteraction(text){
+  if (!text) return;
+  var p = ensureProfile();
+  var t = String(text).replace(/\s+/g, " ").trim().slice(0, 140);
+  if (t && p.memory[p.memory.length - 1] !== t) p.memory.push(t);
+  if (p.memory.length > 8) p.memory = p.memory.slice(-8);
+  p.lastSeen = Date.now();
+  if (userName) p.name = userName;
+  if (visitorEmail) p.email = visitorEmail;
+  if (typeof marketingConsent === "boolean") p.marketingConsent = marketingConsent;
+  saveVisitorProfile(p);
+}
+function buildVisitorMemoryContext(p){
+  if (!p) return "";
+  var parts = [];
+  if (p.name) parts.push("Name: " + p.name);
+  if (p.memory && p.memory.length) parts.push("In previous chats they mentioned or asked about: " + p.memory.slice(-6).join(" | "));
+  if (!parts.length) return "";
+  return "This is a RETURNING visitor (not their first conversation). " + parts.join(". ")
+    + ". Welcome them back warmly when it reads naturally, and draw on this only when relevant. Do NOT invent past details beyond what is stated here.";
+}
+
 function startChat() {
   var welcomeText = C.welcome;
-  if (userName) {
+  if (isReturningVisitor && userName) {
+    welcomeText = "Welcome back, " + userName + "! " + welcomeText.replace(/^Hey there[!,. ]*/i, "").replace(/^Hi there[!,. ]*/i, "");
+  } else if (userName) {
     welcomeText = "Hey " + userName + "! " + welcomeText.replace(/^Hey there! /, "").replace(/^Hey there\b/, "");
   } else {
     welcomeText = applyTimeAwareGreeting(welcomeText);
@@ -5321,6 +5371,25 @@ async function boot() {
   } catch(e) {
     visitorId = "v_" + Date.now() + "_" + Math.random().toString(36).substr(2,9);
   }
+
+  /* Returning-visitor memory — recognise the visitor across days (same browser)
+     and recall their prior context so Luna has continuity. */
+  try {
+    visitorProfile = loadVisitorProfile();
+    if (visitorProfile) {
+      isReturningVisitor = !!((visitorProfile.memory && visitorProfile.memory.length) || visitorProfile.name);
+      visitorMemoryContext = buildVisitorMemoryContext(visitorProfile);
+      if (visitorProfile.name && !userName) userName = visitorProfile.name;
+      if (visitorProfile.email && !visitorEmail) visitorEmail = visitorProfile.email;
+      if (typeof visitorProfile.marketingConsent === "boolean") marketingConsent = visitorProfile.marketingConsent;
+      if (userName) nameCollected = true; /* we already know them — skip the name prompt */
+    }
+    var _vp = ensureProfile();
+    _vp.visits = (_vp.visits || 0) + 1;
+    if (!_vp.firstSeen) _vp.firstSeen = Date.now();
+    _vp.lastSeen = Date.now();
+    saveVisitorProfile(_vp);
+  } catch(e) {}
 
   /* Country detection */
   try {
