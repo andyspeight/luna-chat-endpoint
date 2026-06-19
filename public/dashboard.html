@@ -3106,6 +3106,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       conv.channel.subscribe('message', msg => onConvMessage(convId, msg.data));
       conv.channel.subscribe('typing', msg => onConvTyping(convId, msg.data));
       conv.channel.subscribe('handler_change', msg => onHandlerChange(convId, msg.data));
+      conv.channel.subscribe('receipt', msg => onConvReceipt(convId, msg.data));
       conv.channel.subscribe('rating', msg => {
         const c = conversations[convId];
         if (c && msg.data && msg.data.rating) {
@@ -3132,6 +3133,15 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     if (data.detectedLanguage && data.detectedLanguage !== 'English') conv.lang = data.detectedLanguage;
 
     conv.messages.push(data);
+
+    // Read receipts (web chats): acknowledge the visitor's message back to the widget.
+    if (data.from === 'visitor' && data.id && conv.source !== 'whatsapp' && conv.channel) {
+      conv.channel.publish('receipt', { ids:[data.id], status:'delivered', by:'agent' });
+      if (convId === activeConvId && !document.hidden && document.hasFocus()) {
+        conv.channel.publish('receipt', { ids:[data.id], status:'read', by:'agent' });
+      }
+    }
+
     if (convId !== activeConvId) {
       conv.unread = true;
       if (data.from === 'visitor') lunaAlertSignal('message', conv.visitor.name, data.text?.slice(0,80) || 'New message');
@@ -3265,10 +3275,17 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     const conv = conversations[convId];
     if (!conv) return;
     conv.unread = false;
+    markConvRead(conv);
     renderConvList();
     restoreChatInput();
     showChatActive(conv);
   };
+
+  // When the agent refocuses the tab, mark the open conversation's visitor
+  // messages as read so the widget shows "Read".
+  window.addEventListener('focus', function(){
+    if (activeConvId && conversations[activeConvId]) markConvRead(conversations[activeConvId]);
+  });
 
   // ─── CHAT VIEW ───
   function showChatEmpty() {
@@ -3328,8 +3345,38 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     return '<div class="msg ' + type + '">'
       + (label ? '<span class="msg-label">' + label + '</span>' : '')
       + '<div class="msg-bubble">' + bubbleContent + '</div>'
-      + '<div class="msg-meta"><span>' + time + '</span></div>'
+      + '<div class="msg-meta"><span>' + time + '</span>' + (m.from === 'agent' && m.status ? renderReceipt(m.status) : '') + '</div>'
       + '</div>';
+  }
+
+  function renderReceipt(status){
+    var read = status === 'read';
+    var glyph = status === 'sent' ? '✓' : '✓✓';
+    var label = read ? 'Read' : (status === 'delivered' ? 'Delivered' : 'Sent');
+    return '<span class="msg-rcpt" title="' + label + '" style="margin-left:6px;font-size:11px;color:' + (read ? '#3b82f6' : '#94a3b8') + '">' + glyph + '</span>';
+  }
+
+  // A 'receipt' from the visitor acknowledges OUR (agent) messages -> update ticks.
+  function onConvReceipt(convId, data){
+    if (!data || data.by !== 'visitor' || !Array.isArray(data.ids)) return;
+    const conv = conversations[convId];
+    if (!conv) return;
+    const rank = { sent:0, delivered:1, read:2 };
+    let changed = false;
+    conv.messages.forEach(function(m){
+      if (m.from === 'agent' && m.id && data.ids.indexOf(m.id) !== -1 && (rank[data.status]||0) > (rank[m.status]||0)) {
+        m.status = data.status; changed = true;
+      }
+    });
+    if (changed && convId === activeConvId) renderMessages(conv);
+  }
+
+  // Tell the widget the agent has read the visitor's messages (web chats only;
+  // WhatsApp has no widget on the other end).
+  function markConvRead(conv){
+    if (!conv || !conv.channel || conv.source === 'whatsapp') return;
+    var ids = conv.messages.filter(function(m){ return m.from === 'visitor' && m.id; }).map(function(m){ return m.id; });
+    if (ids.length) conv.channel.publish('receipt', { ids: ids, status: 'read', by: 'agent' });
   }
 
   // Toggle a translated message bubble between the English translation and the original language.
@@ -3553,11 +3600,13 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
 
     const conv = conversations[activeConvId];
     const msg = {
+      id: 'm_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
       from: 'agent',
       text: text,
       agentId: CONFIG.AGENT_ID,
       agentName: CONFIG.AGENT_NAME,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      status: conv.source === 'whatsapp' ? null : 'sent'
     };
 
     // If multilingual conversation, tell the widget to translate
@@ -3653,6 +3702,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       conv.channel.subscribe('message', msg => onConvMessage(convId, msg.data));
       conv.channel.subscribe('typing', msg => onConvTyping(convId, msg.data));
       conv.channel.subscribe('handler_change', msg => onHandlerChange(convId, msg.data));
+      conv.channel.subscribe('receipt', msg => onConvReceipt(convId, msg.data));
       conv.channel.subscribe('rating', msg => {
         const c = conversations[convId];
         if (c && msg.data && msg.data.rating) {

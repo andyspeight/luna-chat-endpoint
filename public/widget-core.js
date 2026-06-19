@@ -3725,6 +3725,12 @@ function initAbly() {
   chatChannel.subscribe("message", function(msg){
     var d = msg.data;
     if (d && d.from === "agent") {
+      // Acknowledge receipt so the agent sees delivered/read on their message.
+      if (d.id) {
+        publishReceipt([d.id], "delivered");
+        if (panelOpen && document.visibilityState === "visible") publishReceipt([d.id], "read");
+        else pendingReadIds.push(d.id);
+      }
       // Show the agent's reply in the visitor's language. Prefer the dashboard's
       // hint (translateTo); otherwise fall back to the language we detected for
       // THIS visitor (conversationLang). The widget is the reliable source of the
@@ -3774,6 +3780,27 @@ function initAbly() {
       typingTimeout = setTimeout(function(){ $typing.classList.remove("active"); }, 2000);
     }
   });
+
+  /* Agent acking OUR (visitor) messages -> update ticks + persist for restore. */
+  chatChannel.subscribe("receipt", function(msg){
+    var d = msg.data;
+    if (!d || d.by !== "agent" || !Array.isArray(d.ids)) return;
+    d.ids.forEach(function(id){ setReceipt(id, d.status); });
+    if (msgs && msgs.length){
+      msgs.forEach(function(m){
+        if (m.id && d.ids.indexOf(m.id) !== -1 && rcptRank(d.status) > rcptRank(m.status)) m.status = d.status;
+      });
+      saveSession();
+    }
+  });
+
+  /* When the visitor returns to the tab with the panel open, send pending reads. */
+  if (!_visHooked) {
+    _visHooked = true;
+    document.addEventListener("visibilitychange", function(){
+      if (document.visibilityState === "visible" && panelOpen) flushReadReceipts();
+    });
+  }
 
   ably.connection.on("connected", function(){
     console.log("Luna widget: Ably connected (token auth), convId=" + convId);
@@ -3855,9 +3882,47 @@ function persistConversation(payload) {
   } catch (e) { console.warn("Luna widget: conversation persist error:", e.message); }
 }
 
-function publishMessage(from, text) {
+function publishMessage(from, text, id) {
   if (!chatChannel) return;
-  chatChannel.publish("message", { from: from, text: text, lang: conversationLang || "English", timestamp: new Date().toISOString() });
+  var payload = { from: from, text: text, lang: conversationLang || "English", timestamp: new Date().toISOString() };
+  if (id) payload.id = id;
+  chatChannel.publish("message", payload);
+}
+
+/* ─── READ RECEIPTS ──────────────────────────────────────────
+   Visitor messages carry an id; the dashboard acks them with a
+   'receipt' (by:"agent") which we render as ticks under the bubble.
+   Conversely we ack the agent's messages (by:"visitor"). Ticks:
+   ✓ sent · ✓✓ delivered · ✓✓ (accent) read. */
+var receiptEls = {};        /* visitor msgId -> status <span> element */
+var pendingReadIds = [];    /* agent msg ids received while panel closed/hidden */
+var _visHooked = false;
+function newMsgId(){ return "m_" + Date.now() + "_" + Math.random().toString(36).slice(2,8); }
+function rcptRank(s){ return s === "read" ? 2 : s === "delivered" ? 1 : 0; }
+function setReceipt(id, status){
+  var el = receiptEls[id];
+  if (!el || rcptRank(status) < rcptRank(el._st)) return; /* monotonic */
+  el._st = status;
+  el.textContent = status === "sent" ? "✓" : "✓✓";
+  el.title = status === "read" ? "Read" : status === "delivered" ? "Delivered" : "Sent";
+  el.style.color = status === "read" ? (C.accentColor || "#3b82f6") : "rgba(15,26,61,0.35)";
+}
+function attachReceipt(rowEl, id, status){
+  if (!rowEl || !id) return;
+  var col = rowEl.querySelector(".tgx-msg-col") || rowEl;
+  var span = document.createElement("span");
+  span.className = "tgx-rcpt";
+  span.style.cssText = "display:block;text-align:right;font-size:11px;line-height:1;margin:2px 2px 0";
+  receiptEls[id] = span;
+  col.appendChild(span);
+  setReceipt(id, status || "sent");
+}
+function publishReceipt(ids, status){
+  if (!chatChannel || !ids || !ids.length) return;
+  chatChannel.publish("receipt", { ids: ids, status: status, by: "visitor" });
+}
+function flushReadReceipts(){
+  if (pendingReadIds.length){ publishReceipt(pendingReadIds.slice(), "read"); pendingReadIds = []; }
 }
 
 function publishHandlerChange(handler) {
@@ -4677,7 +4742,10 @@ async function sendToAI(text) {
   clearPills();
   /* Ensure we're on chat screen */
   if (currentScreen !== "chat") switchToChat();
+  var _mid = newMsgId();
   addMsg("user", text);
+  attachReceipt($msgs.lastElementChild, _mid, "sent");
+  if (msgs.length) { msgs[msgs.length-1].id = _mid; msgs[msgs.length-1].status = "sent"; saveSession(); }
   $input.value = "";
   $input.disabled = true;
   $typing.classList.add("active");
@@ -4685,7 +4753,7 @@ async function sendToAI(text) {
   scrollBottom();
 
   ensureConversationStarted();
-  publishMessage("visitor", text);
+  publishMessage("visitor", text, _mid);
 
   // Streaming is on by default. Gracefully degrades to non-streaming if the
   // server doesn't honour stream=true (older deployments) or the browser
@@ -4792,9 +4860,12 @@ async function sendToAI(text) {
 /* ─── SEND MESSAGE (Live mode) ───────────────────────────── */
 function sendToAgent(text) {
   if (!text.trim()) return;
+  var _mid = newMsgId();
   clearPills(); addMsg("user", text);
+  attachReceipt($msgs.lastElementChild, _mid, "sent");
+  if (msgs.length) { msgs[msgs.length-1].id = _mid; msgs[msgs.length-1].status = "sent"; saveSession(); }
   $input.value = "";
-  publishMessage("visitor", text);
+  publishMessage("visitor", text, _mid);
 }
 
 /* ─── ESCALATE TO HUMAN ─────────────────────────────────── */
@@ -5307,6 +5378,11 @@ async function boot() {
       } else {
         addMsg(m.role, m.content, false, m.original);
       }
+      /* Re-show the read-receipt tick on restored visitor messages. */
+      if (m.role === "user" && m.id) {
+        if (msgs.length) { msgs[msgs.length-1].id = m.id; msgs[msgs.length-1].status = m.status || "sent"; }
+        attachReceipt($msgs.lastElementChild, m.id, m.status || "sent");
+      }
     });
     if (currentScreen === "chat") {
       document.getElementById("tgxChatScreen").classList.remove("hidden");
@@ -5364,6 +5440,7 @@ async function boot() {
     opts = opts || {};
     cancelAutoTrigger();
     panelOpen = true;
+    flushReadReceipts();
     // Always refresh page context on open — visitor may have navigated.
     _currentPageContext = gatherPageContext();
     if (opts.expanded) {
