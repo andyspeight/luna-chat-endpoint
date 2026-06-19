@@ -3874,6 +3874,10 @@ function persistConversation(payload) {
     var url = C.endpoint.replace("/api/luna-chat", "/api/conversation");
     var data = { convId: convId, clientName: C.clientName || "" };
     if (payload) { for (var k in payload) { if (payload[k] !== undefined && payload[k] !== null) data[k] = payload[k]; } }
+    // Always carry the visitor identity so the record supports returning /
+    // cross-device recall (server reads these back via /api/visitor-history).
+    if (visitorId) data.visitorId = visitorId;
+    if (visitorEmail && !data.email) data.email = visitorEmail;
     return fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -3973,6 +3977,9 @@ function showNameOverlay() {
           body: JSON.stringify({ clientName: C.clientName, name: userName, email: visitorEmail })
         }).catch(function(e){ console.warn("Luna widget: subscribe error:", e); });
       }
+      // Cross-device recall: now that we have an email, see if this person has
+      // chatted with this client before (possibly on another device).
+      if (emailValid) { try { fetchServerMemory(); } catch(e){} }
       saveSession();
       ov.remove();
       /* Home screen is already visible underneath — no need to switch */
@@ -4968,10 +4975,56 @@ function buildVisitorMemoryContext(p){
   if (!p) return "";
   var parts = [];
   if (p.name) parts.push("Name: " + p.name);
-  if (p.memory && p.memory.length) parts.push("In previous chats they mentioned or asked about: " + p.memory.slice(-6).join(" | "));
+  if (p.serverSummary) parts.push(p.serverSummary);
+  if (p.memory && p.memory.length) parts.push("Recently they mentioned or asked about: " + p.memory.slice(-6).join(" | "));
   if (!parts.length) return "";
   return "This is a RETURNING visitor (not their first conversation). " + parts.join(". ")
     + ". Welcome them back warmly when it reads naturally, and draw on this only when relevant. Do NOT invent past details beyond what is stated here.";
+}
+
+/* Cross-device recall: ask the server whether this email / visitorId has chatted
+   with this client before, and merge that memory in (best-effort, async). */
+function fetchServerMemory(){
+  try {
+    var email = visitorEmail || (visitorProfile && visitorProfile.email) || "";
+    if (!email && !visitorId) return;
+    var url = C.endpoint.replace("/api/luna-chat", "/api/visitor-history");
+    fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientName: C.clientName, email: email || undefined, visitorId: visitorId || undefined })
+    })
+    .then(function(r){ return (r && r.ok) ? r.json() : null; })
+    .then(function(dd){
+      if (!dd || !dd.found) return;
+      var p = ensureProfile();
+      if (dd.name && !p.name) p.name = dd.name;
+      if (email && !p.email) p.email = email;
+      if (dd.summary) p.serverSummary = String(dd.summary).slice(0, 500);
+      saveVisitorProfile(p);
+      visitorProfile = p;
+      isReturningVisitor = true;
+      if (p.name && !userName) { userName = p.name; nameCollected = true; }
+      visitorMemoryContext = buildVisitorMemoryContext(p);
+      maybeRegreet();
+    })
+    .catch(function(){});
+  } catch(e){}
+}
+
+/* If only the welcome bubble is showing, upgrade it to a returning-visitor
+   greeting once we learn (possibly async) that this is a returning visitor. */
+function maybeRegreet(){
+  try {
+    if (!isReturningVisitor || !userName || !$msgs) return;
+    if (msgs.length === 1 && (msgs[0].role === "bot" || msgs[0].role === "assistant")) {
+      var bubble = $msgs.querySelector(".tgx-msg.bot");
+      var text = "Welcome back, " + userName + "! How can I help today?";
+      msgs[0].content = text;
+      if (bubble) renderSafeMarkdown(bubble, text);
+      saveSession();
+    }
+  } catch(e){}
 }
 
 function startChat() {
@@ -5389,6 +5442,9 @@ async function boot() {
     if (!_vp.firstSeen) _vp.firstSeen = Date.now();
     _vp.lastSeen = Date.now();
     saveVisitorProfile(_vp);
+    // If we already know an email (returning same-device visitor), pull richer
+    // cross-device memory from the server. New devices recall at email capture.
+    if ((visitorProfile && visitorProfile.email) || visitorEmail) fetchServerMemory();
   } catch(e) {}
 
   /* Country detection */

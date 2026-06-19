@@ -32,7 +32,8 @@ const F = {
   startedAt: 'fldSoy7BMqyzVb5pp', // StartedAt
   updatedAt: 'fld1GghMiUnAmdtow', // UpdatedAt
   history:   'fldZ38GYN4XbHGl03', // History (long text)
-  email:     'fldZXcvl7k3FS5Gu7'  // Email
+  email:     'fldZXcvl7k3FS5Gu7', // Email
+  visitorId: 'fldHkuGAIZMHYLWoC'  // VisitorId (for returning/cross-device recall)
 };
 
 const HANDLERS = ['Bot', 'AI', 'Waiting', 'Agent', 'Closed', 'Resolved'];
@@ -105,6 +106,9 @@ module.exports = async function handler(req, res) {
   }
   if (body.email && isValidEmail(body.email.trim())) {
     fields[F.email] = body.email.trim();
+  }
+  if (typeof body.visitorId === 'string' && /^[A-Za-z0-9_\-]{6,64}$/.test(body.visitorId.trim())) {
+    fields[F.visitorId] = body.visitorId.trim();
   }
   if (typeof body.handler === 'string' && HANDLERS.indexOf(body.handler) !== -1) {
     fields[F.handler] = body.handler;
