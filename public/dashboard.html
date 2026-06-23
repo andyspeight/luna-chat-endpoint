@@ -588,6 +588,12 @@
   .history-list { flex:1; overflow-y:auto; padding:0 var(--space-2); display:none; }
   .history-list.active { display:block; }
   .conv-list.hidden { display:none; }
+  .sidebar-footer {
+    margin-top:auto; display:grid; grid-template-columns:1fr 1fr; gap:var(--space-2);
+    padding:var(--space-3) var(--space-4); border-top:1px solid var(--border);
+  }
+  .sidebar-footer .topbar-stats-btn { width:100%; justify-content:flex-start; height:38px; }
+  .sidebar-footer .topbar-stats-btn svg { flex:none; }
 
   .history-item {
     padding:var(--space-3); border-radius:var(--radius-md); cursor:pointer;
@@ -1835,11 +1841,6 @@
       <div class="connection-dot" id="connDot"></div>
       <span id="connLabel">Connecting…</span>
     </div>
-    <button class="topbar-stats-btn" id="welcomeBtn" onclick="window._openShowcase('topbar')" title="See what Luna can do"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg> Tour</button>
-    <button class="topbar-stats-btn" id="customizeBtn" onclick="window._openWidgetEditor()" title="Customise widget appearance"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg> Customise</button>
-    <button class="topbar-stats-btn" id="statsToggle" onclick="window._toggleStats()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg> Stats</button>
-    <button class="topbar-stats-btn" id="switchCompanyBtn" onclick="window._switchCompany()" title="Switch to another Luna Chat client" style="display:none"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg> Switch</button>
-    <button class="topbar-stats-btn" id="settingsToggle" onclick="window._toggleSettings()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> Settings</button>
     <button class="topbar-stats-btn" id="themeToggle" onclick="window._toggleTheme()" title="Toggle light/dark mode" aria-label="Toggle light/dark mode"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>
     <button class="topbar-stats-btn" id="logoutBtn" onclick="window._logout()" title="Sign out" aria-label="Sign out" style="color:var(--red)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>
     <div class="topbar-controls">
@@ -1894,6 +1895,14 @@
     <input type="text" class="sidebar-search" placeholder="Search conversations…" id="convSearch">
     <div class="conv-list" id="convList"></div>
     <div class="history-list" id="historyList"></div>
+    <div class="sidebar-footer">
+      <button class="topbar-stats-btn" id="welcomeBtn" onclick="window._openShowcase('topbar')" title="See what Luna can do"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg> Tour</button>
+      <button class="topbar-stats-btn" id="guideBtn" onclick="window._lunaTourStart()" title="Interactive walkthrough — features &amp; first-time setup"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg> Guide</button>
+      <button class="topbar-stats-btn" id="customizeBtn" onclick="window._openWidgetEditor()" title="Customise widget appearance"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg> Customise</button>
+      <button class="topbar-stats-btn" id="statsToggle" onclick="window._toggleStats()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg> Stats</button>
+      <button class="topbar-stats-btn" id="settingsToggle" onclick="window._toggleSettings()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> Settings</button>
+      <button class="topbar-stats-btn" id="switchCompanyBtn" onclick="window._switchCompany()" title="Switch to another Luna Chat client" style="display:none"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg> Switch</button>
+    </div>
   </div>
 
   <!-- CHAT -->
@@ -8658,6 +8667,334 @@ setTimeout(function () {
     mo.observe(panel, { attributes:true, attributeFilter:['class'] });
   }
   refresh();
+})();
+</script>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ═══ LUNA WALKTHROUGH — interactive feature + setup tour ═ -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<style id="lwt-styles">
+  .lwt-root{position:fixed;inset:0;z-index:2147482000;pointer-events:none;}
+  .lwt-root[hidden]{display:none;}
+  .lwt-pane{position:fixed;z-index:2147482000;background:rgba(8,12,28,0.66);pointer-events:auto;transition:top .34s cubic-bezier(.4,0,.2,1),left .34s cubic-bezier(.4,0,.2,1),width .34s cubic-bezier(.4,0,.2,1),height .34s cubic-bezier(.4,0,.2,1);}
+  .lwt-ring{position:fixed;z-index:2147482060;border-radius:14px;pointer-events:none;opacity:0;box-shadow:0 0 0 3px #F26A4F,0 0 0 8px rgba(242,106,79,0.28),0 10px 50px rgba(0,0,0,0.5);transition:top .34s cubic-bezier(.4,0,.2,1),left .34s cubic-bezier(.4,0,.2,1),width .34s cubic-bezier(.4,0,.2,1),height .34s cubic-bezier(.4,0,.2,1),opacity .25s ease;}
+  .lwt-arrow{position:fixed;z-index:2147482099;width:14px;height:14px;background:#fff;transform:rotate(45deg);pointer-events:none;border-radius:2px;opacity:0;transition:top .28s cubic-bezier(.4,0,.2,1),left .28s cubic-bezier(.4,0,.2,1),opacity .2s ease;}
+  .lwt-pop{position:fixed;z-index:2147482100;width:320px;max-width:calc(100vw - 28px);background:#fff;color:#0F1A3D;border-radius:18px;box-shadow:0 28px 80px rgba(8,12,28,0.55);padding:18px 20px 16px;pointer-events:auto;opacity:0;transition:top .3s cubic-bezier(.4,0,.2,1),left .3s cubic-bezier(.4,0,.2,1),opacity .22s ease;font-family:system-ui,"Segoe UI",Roboto,Arial,sans-serif;}
+  .lwt-eyebrow{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#8A93A8;margin-bottom:9px;}
+  .lwt-eyedot{width:7px;height:7px;border-radius:50%;background:#F26A4F;box-shadow:0 0 0 3px rgba(242,106,79,0.18);flex:0 0 auto;}
+  .lwt-eyebrow-sep{opacity:.5;}
+  .lwt-title{margin:0 0 7px;font-size:18px;line-height:1.25;font-weight:750;color:#0F1A3D;letter-spacing:-0.01em;}
+  .lwt-body{margin:0 0 14px;font-size:13.5px;line-height:1.55;color:#46506A;}
+  .lwt-body b{color:#0F1A3D;font-weight:650;}
+  .lwt-body code{background:rgba(15,26,61,0.07);padding:1px 5px;border-radius:5px;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}
+  .lwt-progress{height:4px;border-radius:99px;background:rgba(15,26,61,0.08);overflow:hidden;margin-bottom:13px;}
+  .lwt-progress-bar{height:100%;border-radius:99px;background:linear-gradient(90deg,#F26A4F,#F59E0B);transition:width .35s cubic-bezier(.4,0,.2,1);width:8%;}
+  .lwt-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .lwt-skip{background:none;border:none;color:#8A93A8;font-size:12.5px;cursor:pointer;padding:6px 2px;font-weight:550;font-family:inherit;}
+  .lwt-skip:hover{color:#46506A;text-decoration:underline;}
+  .lwt-nav{display:flex;gap:8px;}
+  .lwt-btn{font-family:inherit;font-size:13px;font-weight:650;border-radius:10px;padding:8px 16px;cursor:pointer;border:1px solid transparent;transition:background .15s,border-color .15s,transform .05s;}
+  .lwt-btn:active{transform:translateY(1px);}
+  .lwt-btn-ghost{background:#fff;border-color:rgba(15,26,61,0.15);color:#46506A;}
+  .lwt-btn-ghost:hover{background:rgba(15,26,61,0.04);}
+  .lwt-btn-ghost:disabled{opacity:.4;cursor:default;}
+  .lwt-btn-primary{background:#0F1A3D;color:#fff;}
+  .lwt-btn-primary:hover{background:#1B2B5B;}
+  @media (prefers-reduced-motion: reduce){ .lwt-pane,.lwt-ring,.lwt-arrow,.lwt-pop,.lwt-progress-bar{transition:none!important;} }
+</style>
+
+<div class="lwt-root" id="lwt-root" hidden aria-hidden="true">
+  <div class="lwt-pane" id="lwt-pane-top"></div>
+  <div class="lwt-pane" id="lwt-pane-bottom"></div>
+  <div class="lwt-pane" id="lwt-pane-left"></div>
+  <div class="lwt-pane" id="lwt-pane-right"></div>
+  <div class="lwt-ring" id="lwt-ring"></div>
+  <div class="lwt-arrow" id="lwt-arrow"></div>
+  <div class="lwt-pop" id="lwt-pop" role="dialog" aria-modal="false" aria-labelledby="lwt-title">
+    <div class="lwt-eyebrow"><span class="lwt-eyedot"></span><span id="lwt-badge">Step 1</span><span class="lwt-eyebrow-sep">·</span>Luna setup guide</div>
+    <h3 class="lwt-title" id="lwt-title"></h3>
+    <div class="lwt-body" id="lwt-body"></div>
+    <div class="lwt-progress"><div class="lwt-progress-bar" id="lwt-bar"></div></div>
+    <div class="lwt-foot">
+      <button class="lwt-skip" id="lwt-skip" type="button">Skip tour</button>
+      <div class="lwt-nav">
+        <button class="lwt-btn lwt-btn-ghost" id="lwt-back" type="button">Back</button>
+        <button class="lwt-btn lwt-btn-primary" id="lwt-next" type="button">Next</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var TOUR_KEY = 'luna-tour-v1-done';
+  var root, panes = {}, ring, arrow, pop, titleEl, bodyEl, badgeEl, barEl, backBtn, nextBtn, skipBtn;
+  var steps = [], idx = 0, active = false, reflowRAF = null, goTimer = null;
+
+  function byId(id) { return document.getElementById(id); }
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+  // ── Drive the dashboard's own panels (state is readable from the .active class) ──
+  function settingsOpen() { var p = byId('settingsPanel'); return !!(p && p.classList.contains('active')); }
+  function statsOpen() { var p = byId('analyticsPanel'); return !!(p && p.classList.contains('active')); }
+  function openSettings() { if (!settingsOpen() && typeof window._toggleSettings === 'function') window._toggleSettings(); }
+  function closeSettings() { if (settingsOpen() && typeof window._toggleSettings === 'function') window._toggleSettings(); }
+  function closeStats() { if (statsOpen() && typeof window._toggleStats === 'function') window._toggleStats(); }
+  function settingsTab(t) { if (typeof window._switchSettingsTab === 'function') window._switchSettingsTab(t); }
+  function widgetTab(t) { if (typeof window._switchWidgetTab === 'function') window._switchWidgetTab(t); }
+
+  function defineSteps() {
+    return [
+      { center: true,
+        title: "Welcome to Luna 👋",
+        body: "Luna greets every visitor on your website, answers their questions, and brings in your team when it matters. This quick walkthrough shows you around the dashboard — and gets you set up to go live.",
+        before: function () { closeStats(); closeSettings(); } },
+      { sel: '.sidebar', placement: 'right',
+        title: "Your inbox",
+        body: "Every visitor conversation lands here in real time. <b>Live</b> shows chats happening now; <b>History</b> keeps everything that’s already been handled.",
+        before: function () { closeStats(); closeSettings(); } },
+      { sel: '#chatPanel', placement: 'auto',
+        title: "Read & reply",
+        body: "Open any conversation to see the whole thread. Luna answers on her own — but you can <b>Take over</b> the moment you want to, then hit <b>Resolve</b> when you’re done.",
+        before: function () { closeStats(); closeSettings(); } },
+      { sel: '#cannedAddBtn', altSel: '#cannedContainer', placement: 'left',
+        title: "Quick Replies",
+        body: "Save your most-used answers and drop them in with one click — opening hours, booking links, “bear with me a moment”. Build your own library right here.",
+        before: function () { closeStats(); closeSettings(); } },
+      { sel: '#statsToggle', placement: 'bottom',
+        title: "Know your numbers",
+        body: "Conversations handled, response times, how many Luna resolved on her own, and your live <b>CSAT</b> satisfaction score. Click <b>Stats</b> any time to dig in.",
+        before: function () { closeStats(); closeSettings(); } },
+      { sel: '#customizeBtn', placement: 'bottom',
+        title: "Make Luna yours",
+        body: "A drag-and-drop editor for the chat widget — brand colours, greeting, avatar, and the quick-start cards visitors tap first. Everything previews live.",
+        before: function () { closeStats(); closeSettings(); } },
+      // ── First-time setup ──
+      { sel: '#spAside', altSel: '#settingsTabProfile', placement: 'left', panelStep: true,
+        title: "Set up in 3 steps",
+        body: "Now let’s get you live. This checklist tracks the three things Luna needs before launch — we’ll walk through each one now.",
+        before: function () { closeStats(); openSettings(); settingsTab('profile'); } },
+      { sel: '#setDescription', altSel: '#settingsTabProfile', placement: 'right', panelStep: true,
+        title: "1 · Teach Luna your business",
+        body: "Describe what you do in plain English — your destinations, policies and tone of voice. The more she knows, the sharper her answers.",
+        before: function () { openSettings(); settingsTab('profile'); } },
+      { sel: '#trainScanBtn', altSel: '#setTrainUrls', placement: 'right', panelStep: true,
+        title: "…or just scan your website",
+        body: "Short on time? Paste your website address and hit <b>Scan</b>. Luna reads your pages and learns your business automatically — no copy-pasting.",
+        before: function () { openSettings(); settingsTab('profile'); } },
+      { sel: '#brandColorGrid', altSel: '#wstAppearance', placement: 'right', panelStep: true,
+        title: "2 · Match your brand",
+        body: "Choose your brand and accent colours, then set Luna’s name and avatar. The widget instantly looks like a natural part of your own site.",
+        before: function () { openSettings(); settingsTab('profile'); widgetTab('appearance'); } },
+      { sel: '#setAutoTriggerEnabled', altSel: '#wstAdvanced', placement: 'right', panelStep: true,
+        title: "Pop up at the perfect moment",
+        body: "Have Luna open by herself — after a few seconds, when someone scrolls deep, or just as they’re about to leave. That’s how quiet visitors become real leads.",
+        before: function () { openSettings(); settingsTab('profile'); widgetTab('advanced'); } },
+      { sel: '#embedCodeSection', altSel: '#settingsTabProfile', placement: 'right', panelStep: true,
+        title: "3 · Go live",
+        body: "Copy this one line of code and paste it into your site, just before the <code>&lt;/body&gt;</code> tag. Luna starts working on every page — that’s it.",
+        before: function () { openSettings(); settingsTab('profile'); } },
+      { center: true,
+        title: "You’re ready to go 🚀",
+        body: "Paste the embed code on your site and Luna goes live. You can replay this walkthrough any time from the <b>Guide</b> button up top. Welcome aboard!",
+        before: function () { openSettings(); settingsTab('profile'); } }
+    ];
+  }
+
+  function isVisible(el) {
+    if (!el) return false;
+    var r = el.getBoundingClientRect();
+    if (r.width <= 0 && r.height <= 0) return false;
+    var cs = window.getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity) === 0) return false;
+    return true;
+  }
+
+  function getTarget(step) {
+    var el = step.sel ? document.querySelector(step.sel) : null;
+    if ((!el || !isVisible(el)) && step.altSel) el = document.querySelector(step.altSel);
+    if (el && isVisible(el)) return el;
+    return null;
+  }
+
+  function setPane(name, x, y, w, h) {
+    var p = panes[name];
+    p.style.left = x + 'px'; p.style.top = y + 'px';
+    p.style.width = Math.max(0, w) + 'px'; p.style.height = Math.max(0, h) + 'px';
+  }
+
+  function layoutCentered() {
+    var vw = window.innerWidth, vh = window.innerHeight;
+    setPane('top', 0, 0, vw, vh);
+    setPane('bottom', 0, 0, 0, 0);
+    setPane('left', 0, 0, 0, 0);
+    setPane('right', 0, 0, 0, 0);
+    ring.style.opacity = '0';
+    arrow.style.opacity = '0';
+    var pw = pop.offsetWidth, ph = pop.offsetHeight;
+    pop.style.left = clamp(vw / 2 - pw / 2, 14, vw - pw - 14) + 'px';
+    pop.style.top = clamp(vh / 2 - ph / 2, 14, vh - ph - 14) + 'px';
+    pop.style.opacity = '1';
+  }
+
+  function layoutSpotlight(rect, step) {
+    var pad = step.pad == null ? 8 : step.pad;
+    var vw = window.innerWidth, vh = window.innerHeight;
+    var hx = clamp(rect.left - pad, 0, vw), hy = clamp(rect.top - pad, 0, vh);
+    var hr = clamp(rect.right + pad, 0, vw), hb = clamp(rect.bottom + pad, 0, vh);
+    var hw = Math.max(0, hr - hx), hh = Math.max(0, hb - hy);
+    setPane('top', 0, 0, vw, hy);
+    setPane('bottom', 0, hb, vw, vh - hb);
+    setPane('left', 0, hy, hx, hh);
+    setPane('right', hr, hy, vw - hr, hh);
+    ring.style.opacity = '1';
+    ring.style.left = hx + 'px'; ring.style.top = hy + 'px';
+    ring.style.width = hw + 'px'; ring.style.height = hh + 'px';
+    positionPop({ left: hx, top: hy, right: hr, bottom: hb, width: hw, height: hh }, step.placement || 'auto');
+  }
+
+  function positionPop(hole, placement) {
+    var pw = pop.offsetWidth, ph = pop.offsetHeight;
+    var vw = window.innerWidth, vh = window.innerHeight, gap = 16, m = 12;
+    var order = placement === 'auto' ? ['right', 'left', 'bottom', 'top'] : [placement, 'right', 'left', 'bottom', 'top'];
+    var side = null, px = 0, py = 0;
+    for (var i = 0; i < order.length; i++) {
+      var pl = order[i];
+      if (pl === 'right' && hole.right + gap + pw <= vw - m) { px = hole.right + gap; py = clamp(hole.top + hole.height / 2 - ph / 2, m, vh - ph - m); side = 'right'; break; }
+      if (pl === 'left' && hole.left - gap - pw >= m) { px = hole.left - gap - pw; py = clamp(hole.top + hole.height / 2 - ph / 2, m, vh - ph - m); side = 'left'; break; }
+      if (pl === 'bottom' && hole.bottom + gap + ph <= vh - m) { py = hole.bottom + gap; px = clamp(hole.left + hole.width / 2 - pw / 2, m, vw - pw - m); side = 'bottom'; break; }
+      if (pl === 'top' && hole.top - gap - ph >= m) { py = hole.top - gap - ph; px = clamp(hole.left + hole.width / 2 - pw / 2, m, vw - pw - m); side = 'top'; break; }
+    }
+    if (!side) { px = clamp(vw / 2 - pw / 2, m, vw - pw - m); py = clamp(vh / 2 - ph / 2, m, vh - ph - m); side = 'center'; }
+    pop.style.left = px + 'px'; pop.style.top = py + 'px'; pop.style.opacity = '1';
+    positionArrow(side, hole, px, py, pw, ph);
+  }
+
+  function positionArrow(side, hole, px, py, pw, ph) {
+    if (side === 'center') { arrow.style.opacity = '0'; return; }
+    var aw = 14, cx, cy;
+    if (side === 'right') { cx = px - aw / 2; cy = clamp(hole.top + hole.height / 2, py + 14, py + ph - 14) - aw / 2; }
+    else if (side === 'left') { cx = px + pw - aw / 2; cy = clamp(hole.top + hole.height / 2, py + 14, py + ph - 14) - aw / 2; }
+    else if (side === 'bottom') { cy = py - aw / 2; cx = clamp(hole.left + hole.width / 2, px + 14, px + pw - 14) - aw / 2; }
+    else { cy = py + ph - aw / 2; cx = clamp(hole.left + hole.width / 2, px + 14, px + pw - 14) - aw / 2; }
+    arrow.style.left = cx + 'px'; arrow.style.top = cy + 'px'; arrow.style.opacity = '1';
+  }
+
+  function positionForStep(step) {
+    if (step.center) { layoutCentered(); return; }
+    var el = getTarget(step);
+    if (!el) { layoutCentered(); return; }
+    layoutSpotlight(el.getBoundingClientRect(), step);
+  }
+
+  function render() {
+    var step = steps[idx];
+    titleEl.innerHTML = step.title;
+    bodyEl.innerHTML = step.body;
+    badgeEl.textContent = 'Step ' + (idx + 1) + ' of ' + steps.length;
+    barEl.style.width = Math.round(((idx + 1) / steps.length) * 100) + '%';
+    backBtn.disabled = idx === 0;
+    nextBtn.textContent = idx === steps.length - 1 ? 'Finish' : 'Next';
+  }
+
+  function go(i) {
+    idx = clamp(i, 0, steps.length - 1);
+    var step = steps[idx];
+    render();
+    try { if (step.before) step.before(); } catch (e) {}
+    positionForStep(step); // immediate, avoids a flash at the old position
+    clearTimeout(goTimer);
+    var delay = step.panelStep ? 430 : 110;
+    goTimer = setTimeout(function () {
+      var el = getTarget(step);
+      if (el && el.scrollIntoView) {
+        try { el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' }); }
+        catch (e) { try { el.scrollIntoView(); } catch (e2) {} }
+      }
+      setTimeout(function () { positionForStep(step); }, el ? 340 : 0);
+    }, delay);
+  }
+
+  function onReflow() {
+    if (!active) return;
+    if (reflowRAF) cancelAnimationFrame(reflowRAF);
+    reflowRAF = requestAnimationFrame(function () { positionForStep(steps[idx]); });
+  }
+
+  function onKey(e) {
+    if (!active) return;
+    if (e.key === 'Escape') { e.preventDefault(); stop(true); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); next(); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); back(); }
+  }
+
+  function start() {
+    if (active) return;
+    steps = defineSteps();
+    idx = 0; active = true;
+    root.hidden = false; root.setAttribute('aria-hidden', 'false');
+    document.addEventListener('keydown', onKey, true);
+    requestAnimationFrame(function () { go(0); setTimeout(function () { try { pop.focus(); } catch (e) {} }, 60); });
+  }
+
+  function stop(remember) {
+    if (!active) return;
+    active = false;
+    clearTimeout(goTimer);
+    root.hidden = true; root.setAttribute('aria-hidden', 'true');
+    document.removeEventListener('keydown', onKey, true);
+    if (remember) { try { localStorage.setItem(TOUR_KEY, '1'); } catch (e) {} }
+  }
+
+  function next() { if (idx >= steps.length - 1) stop(true); else go(idx + 1); }
+  function back() { if (idx > 0) go(idx - 1); }
+
+  function waitReadyThen(fn) {
+    var tries = 0;
+    (function poll() {
+      tries++;
+      var boot = byId('bootScreen'), picker = byId('pickerScreen'), app = byId('app');
+      var bootVisible = boot && window.getComputedStyle(boot).display !== 'none';
+      var pickerVisible = picker && window.getComputedStyle(picker).display !== 'none';
+      var appReady = app && window.getComputedStyle(app).display !== 'none' && app.offsetParent !== null;
+      if (!bootVisible && !pickerVisible && appReady) { setTimeout(fn, 650); return; }
+      if (tries > 40) return; // give up after ~20s
+      setTimeout(poll, 500);
+    })();
+  }
+
+  function maybeAutostart() {
+    try {
+      var q = new URLSearchParams(location.search);
+      if (q.get('tour') === '1') { waitReadyThen(start); return; }
+      if (q.get('tour') === '0') { try { localStorage.setItem(TOUR_KEY, '1'); } catch (e) {} return; }
+      var done = false; try { done = !!localStorage.getItem(TOUR_KEY); } catch (e) {}
+      if (!done) waitReadyThen(start);
+    } catch (e) {}
+  }
+
+  function init() {
+    root = byId('lwt-root');
+    if (!root) return;
+    panes.top = byId('lwt-pane-top'); panes.bottom = byId('lwt-pane-bottom');
+    panes.left = byId('lwt-pane-left'); panes.right = byId('lwt-pane-right');
+    ring = byId('lwt-ring'); arrow = byId('lwt-arrow'); pop = byId('lwt-pop');
+    titleEl = byId('lwt-title'); bodyEl = byId('lwt-body'); badgeEl = byId('lwt-badge'); barEl = byId('lwt-bar');
+    backBtn = byId('lwt-back'); nextBtn = byId('lwt-next'); skipBtn = byId('lwt-skip');
+    backBtn.addEventListener('click', back);
+    nextBtn.addEventListener('click', next);
+    skipBtn.addEventListener('click', function () { stop(true); });
+    window.addEventListener('resize', onReflow, true);
+    window.addEventListener('scroll', onReflow, true);
+    window._lunaTourStart = start;
+    window._lunaTourStop = function () { stop(false); };
+    window._lunaTourReset = function () { try { localStorage.removeItem(TOUR_KEY); } catch (e) {} };
+    maybeAutostart();
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
 })();
 </script>
 </body>
