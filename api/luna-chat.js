@@ -2957,7 +2957,7 @@ No problem, drop your email and departure date in below and I'll find it.
 
     var modelId = useHaiku
       ? (process.env.LUNA_HAIKU_MODEL || 'claude-haiku-4-5-20251001')
-      : (process.env.LUNA_MODEL || 'claude-sonnet-4-20250514');
+      : (process.env.LUNA_MODEL || 'claude-sonnet-4-6');
 
     // ═══════════════════════════════════════════════════════════
     // STREAMING PATH — SSE response, real-time token delivery
