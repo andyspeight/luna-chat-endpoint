@@ -11,6 +11,11 @@
 //             Airtable (the same value auth-session serves to the browser) and
 //             authenticate it directly against Ably. Catches a revoked/dead
 //             dashboard key — the exact failure that took the dashboard down.
+//   Check C — AI path: make a tiny real Anthropic call against EACH distinct
+//             model Luna uses (same resolution as api/luna-chat.js). Catches a
+//             retired/renamed model id, a bad API key, or an Anthropic outage —
+//             the exact failure on 23 June 2026, which A and B both missed
+//             because they only cover the realtime transport, not generation.
 //
 // Alerting policy (no crying wolf):
 //   - Only alerts after TWO consecutive failed runs (~a 15-minute real outage).
@@ -27,6 +32,7 @@
 //   TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID   (alert delivery)
 //   CRON_SECRET                            (protects this endpoint)
 //   AIRTABLE_KEY                           (already set — reads the dashboard key)
+//   ANTHROPIC_API_KEY                      (already set — Check C calls the model)
 //   UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN  (already set — strike state)
 // Optional:
 //   LUNA_BASE_URL  (override the base URL used for Check A; defaults to this host)
@@ -155,6 +161,51 @@ async function checkDashboardKey() {
   }
 }
 
+// Check C: exercise the actual AI generation path. Checks A and B only cover the
+// realtime transport — they stayed GREEN throughout the 23 June outage when the
+// configured model id had been retired and every reply 404'd. We mirror the model
+// resolution in api/luna-chat.js and make a tiny real call against each DISTINCT
+// model, so a retired/renamed model, a rejected API key, or an Anthropic outage
+// trips the alert within ~15 minutes instead of going unnoticed for days.
+async function checkAiGeneration() {
+  var apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return { ok: false, detail: 'ANTHROPIC_API_KEY not configured' };
+
+  // Same env vars + defaults luna-chat.js uses. Dedupe so we make the fewest
+  // calls (short and haiku share a default).
+  var models = [
+    process.env.LUNA_MODEL || 'claude-sonnet-4-6',
+    process.env.LUNA_HAIKU_MODEL || 'claude-haiku-4-5-20251001',
+    process.env.LUNA_SHORT_MODEL || 'claude-haiku-4-5-20251001'
+  ].filter(function (m, i, arr) { return arr.indexOf(m) === i; });
+
+  async function ping(model) {
+    try {
+      var r = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ model: model, max_tokens: 4, messages: [{ role: 'user', content: 'ping' }] }),
+        signal: AbortSignal.timeout(8000)
+      });
+      if (r.status === 404) return { ok: false, detail: model + ' → 404 not_found (model retired or renamed)' };
+      if (r.status === 401) return { ok: false, detail: 'Anthropic rejected the API key (401)' };
+      if (!ok(r.status)) return { ok: false, detail: model + ' → Anthropic returned ' + r.status };
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, detail: model + ' unreachable: ' + e.message };
+    }
+  }
+
+  var results = await Promise.all(models.map(ping));
+  var bad = results.filter(function (x) { return !x.ok; });
+  if (bad.length) return { ok: false, detail: bad.map(function (x) { return x.detail; }).join('; ') };
+  return { ok: true };
+}
+
 // ─── handler ─────────────────────────────────────────────────────────────────
 
 module.exports = async function handler(req, res) {
@@ -177,16 +228,18 @@ module.exports = async function handler(req, res) {
 
   var host = (process.env.LUNA_BASE_URL || ('https://' + (req.headers['host'] || 'luna-chat-endpoint.vercel.app'))).replace(/\/$/, '');
 
-  var a = await checkVisitorToken(host);
-  var b = await checkDashboardKey();
-  var healthy = a.ok && b.ok;
+  // Run the three checks in parallel so the function stays well within its
+  // 15s budget even when a check has to wait out its own timeout.
+  var checks = await Promise.all([checkVisitorToken(host), checkDashboardKey(), checkAiGeneration()]);
+  var a = checks[0], b = checks[1], c = checks[2];
+  var healthy = a.ok && b.ok && c.ok;
 
   var state = await loadState();
   var actions = [];
 
   if (healthy) {
     if (state.down) {
-      await tgSend('✅ Luna Chat is back up.\n\nRecovered at ' + new Date().toUTCString() + '. Both the visitor token path and the dashboard connection are healthy again.');
+      await tgSend('✅ Luna Chat is back up.\n\nRecovered at ' + new Date().toUTCString() + '. The visitor token path, the dashboard connection, and AI replies are all healthy again.');
       actions.push('sent recovery');
     }
     state = { fails: 0, down: false };
@@ -195,6 +248,7 @@ module.exports = async function handler(req, res) {
     var reasons = [];
     if (!a.ok) reasons.push('• Visitor chat: ' + a.detail);
     if (!b.ok) reasons.push('• Agent dashboard: ' + b.detail);
+    if (!c.ok) reasons.push('• AI replies: ' + c.detail);
 
     if (state.fails >= 2 && !state.down) {
       await tgSend(
@@ -217,7 +271,8 @@ module.exports = async function handler(req, res) {
     healthy: healthy,
     checks: {
       visitorToken: a.ok ? 'ok' : ('FAIL: ' + a.detail),
-      dashboardKey: b.ok ? 'ok' : ('FAIL: ' + b.detail)
+      dashboardKey: b.ok ? 'ok' : ('FAIL: ' + b.detail),
+      aiGeneration: c.ok ? 'ok' : ('FAIL: ' + c.detail)
     },
     consecutiveFailures: state.fails,
     alerting: state.down,
