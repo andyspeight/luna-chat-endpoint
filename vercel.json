@@ -17,7 +17,8 @@
     "api/reverify-structured.js": { "maxDuration": 60, "memory": 256 },
     "api/refresh-fcdo.js": { "maxDuration": 60, "memory": 256 },
     "api/whatsapp-webhook.js": { "maxDuration": 30, "memory": 256 },
-    "api/whatsapp-send.js": { "maxDuration": 15, "memory": 128 }
+    "api/whatsapp-send.js": { "maxDuration": 15, "memory": 128 },
+    "api/agent-reply-check.js": { "maxDuration": 10, "memory": 128 }
   },
   "crons": [
     { "path": "/api/monitor", "schedule": "*/15 * * * *" },

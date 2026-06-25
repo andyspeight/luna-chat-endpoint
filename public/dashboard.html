@@ -6302,6 +6302,158 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     window._removeFile();
   };
 
+  // ─── OUTBOUND REPLY QUALITY GATE ───────────────────────────────────────
+  // Before an agent's message reaches the customer, vet it for tone the way a
+  // support-desk would: a fast local profanity/rude-phrase backstop plus an AI
+  // tone check (/api/agent-reply-check). If it looks rude or unprofessional we
+  // pause and offer a warm rewrite, a chance to edit, or send-anyway. The check
+  // FAILS OPEN — a clean message, or any outage of the check itself, never
+  // blocks a send.
+  (function installReplyQualityGate() {
+    if (window.__lunaReplyGateInstalled) return;
+    window.__lunaReplyGateInstalled = true;
+
+    // Modal styling, injected once.
+    if (!document.getElementById('tgx-rqc-style')) {
+      var st = document.createElement('style');
+      st.id = 'tgx-rqc-style';
+      st.textContent =
+        '.tgx-rqc-overlay{position:fixed;inset:0;background:rgba(15,23,42,.55);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;z-index:99999;padding:20px;}' +
+        '.tgx-rqc-card{background:#fff;color:#0f172a;max-width:520px;width:100%;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:24px;font-family:inherit;max-height:90vh;overflow:auto;}' +
+        '.tgx-rqc-badge{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#b45309;background:#fef3c7;padding:4px 10px;border-radius:999px;margin-bottom:10px;}' +
+        '.tgx-rqc-card h3{margin:0 0 4px;font-size:18px;font-weight:700;}' +
+        '.tgx-rqc-reason{margin:4px 0 16px;color:#475569;font-size:14px;line-height:1.5;}' +
+        '.tgx-rqc-block{margin-bottom:14px;}' +
+        '.tgx-rqc-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#94a3b8;margin-bottom:6px;}' +
+        '.tgx-rqc-draft{background:#fef2f2;border:1px solid #fecaca;color:#7f1d1d;border-radius:10px;padding:10px 12px;font-size:14px;line-height:1.5;white-space:pre-wrap;word-break:break-word;}' +
+        '.tgx-rqc-sugg{background:#f0fdf4;border:1px solid #bbf7d0;color:#14532d;border-radius:10px;padding:10px 12px;font-size:14px;line-height:1.5;white-space:pre-wrap;word-break:break-word;}' +
+        '.tgx-rqc-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px;}' +
+        '.tgx-rqc-btn{flex:1;min-width:130px;border:1px solid #e2e8f0;background:#fff;color:#0f172a;font-size:14px;font-weight:600;padding:11px 14px;border-radius:10px;cursor:pointer;}' +
+        '.tgx-rqc-btn:hover{background:#f8fafc;}' +
+        '.tgx-rqc-primary{background:#16a34a;border-color:#16a34a;color:#fff;}' +
+        '.tgx-rqc-primary:hover{background:#15803d;}' +
+        '.tgx-rqc-ghost{color:#64748b;}';
+      document.head.appendChild(st);
+    }
+
+    function rqcEsc(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    // Fast, offline backstop for obvious profanity and clearly rude directives.
+    // The AI check handles subtler tone; this guarantees the blatant cases are
+    // caught even if the network/AI is unavailable.
+    function localToneCheck(text) {
+      var norm = ' ' + String(text).toLowerCase()
+        .replace(/['’`]/g, '').replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim() + ' ';
+      var terms = [
+        ' fuck', ' fucking', ' fuck off', ' shit', ' bullshit', ' bitch', ' bastard',
+        ' asshole', ' arsehole', ' dickhead', ' prick', ' cunt', ' wanker', ' bollocks',
+        ' twat', ' piss off', ' pissed off', ' bugger off', ' screw you',
+        ' go away', ' shut up', ' get lost', ' leave me alone', ' not my problem',
+        ' thats your problem', ' figure it out yourself', ' deal with it yourself',
+        ' stop bothering me', ' stop messaging me', ' i dont care', ' you idiot',
+        ' youre an idiot', ' youre stupid', ' youre being stupid'
+      ];
+      for (var i = 0; i < terms.length; i++) {
+        if (norm.indexOf(terms[i] + ' ') !== -1) {
+          return { flagged: true, severity: 'high', reason: 'Contains wording that may read as rude or unprofessional.' };
+        }
+      }
+      return { flagged: false };
+    }
+
+    async function qualityCheck(text) {
+      var local = localToneCheck(text);
+      var ai = null;
+      try {
+        var ctrl = new AbortController();
+        var to = setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, 5000);
+        var res = await fetch('/api/agent-reply-check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: text, clientName: (window.CONFIG && CONFIG.CLIENT_NAME) || '' }),
+          signal: ctrl.signal
+        });
+        clearTimeout(to);
+        if (res.ok) ai = await res.json();
+      } catch (e) { ai = null; }
+      var flagged = (local && local.flagged) || (ai && ai.flagged);
+      if (!flagged) return { flagged: false };
+      return {
+        flagged: true,
+        severity: (ai && ai.flagged && ai.severity) || (local && local.severity) || 'medium',
+        reason: (ai && ai.flagged && ai.reason) || (local && local.reason) || 'This reply may come across as rude or unprofessional.',
+        suggestion: (ai && ai.suggestion) || ''
+      };
+    }
+
+    function showModal(draft, verdict) {
+      return new Promise(function (resolve) {
+        var hasSuggestion = verdict.suggestion && verdict.suggestion.trim();
+        var title = verdict.severity === 'high' ? 'This could upset the customer'
+          : (verdict.severity === 'low' ? 'Worth a second look before sending' : 'This might read as unprofessional');
+        var overlay = document.createElement('div');
+        overlay.className = 'tgx-rqc-overlay';
+        overlay.innerHTML =
+          '<div class="tgx-rqc-card" role="dialog" aria-modal="true">' +
+            '<span class="tgx-rqc-badge">Quality check</span>' +
+            '<h3>' + rqcEsc(title) + '</h3>' +
+            '<p class="tgx-rqc-reason">' + rqcEsc(verdict.reason || 'This reply may come across as rude or unprofessional.') + '</p>' +
+            '<div class="tgx-rqc-block"><div class="tgx-rqc-label">Your draft</div><div class="tgx-rqc-draft">' + rqcEsc(draft) + '</div></div>' +
+            (hasSuggestion ? '<div class="tgx-rqc-block"><div class="tgx-rqc-label">Suggested rewrite</div><div class="tgx-rqc-sugg">' + rqcEsc(verdict.suggestion) + '</div></div>' : '') +
+            '<div class="tgx-rqc-actions">' +
+              (hasSuggestion ? '<button class="tgx-rqc-btn tgx-rqc-primary" data-act="rewrite">Use suggested rewrite</button>' : '') +
+              '<button class="tgx-rqc-btn" data-act="edit">Let me edit it</button>' +
+              '<button class="tgx-rqc-btn tgx-rqc-ghost" data-act="send">Send anyway</button>' +
+            '</div>' +
+          '</div>';
+        function done(act) {
+          if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+          document.removeEventListener('keydown', onKey);
+          resolve(act);
+        }
+        function onKey(e) { if (e.key === 'Escape') done('edit'); }
+        overlay.addEventListener('click', function (e) {
+          if (e.target === overlay) { done('edit'); return; }
+          var b = e.target.closest && e.target.closest('[data-act]');
+          if (b) done(b.getAttribute('data-act'));
+        });
+        document.addEventListener('keydown', onKey);
+        document.body.appendChild(overlay);
+      });
+    }
+
+    // Wrap the (already file-aware) sendMessage with the gate.
+    var innerSend = sendMessage;
+    var bypassOnce = false;
+    sendMessage = async function () {
+      if (bypassOnce) { bypassOnce = false; return innerSend.apply(this, arguments); }
+      var text = (msgInput.value || '').trim();
+      if (!text) { return innerSend.apply(this, arguments); } // nothing to vet (e.g. file only)
+
+      sendBtn.disabled = true;
+      var verdict;
+      try { verdict = await qualityCheck(text); }
+      catch (e) { verdict = { flagged: false }; }
+
+      if (!verdict || !verdict.flagged) { return innerSend.apply(this, arguments); }
+
+      var action = await showModal(text, verdict);
+      if (action === 'send') { bypassOnce = true; return sendMessage(); }
+      if (action === 'rewrite' && verdict.suggestion) {
+        msgInput.value = verdict.suggestion;
+        msgInput.dispatchEvent(new Event('input', { bubbles: true }));
+        msgInput.focus();
+      } else {
+        msgInput.focus();
+        sendBtn.disabled = !msgInput.value.trim();
+      }
+    };
+  })();
+
   // ─── QUICK REPLIES DRAWER TOGGLE ───
   window._toggleQuickRepliesDrawer = function() {
     // Scroll the info panel to show the Quick Replies section
