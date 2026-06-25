@@ -2501,6 +2501,17 @@ module.exports = async function handler(req, res) {
   // High salience near the top of the assembled prompt. See buildTemporalContext.
   systemPrompt += buildTemporalContext();
 
+  // -- Anti-loop rule: never re-ask an answered question (every client) ----
+  // Guards against the failure where Luna asks the same thing again after the
+  // visitor has already answered — the single most broken-looking behaviour in
+  // a live demo. Applies to both prompt variants, high in the assembled prompt.
+  systemPrompt += '\n\n## Never re-ask something already answered (CRITICAL)\n'
+    + 'Before you ask the visitor ANY question, read back over the conversation so far. If they have already given you that information — directly, in passing, or by tapping a suggestion pill — treat it as known and USE it. Do not ask for it again, not even reworded.\n'
+    + '- If you asked something and the visitor replied, that question is DONE. Move forward; never repeat it.\n'
+    + '- When you still need details to act (e.g. a search), ask ONLY for the specific fields that are genuinely still missing, in a single message. Never re-list fields the visitor has already supplied.\n'
+    + '- If an answer was ambiguous, acknowledge what they did say and ask only for the precise missing piece — never re-ask the whole question from scratch.\n'
+    + '- Repeating a question the visitor has already answered makes you look broken and erodes trust. If you are ever unsure whether you already have something, assume you do and proceed, rather than asking again.\n';
+
   // Returning-visitor memory: the widget passes a compact, client-side summary
   // of who this visitor is and what they discussed in prior chats (same-browser
   // recall). Lets Luna greet them as a returning customer with continuity.
@@ -2871,7 +2882,7 @@ No problem, drop your email and departure date in below and I'll find it.
 
   // Phase 3: richer page context if provided by the widget
   if (pageContext && pageContext.title) {
-    systemPrompt += '\n\n=== PAGE CONTEXT ===\n';
+    systemPrompt += '\n\n=== PAGE CONTEXT (AMBIENT — DO NOT HIJACK) ===\n';
     systemPrompt += 'The visitor is currently on this page:\n';
     systemPrompt += '  Title: ' + pageContext.title + '\n';
     if (pageContext.path) systemPrompt += '  Path:  ' + pageContext.path + '\n';
@@ -2879,9 +2890,14 @@ No problem, drop your email and departure date in below and I'll find it.
       systemPrompt += '\nMain content visible to the visitor (first ~200 words):\n';
       systemPrompt += pageContext.primaryContent.slice(0, 1200) + '\n';
     }
-    systemPrompt += '\nUse this awareness to make your responses feel grounded in what the visitor is actually looking at. Reference the page topic when it helps. Do not list everything you "see" on the page — that\'s creepy; just be subtly informed.\n';
+    systemPrompt += '\nThis is AMBIENT awareness only. It tells you where the visitor happens to be standing — it is NOT what they asked about. The rules:\n';
+    systemPrompt += '- The ACTIVE CONVERSATION always wins. If you are already helping with something (a booking, a question, a topic from earlier turns), KEEP HELPING WITH THAT. Do not change the subject to match the page.\n';
+    systemPrompt += '- Visitors browse while they chat. The page may change mid-conversation (e.g. they open a "Africa" page while you are discussing their existing booking). When that happens, IGNORE the new page and stay on the conversation. Do NOT comment on the new page, do NOT pivot, do NOT ask if they want to travel there or book it.\n';
+    systemPrompt += '- Only lean on the page when the visitor\'s CURRENT message is clearly about it — deictic references like "this", "here", "this page", "what I\'m looking at", or an obviously page-related question with no other subject. Then use the page to resolve what they mean (e.g. on a Crete page, "what\'s the weather like" means Crete).\n';
+    systemPrompt += '- Never proactively pitch, redirect to, or start a fresh sales pitch about the page topic just because the visitor landed there. No "I see you\'re looking at X — fancy a trip?".\n';
+    systemPrompt += '- Never list or narrate what you can "see" on the page. That feels surveillant. Just be quietly informed.\n';
   } else if (page) {
-    systemPrompt += '\nThe visitor is currently viewing: ' + page;
+    systemPrompt += '\nThe visitor is currently viewing: ' + page + ' (ambient only — do not let it override the active conversation or pivot the topic).';
   }
   if (openerRequest) {
     systemPrompt += '\n\n=== CONTEXTUAL OPENER REQUEST ===\n';
