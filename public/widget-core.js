@@ -284,6 +284,14 @@ function escHtml(s) {
     .replace(/'/g, '&#39;');
 }
 
+// Validate a hex colour before it is interpolated into a style attribute / CSS
+// block. Returns the value only if it is a plain #RGB/#RGBA/#RRGGBB/#RRGGBBAA
+// string, otherwise the supplied fallback — blocks attribute/CSS injection via
+// a malicious tenant colour value.
+function safeColor(c, fallback) {
+  return (typeof c === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(c.trim())) ? c.trim() : fallback;
+}
+
 /**
  * Render limited inline markdown safely.
  * Supports **bold** only. Everything else stays as plain text.
@@ -1420,8 +1428,8 @@ function rebuildConfig(apiConfig) {
   C.airtableKey = ""; C.airtableBase = ""; C.convTable = "";
   /* Map API theme fields (backwards compat with old colour-by-colour config) */
   if (A.theme && typeof A.theme === "object") {
-    if (A.theme.brandColor) C.brandColor = A.theme.brandColor;
-    if (A.theme.accentColor) C.accentColor = A.theme.accentColor;
+    if (A.theme.brandColor) C.brandColor = safeColor(A.theme.brandColor, C.brandColor);
+    if (A.theme.accentColor) C.accentColor = safeColor(A.theme.accentColor, C.accentColor);
     if (A.theme.mode) C.theme = A.theme.mode;
   }
   /* Map API size fields */
@@ -3710,7 +3718,7 @@ function showEmailError(message, email) {
   if (!bar) return;
   bar.innerHTML =
     '<div class="tgx-email-status tgx-email-status-error">' +
-      '<div class="tgx-email-status-text">' + (message || 'Send failed') + '</div>' +
+      '<div class="tgx-email-status-text">' + escHtml(message || 'Send failed') + '</div>' +
       '<div class="tgx-email-status-actions">' +
         '<button class="tgx-email-mini-btn" id="tgxEmailRetry">Try again</button>' +
         '<button class="tgx-email-mini-btn" id="tgxEmailCopy">Copy transcript</button>' +
