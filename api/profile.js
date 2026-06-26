@@ -48,7 +48,7 @@ module.exports = async function handler(req, res) {
     var filterField = slug ? 'ClientSlug' : 'ClientName';
     var filterValue = slug || clientName;
     var searchUrl = 'https://api.airtable.com/v0/' + AT_BASE + '/' + AT_TABLE
-      + '?filterByFormula=' + encodeURIComponent("{" + filterField + "}='" + filterValue.replace(/'/g, "\\'") + "'")
+      + '?filterByFormula=' + encodeURIComponent("{" + filterField + "}='" + filterValue.replace(/['\\]/g, '') + "'")
       + '&maxRecords=1';
     var sRes = await fetch(searchUrl, { headers: atHeaders });
     var sData = await sRes.json();

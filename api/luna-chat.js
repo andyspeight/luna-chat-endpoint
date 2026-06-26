@@ -37,7 +37,7 @@ async function loadTravelgenixSuppliers(atKey) {
     var url = 'https://api.airtable.com/v0/' + TG_SUPPLIERS_BASE + '/' + TG_SUPPLIERS_TABLE
       + '?filterByFormula=' + encodeURIComponent('{Active}=1')
       + '&pageSize=100';
-    var r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + atKey } });
+    var r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + atKey }, signal: AbortSignal.timeout(8000) });
     if (!r.ok) {
       console.warn('[luna-chat] suppliers fetch failed:', r.status);
       return suppliersCache.block || '';
@@ -125,7 +125,7 @@ async function loadTravelgenixKnowledge(atKey) {
     var sections = await Promise.all(TG_KB_TABLES.map(async function (t) {
       try {
         var url = 'https://api.airtable.com/v0/' + TG_KB_BASE + '/' + t.id + '?pageSize=100';
-        var r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + atKey } });
+        var r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + atKey }, signal: AbortSignal.timeout(8000) });
         if (!r.ok) { console.warn('[luna-chat] KB table ' + t.label + ' fetch failed:', r.status); return ''; }
         var data = await r.json();
         var pairs = (data.records || []).map(function (rec) {
@@ -289,7 +289,7 @@ function sanitizeClientNameForFormula(str) {
   // Allowlist: letters, digits, space, &, period, apostrophe, hyphen
   var cleaned = str.replace(/[^a-zA-Z0-9 &.'\-]/g, '').trim().slice(0, 100);
   // Escape backslashes first, then single quotes — order matters
-  return cleaned.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  return cleaned.replace(/\\/g, '\\\\').replace(/['\\]/g, '');
 }
 
 
@@ -306,7 +306,7 @@ async function fetchAllRecords(tableId, atKey, fieldIds) {
   try {
     do {
       var pageUrl = offset ? url + '&offset=' + encodeURIComponent(offset) : url;
-      var r = await fetch(pageUrl, { headers: { 'Authorization': 'Bearer ' + atKey } });
+      var r = await fetch(pageUrl, { headers: { 'Authorization': 'Bearer ' + atKey }, signal: AbortSignal.timeout(8000) });
       if (!r.ok) break;
       var data = await r.json();
       (data.records || []).forEach(function(rec) { all.push(rec); });
@@ -471,7 +471,7 @@ async function fetchDestinationRecord(payload, atKey) {
   }
   var url = 'https://api.airtable.com/v0/' + DC_BASE + '/' + tableId + '/' + payload.id;
   try {
-    var r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + atKey } });
+    var r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + atKey }, signal: AbortSignal.timeout(8000) });
     if (!r.ok) return null;
     var data = await r.json();
     dcRecordCache[cacheKey] = { ts: Date.now(), data: data };
@@ -628,7 +628,7 @@ async function fetchOpenMeteo(lat, lng) {
       + '&current=temperature_2m,weather_code,wind_speed_10m,relative_humidity_2m,apparent_temperature'
       + '&daily=temperature_2m_max,temperature_2m_min,weather_code'
       + '&timezone=auto&forecast_days=7';
-    var r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    var r = await fetch(url, { headers: { 'Accept': 'application/json' }, signal: AbortSignal.timeout(8000) });
     if (!r.ok) {
       console.warn('[luna-chat] Open-Meteo returned', r.status);
       return null;
@@ -962,7 +962,8 @@ async function searchLunaBrain(message, atKey) {
         + '&filterByFormula=' + encodeURIComponent('SEARCH("' + sanitizeFormulaLiteral(searchQuery) + '", {Search Index})');
 
       return fetch(url, {
-        headers: { 'Authorization': 'Bearer ' + atKey }
+        headers: { 'Authorization': 'Bearer ' + atKey },
+        signal: AbortSignal.timeout(8000)
       }).then(function(r) {
         if (!r.ok) return [];
         return r.json().then(function(d) { return d.records || []; });
@@ -981,7 +982,8 @@ async function searchLunaBrain(message, atKey) {
           + '?pageSize=5'
           + '&filterByFormula=' + encodeURIComponent('SEARCH("' + sanitizeFormulaLiteral(topKw) + '", {Search Index})');
         return fetch(url, {
-          headers: { 'Authorization': 'Bearer ' + atKey }
+          headers: { 'Authorization': 'Bearer ' + atKey },
+          signal: AbortSignal.timeout(8000)
         }).then(function(r) {
           if (!r.ok) return [];
           return r.json().then(function(d) { return d.records || []; });
@@ -2554,7 +2556,7 @@ module.exports = async function handler(req, res) {
         const profileUrl = 'https://api.airtable.com/v0/app6Ot3eOb3DangkB/tbl6CZ7aVzq1wHF2v'
           + '?filterByFormula=' + encodeURIComponent("{ClientName}='" + sanitizeClientNameForFormula(clientName) + "'")
           + '&maxRecords=1';
-        const pRes = await fetch(profileUrl, { headers: { 'Authorization': 'Bearer ' + profileAtKey } });
+        const pRes = await fetch(profileUrl, { headers: { 'Authorization': 'Bearer ' + profileAtKey }, signal: AbortSignal.timeout(8000) });
         const pData = await pRes.json();
         if (pData.records && pData.records.length > 0) {
           const f = pData.records[0].fields || {};

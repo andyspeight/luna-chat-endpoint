@@ -76,7 +76,7 @@ function applyCors(req, res) {
 
 async function findClient(atKey, clientName) {
   var url = 'https://api.airtable.com/v0/' + AT_BASE + '/' + CLIENTS_TABLE
-    + '?filterByFormula=' + encodeURIComponent("{ClientName}='" + clientName.replace(/'/g, "\\'") + "'")
+    + '?filterByFormula=' + encodeURIComponent("{ClientName}='" + clientName.replace(/['\\]/g, '') + "'")
     + '&maxRecords=1';
   var r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + atKey } });
   if (!r.ok) return null;
@@ -110,7 +110,7 @@ async function actionFeed(atKey, clientRecordId, clientName) {
   // Filter conversations / gaps / knowledge by the linked-client name.
   // Airtable's ARRAYJOIN() on a linked record field returns the linked records'
   // display names, not their IDs. So we match by name (which is unique per client).
-  var safeName = (clientName || '').replace(/'/g, "\\'");
+  var safeName = (clientName || '').replace(/['\\]/g, '');
   var clientLinkFilter = "FIND('" + safeName + "', ARRAYJOIN({Client})) > 0";
 
   var gapsP = atFetch(atKey,

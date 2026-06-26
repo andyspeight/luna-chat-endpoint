@@ -16,10 +16,22 @@
 
 'use strict';
 
+const crypto = require('crypto');
 const gk = require('../lib/global-knowledge');
 const freshness = require('../lib/freshness');
 
-const ADMIN_PASS = process.env.ADMIN_PASSWORD || 'travelgenix2026';
+const ADMIN_PASS = process.env.ADMIN_PASSWORD || '';
+
+// Timing-safe string comparison — prevents timing attacks on password comparison.
+function safeCompare(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  if (a.length !== b.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+  } catch (e) {
+    return false;
+  }
+}
 // Global knowledge is shared, high-traffic data, so it is re-checked more often
 // than per-client knowledge. Tunable via env.
 const GLOBAL_REVIEW_DAYS = parseInt(process.env.LUNA_GLOBAL_REVIEW_DAYS || '90', 10);
@@ -290,7 +302,12 @@ module.exports = async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  if ((req.headers['x-admin-pass'] || '') !== ADMIN_PASS) {
+  // Fail closed if the admin password is not configured — never fall back to a
+  // hardcoded default, and never let an empty password authenticate.
+  if (!ADMIN_PASS) {
+    return res.status(500).json({ error: 'Server not configured' });
+  }
+  if (!safeCompare(req.headers['x-admin-pass'] || '', ADMIN_PASS)) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   if (!process.env.AIRTABLE_KEY) return res.status(500).json({ error: 'Server not configured' });

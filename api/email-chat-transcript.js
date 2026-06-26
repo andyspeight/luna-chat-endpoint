@@ -12,6 +12,8 @@
 //   accentColor?: string       // optional — for HTML email accent
 // }
 
+const ratelimit = require('../lib/ratelimit');
+
 const AT_BASE = 'app6Ot3eOb3DangkB';
 const AT_TABLE = 'tbl6CZ7aVzq1wHF2v';
 
@@ -206,11 +208,27 @@ module.exports = async function handler(req, res) {
   if (!isEmail(visitorEmail)) return res.status(400).json({ error: 'Invalid email address' });
   if (!transcript || transcript.length < 10) return res.status(400).json({ error: 'Missing or empty transcript' });
 
+  // Rate limit: this endpoint sends real email via SendGrid with an
+  // attacker-controllable recipient + body, so an anonymous caller must not be
+  // able to drain the SendGrid quota or use it as an open relay. 5/min/IP plus
+  // 60/hour per client name (the only identifier we have here).
+  var rl = await ratelimit.checkIpAndKey(req, {
+    ipKey: 'email-transcript',
+    ipMax: 5,
+    ipWindowSecs: 60,
+    keyKey: 'email-transcript:client:' + clientName.toLowerCase(),
+    keyMax: 60,
+    keyWindowSecs: 3600
+  });
+  if (!rl.allowed) {
+    return res.status(429).json({ error: 'Too many requests. Please wait a moment and try again.' });
+  }
+
   // Look up the client to get the contact email (Reply-To)
   var clientReplyEmail = null;
   try {
     var searchUrl = 'https://api.airtable.com/v0/' + AT_BASE + '/' + AT_TABLE
-      + '?filterByFormula=' + encodeURIComponent("{ClientName}='" + clientName.replace(/'/g, "\\'") + "'")
+      + '?filterByFormula=' + encodeURIComponent("{ClientName}='" + clientName.replace(/['\\]/g, '') + "'")
       + '&maxRecords=1';
     var sRes = await fetch(searchUrl, { headers: { 'Authorization': 'Bearer ' + atKey } });
     if (sRes.ok) {

@@ -5,7 +5,7 @@ const crypto = require('crypto');
 
 const AT_BASE = 'app6Ot3eOb3DangkB';
 const AT_TABLE = 'tbl6CZ7aVzq1wHF2v';
-const ADMIN_PASS = process.env.ADMIN_PASSWORD || 'travelgenix2026';
+const ADMIN_PASS = process.env.ADMIN_PASSWORD || '';
 const VERCEL_HOST = 'luna-chat-endpoint.vercel.app';
 
 // CORS allowlist — only our own Vercel deploy can call the authenticated routes.
@@ -42,6 +42,12 @@ module.exports = async function handler(req, res) {
 
   if (req.method === 'OPTIONS') return res.status(200).end();
 
+  // Fail closed if the admin password is not configured — never fall back to a
+  // hardcoded default, and never let an empty password authenticate (an empty
+  // ADMIN_PASS would make safeCompare('','') return true).
+  if (!ADMIN_PASS) {
+    return res.status(500).json({ error: 'Server not configured' });
+  }
   var adminPass = req.headers['x-admin-pass'] || '';
   if (!safeCompare(adminPass, ADMIN_PASS)) {
     return res.status(401).json({ error: 'Unauthorized' });

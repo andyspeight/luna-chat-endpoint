@@ -47,7 +47,7 @@ function applyCors(req, res) {
 }
 
 function escFormula(s) {
-  return String(s || '').replace(/'/g, "\\'");
+  return String(s || '').replace(/['\\]/g, '');
 }
 
 function buildConfig(record) {
