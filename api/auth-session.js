@@ -166,7 +166,7 @@ module.exports = async function handler(req, res) {
       chosen = candidates[0];
     }
 
-    console.log('[auth-session] user', email, 'role=' + role,
+    console.log('[auth-session] user role=' + role,
       'currentAuthClientId=' + (currentAuthClientId || '-'),
       'candidates=' + candidates.length,
       'chosen=' + (chosen ? chosen.id : '(picker)'));

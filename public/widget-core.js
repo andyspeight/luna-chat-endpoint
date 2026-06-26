@@ -273,6 +273,17 @@ function safeUrl(url) {
   return '#';
 }
 
+// Escape a string for safe insertion into HTML text or a double-quoted attribute.
+// Used wherever tenant-supplied config is built into an innerHTML string.
+function escHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 /**
  * Render limited inline markdown safely.
  * Supports **bold** only. Everything else stays as plain text.
@@ -3680,7 +3691,7 @@ function sendChatTranscript(email) {
     if (result.ok) {
       // Success — show toast then revert after a few seconds
       visitorEmail = email; // remember for next time
-      bar.innerHTML = '<div class="tgx-email-status tgx-email-status-success">\u2713 Sent to ' + email + '. Check your inbox.</div>';
+      bar.innerHTML = '<div class="tgx-email-status tgx-email-status-success">\u2713 Sent to ' + escHtml(email) + '. Check your inbox.</div>';
       setTimeout(resetEmailBar, 4500);
     } else {
       // Server-side error — show message + copy fallback
@@ -4073,7 +4084,7 @@ function showNameOverlay() {
   var ov = document.createElement("div");
   ov.className = "tgx-overlay";
   ov.id = "tgxNameOv";
-  var html = '<h3>'+C.namePrompt+'</h3><p>This helps us personalise your experience.</p>'
+  var html = '<h3>'+escHtml(C.namePrompt)+'</h3><p>This helps us personalise your experience.</p>'
     +'<input type="text" id="tgxNameIn" placeholder="Your name" autofocus>'
     +'<input type="email" id="tgxEmailIn" placeholder="Email (optional)">'
     +'<input type="text" id="tgxHpIn" class="tgx-hp" tabindex="-1" autocomplete="off">'
@@ -4083,9 +4094,9 @@ function showNameOverlay() {
     +'<span class="tgx-cb-label">I\'d like to receive offers and updates</span>'
     +'</label>'
     +'<button class="tgx-obtn" id="tgxNameGo">Continue</button>'
-    +'<button class="tgx-olink" id="tgxNameSkip">'+C.skipLabel+'</button>';
+    +'<button class="tgx-olink" id="tgxNameSkip">'+escHtml(C.skipLabel)+'</button>';
   if (C.privacyUrl) {
-    html += '<a class="tgx-privacy" href="'+C.privacyUrl+'" target="_blank" rel="noopener">See our privacy policy</a>';
+    html += '<a class="tgx-privacy" href="'+escHtml(safeUrl(C.privacyUrl))+'" target="_blank" rel="noopener">See our privacy policy</a>';
   }
   ov.innerHTML = html;
   $panel.appendChild(ov);

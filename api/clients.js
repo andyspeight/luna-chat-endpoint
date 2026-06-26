@@ -84,7 +84,8 @@ module.exports = async function handler(req, res) {
 
       return res.status(200).json({ clients: clients });
     } catch (e) {
-      return res.status(500).json({ error: e.message });
+      console.error('[clients] error:', e.message);
+      return res.status(500).json({ error: 'Internal server error' });
     }
   }
 
@@ -137,7 +138,8 @@ module.exports = async function handler(req, res) {
         client: { name: name, slug: slug, email: email, dashUrl: dashUrl, embed: embed, password: pass }
       });
     } catch (e) {
-      return res.status(500).json({ error: e.message });
+      console.error('[clients] error:', e.message);
+      return res.status(500).json({ error: 'Internal server error' });
     }
   }
 

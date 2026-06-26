@@ -304,7 +304,7 @@ module.exports = async function handler(req, res) {
     var sgResult = await sgMail.send(msg);
     var messageId = (sgResult && sgResult[0] && sgResult[0].headers && sgResult[0].headers['x-message-id']) || null;
 
-    console.log('[email-transcript] sent to', visitorEmail, 'for client', clientName, 'msgId:', messageId);
+    console.log('[email-transcript] sent for client', clientName, 'msgId:', messageId);
 
     return res.status(200).json({
       success: true,

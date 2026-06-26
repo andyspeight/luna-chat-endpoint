@@ -332,6 +332,6 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: 'Unknown action: ' + action });
   } catch (e) {
     console.error('[global-brain] error:', e.message);
-    return res.status(500).json({ error: e.message });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 };

@@ -2314,7 +2314,7 @@ module.exports = async function handler(req, res) {
   function logTimings(extra) {
     try {
       const payload = Object.assign({ convId: extra && extra.convId, route: extra && extra.route }, _t, extra || {});
-      console.log('[luna-chat] TIMING ' + JSON.stringify(payload));
+      if (process.env.LUNA_DEBUG) console.log('[luna-chat] TIMING ' + JSON.stringify(payload));
     } catch (e) { /* swallow */ }
   }
 
