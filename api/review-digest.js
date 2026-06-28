@@ -10,15 +10,19 @@
 // Then it sends a clean HTML email via SendGrid (same authenticated sender as the
 // chat-transcript email) so the owner can skim and act in seconds.
 //
+// Sends EVERY day by default — including a short "all clear" when nothing is
+// pending — so it doubles as a heartbeat that the overnight jobs ran. Set
+// DIGEST_SKIP_WHEN_EMPTY=1 to suppress the all-clear and only email when there
+// is something to review.
+//
 // Security: cron-only. CRON_SECRET as Bearer or ?secret=. ?dryRun=1 builds the
-// digest and returns it as JSON WITHOUT sending. ?force=1 sends even when both
-// queues are empty (otherwise an empty digest is skipped unless DIGEST_ALWAYS=1).
+// digest and returns it as JSON WITHOUT sending. ?force=1 always sends.
 //
 // Env: CRON_SECRET, AIRTABLE_KEY, SENDGRID_API_KEY.
 //   Optional: REVIEW_DIGEST_TO (recipient, default andy.speight@agendas.group),
 //             REVIEW_DIGEST_FROM (default noreply@travelgenix.io),
 //             REVIEW_DASHBOARD_URL (default the live global-brain page),
-//             DIGEST_ALWAYS=1 (always send, even with nothing pending).
+//             DIGEST_SKIP_WHEN_EMPTY=1 (skip the daily all-clear when nothing pending).
 
 'use strict';
 
@@ -258,7 +262,9 @@ module.exports = async function handler(req, res) {
 
   var dryRun = req.query && (req.query.dryRun === '1' || req.query.dryRun === 'true');
   var force = req.query && (req.query.force === '1' || req.query.force === 'true');
-  var alwaysSend = force || process.env.DIGEST_ALWAYS === '1';
+  // Send daily by default (heartbeat). Only skip an empty digest if explicitly
+  // opted out via DIGEST_SKIP_WHEN_EMPTY, and never skip when ?force=1.
+  var skipWhenEmpty = !force && process.env.DIGEST_SKIP_WHEN_EMPTY === '1';
 
   try {
     var digest = await buildDigest();
@@ -270,8 +276,8 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true, dryRun: true, to: to, subject: subject, pendingTotal: pendingTotal, digest: digest });
     }
 
-    if (pendingTotal === 0 && !alwaysSend) {
-      return res.status(200).json({ ok: true, sent: false, reason: 'nothing pending (set DIGEST_ALWAYS=1 or ?force=1 to send an all-clear)', pendingTotal: 0 });
+    if (pendingTotal === 0 && skipWhenEmpty) {
+      return res.status(200).json({ ok: true, sent: false, reason: 'nothing pending and DIGEST_SKIP_WHEN_EMPTY=1', pendingTotal: 0 });
     }
 
     var sgKey = process.env.SENDGRID_API_KEY;
