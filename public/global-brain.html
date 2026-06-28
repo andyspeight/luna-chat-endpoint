@@ -51,6 +51,13 @@
   .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--panel); border:1px solid var(--border); padding:10px 18px; border-radius:10px; font-size:13px; opacity:0; transition:opacity .2s; pointer-events:none; }
   .toast.show { opacity:1; }
   .toast.ok { border-color:var(--green); } .toast.err { border-color:var(--red); }
+  .hint { color:var(--dim); font-size:13px; margin:0 0 14px; }
+  .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px 14px; }
+  .form-grid label { display:flex; flex-direction:column; font-size:11px; font-weight:600; color:var(--dim); gap:4px; text-transform:uppercase; letter-spacing:.03em; }
+  .form-grid input, .form-grid select, .form-grid textarea { background:#0f1626; color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px 10px; font:inherit; font-size:13px; text-transform:none; letter-spacing:normal; font-weight:400; }
+  .form-grid textarea { min-height:44px; resize:vertical; }
+  .form-grid .wide { grid-column:1 / -1; }
+  @media (max-width:560px){ .form-grid { grid-template-columns:1fr; } }
 </style>
 </head>
 <body>
@@ -68,6 +75,7 @@
   <div class="tabs">
     <button class="tab active" id="tab-suggestions" onclick="window._tab('suggestions')">Discovery suggestions <span class="badge" id="badge-suggestions">0</span></button>
     <button class="tab" id="tab-reverify" onclick="window._tab('reverify')">Re-verification queue <span class="badge" id="badge-reverify">0</span></button>
+    <button class="tab" id="tab-add" onclick="window._tab('add')">+ Add data</button>
   </div>
 
   <div id="suggestions-view">
@@ -86,6 +94,53 @@
 
   <div id="reverify-view" hidden>
     <div id="reverify-host"></div>
+  </div>
+
+  <div id="add-view" hidden>
+    <div class="card">
+      <div class="q">Add a destination, city or resort</div>
+      <p class="hint">Name is enough to start &mdash; the discovery crawler auto-fills things to do and events on its next run (usually within 3 hours). Fill any facts you already know; leave the rest blank. The search index is built for you, so it's findable straight away.</p>
+      <div class="form-grid">
+        <label>Name *<input id="d-name" placeholder="e.g. Crete" autocomplete="off"></label>
+        <label>Country<input id="d-country" placeholder="e.g. Greece (defaults to Name)" autocomplete="off"></label>
+        <label>Type<select id="d-type"><option>Country</option><option>City</option><option>Region</option><option>Resort</option></select></label>
+        <label>Region<input id="d-region" placeholder="e.g. Europe"></label>
+        <label>Parent<input id="d-parent" placeholder="City&rarr;Country, Resort&rarr;City"></label>
+        <label>ISO Code<input id="d-isoCode" placeholder="e.g. GR"></label>
+        <label>Currency<input id="d-currency"></label>
+        <label>Capital<input id="d-capital"></label>
+        <label>Time Zone<input id="d-timeZone"></label>
+        <label>Dialling Code<input id="d-diallingCode"></label>
+        <label>Emergency Number<input id="d-emergencyNumber"></label>
+        <label>Plug Type<input id="d-plugType"></label>
+        <label>Voltage<input id="d-voltage"></label>
+        <label>UK Visa Required<input id="d-ukVisaRequired"></label>
+        <label>Tap Water Safe<input id="d-tapWaterSafe"></label>
+        <label>Driving Side<input id="d-drivingSide"></label>
+        <label>Main Airport<input id="d-mainAirport"></label>
+      </div>
+      <div class="actions"><button class="approve" id="d-save">Add destination</button></div>
+    </div>
+
+    <div class="card">
+      <div class="q">Add an airport, airline or cruise</div>
+      <p class="hint">These aren't auto-crawled, so the facts you enter here are exactly what Luna will serve. Use the Info boxes for the details &mdash; for an airport: terminals, transfers, lounges, accessibility, address.</p>
+      <div class="form-grid">
+        <label>Name *<input id="t-name" placeholder="e.g. Faro Airport" autocomplete="off"></label>
+        <label>Type *<select id="t-type"><option>Airport</option><option>Airline</option><option>Cruise Line</option><option>Cruise Port</option></select></label>
+        <label>Code (IATA)<input id="t-code" placeholder="e.g. FAO"></label>
+        <label>Country<input id="t-country"></label>
+        <label>City<input id="t-city"></label>
+        <label class="wide">Key Tips<textarea id="t-keyTips"></textarea></label>
+        <label class="wide">Info 1<textarea id="t-info1"></textarea></label>
+        <label class="wide">Info 2<textarea id="t-info2"></textarea></label>
+        <label class="wide">Info 3<textarea id="t-info3"></textarea></label>
+        <label class="wide">Info 4<textarea id="t-info4"></textarea></label>
+        <label class="wide">Info 5<textarea id="t-info5"></textarea></label>
+        <label class="wide">Info 6<textarea id="t-info6"></textarea></label>
+      </div>
+      <div class="actions"><button class="approve" id="t-save">Add transport</button></div>
+    </div>
   </div>
 </div>
 
@@ -182,9 +237,12 @@
     }
     $('tab-suggestions').classList.toggle('active', state.tab === 'suggestions');
     $('tab-reverify').classList.toggle('active', state.tab === 'reverify');
+    $('tab-add').classList.toggle('active', state.tab === 'add');
     $('suggestions-view').hidden = state.tab !== 'suggestions';
     $('reverify-view').hidden = state.tab !== 'reverify';
-    if (state.tab === 'suggestions') renderSuggestions(); else renderReverify();
+    $('add-view').hidden = state.tab !== 'add';
+    if (state.tab === 'suggestions') renderSuggestions();
+    else if (state.tab === 'reverify') renderReverify();
   }
 
   window._tab = function(t) { state.tab = t; render(); };
@@ -365,6 +423,46 @@
   ['f-q', 'f-cat', 'f-origin'].forEach(function(id) {
     var ev = id === 'f-q' ? 'input' : 'change';
     document.getElementById(id).addEventListener(ev, onFilterChange);
+  });
+
+  // ---- Add data forms ----
+  function val(id) { var e = $(id); return e ? (e.value || '').trim() : ''; }
+  function clearForm(prefix) {
+    document.querySelectorAll('#add-view input, #add-view textarea').forEach(function(el) {
+      if (el.id.indexOf(prefix + '-') === 0) el.value = '';
+    });
+  }
+  function submitAdd(prefix, action, build, label) {
+    var btn = $(prefix + '-save');
+    if (!val(prefix + '-name')) { toast('Name is required', 'err'); return; }
+    btn.disabled = true; var orig = btn.textContent; btn.textContent = 'Adding…';
+    api(action, { method: 'POST', body: build() })
+      .then(function(r) { toast('Added “' + (r.name || 'row') + '”. ' + (r.table === 'Destinations' ? 'Discovery will add things to do + events shortly.' : 'Live now.'), 'ok'); clearForm(prefix); })
+      .catch(function(e) { toast('Could not add: ' + e.message, 'err'); })
+      .then(function() { btn.disabled = false; btn.textContent = orig; });
+  }
+  $('d-save').addEventListener('click', function() {
+    submitAdd('d', 'add-destination', function() {
+      return {
+        name: val('d-name'), country: val('d-country'), type: val('d-type'),
+        region: val('d-region'), parent: val('d-parent'), isoCode: val('d-isoCode'),
+        currency: val('d-currency'), capital: val('d-capital'), timeZone: val('d-timeZone'),
+        diallingCode: val('d-diallingCode'), emergencyNumber: val('d-emergencyNumber'),
+        plugType: val('d-plugType'), voltage: val('d-voltage'),
+        ukVisaRequired: val('d-ukVisaRequired'), tapWaterSafe: val('d-tapWaterSafe'),
+        drivingSide: val('d-drivingSide'), mainAirport: val('d-mainAirport')
+      };
+    });
+  });
+  $('t-save').addEventListener('click', function() {
+    submitAdd('t', 'add-transport', function() {
+      return {
+        name: val('t-name'), type: val('t-type'), code: val('t-code'),
+        country: val('t-country'), city: val('t-city'), keyTips: val('t-keyTips'),
+        info1: val('t-info1'), info2: val('t-info2'), info3: val('t-info3'),
+        info4: val('t-info4'), info5: val('t-info5'), info6: val('t-info6')
+      };
+    });
   });
 
   // Auto-login from stored pass or ?pass=

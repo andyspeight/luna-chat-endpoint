@@ -239,6 +239,69 @@ async function actionReverifyDismiss(body) {
   return { ok: true, id: id };
 }
 
+// Trim a string field from the request body, or '' if absent/blank.
+function s(v) { return (typeof v === 'string') ? v.trim() : ''; }
+
+// Add a Destinations row by hand (admin). Builds the Search Index from the row's
+// own fields so it is instantly findable, stamps Last Verified, and leaves Last
+// Discovered blank so the discovery crawler picks it up FIRST (auto-populating
+// its things-to-do + events on the next run). Only Name + Country are required.
+async function actionAddDestination(body) {
+  body = body || {};
+  var name = s(body.name);
+  var country = s(body.country) || name; // country-type rows: Country == Name
+  if (!name) throw new Error('Name is required');
+
+  var map = {
+    'Name': name, 'Type': s(body.type) || 'Country', 'Country': country,
+    'Parent': s(body.parent), 'Region': s(body.region), 'ISO Code': s(body.isoCode),
+    'Currency': s(body.currency), 'Capital': s(body.capital), 'Languages': s(body.languages),
+    'Time Zone': s(body.timeZone), 'Dialling Code': s(body.diallingCode),
+    'Emergency Number': s(body.emergencyNumber), 'Driving Side': s(body.drivingSide),
+    'Plug Type': s(body.plugType), 'Voltage': s(body.voltage),
+    'UK Visa Required': s(body.ukVisaRequired), 'Tap Water Safe': s(body.tapWaterSafe),
+    'Best Months to Visit': s(body.bestMonths), 'Main Airport': s(body.mainAirport),
+    'Resort Type': s(body.resortType), 'Nearest Airport': s(body.nearestAirport),
+    'Transfer Time': s(body.transferTime)
+  };
+  var fields = {};
+  Object.keys(map).forEach(function (k) { if (map[k]) fields[k] = map[k]; });
+  fields['Search Index'] = gk.buildDestinationSearchIndex(fields);
+  fields['Last Verified'] = new Date().toISOString().split('T')[0];
+
+  var created = await atFetch('/' + gk.DESTINATIONS_TABLE, {
+    method: 'POST', body: { records: [{ fields: fields }], typecast: true }
+  });
+  return { ok: true, id: created.records[0].id, name: name, table: 'Destinations' };
+}
+
+// Add a Transport row by hand (airport / airline / cruise line or port). Builds
+// the Search Index from its own fields and stamps Last Verified. Not crawled by
+// the connectors, so the facts entered here are what Luna serves. Name + Type req.
+async function actionAddTransport(body) {
+  body = body || {};
+  var name = s(body.name);
+  var type = s(body.type);
+  if (!name) throw new Error('Name is required');
+  if (!type) throw new Error('Type is required (Airport, Airline, Cruise Line or Cruise Port)');
+
+  var map = {
+    'Name': name, 'Type': type, 'Code': s(body.code), 'Country': s(body.country),
+    'City': s(body.city), 'Key Tips': s(body.keyTips),
+    'Info 1': s(body.info1), 'Info 2': s(body.info2), 'Info 3': s(body.info3),
+    'Info 4': s(body.info4), 'Info 5': s(body.info5), 'Info 6': s(body.info6)
+  };
+  var fields = {};
+  Object.keys(map).forEach(function (k) { if (map[k]) fields[k] = map[k]; });
+  fields['Search Index'] = gk.buildTransportSearchIndex(fields);
+  fields['Last Verified'] = new Date().toISOString().split('T')[0];
+
+  var created = await atFetch('/' + gk.TRANSPORT_TABLE, {
+    method: 'POST', body: { records: [{ fields: fields }], typecast: true }
+  });
+  return { ok: true, id: created.records[0].id, name: name, table: 'Transport' };
+}
+
 async function actionApprove(body) {
   var id = (body.id || '').trim();
   if (!/^rec[A-Za-z0-9]{14}$/.test(id)) throw new Error('Invalid id');
@@ -311,6 +374,8 @@ module.exports = async function handler(req, res) {
       if (action === 'dismiss') return res.status(200).json(await actionDismiss(body));
       if (action === 'reverify-apply') return res.status(200).json(await actionReverifyApply(body));
       if (action === 'reverify-dismiss') return res.status(200).json(await actionReverifyDismiss(body));
+      if (action === 'add-destination') return res.status(200).json(await actionAddDestination(body));
+      if (action === 'add-transport') return res.status(200).json(await actionAddTransport(body));
     }
     return res.status(400).json({ error: 'Unknown action: ' + action });
   } catch (e) {
