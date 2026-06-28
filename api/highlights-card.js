@@ -25,6 +25,11 @@
 
 const Anthropic = require('@anthropic-ai/sdk');
 const photos = require('../lib/photos');
+const spotlight = require('../lib/spotlight-context');
+
+// Ground the AI card in verified KB facts (real places, not the model's memory).
+// On by default; set SPOTLIGHT_GROUNDED=0 to fall back to the old behaviour.
+const SPOTLIGHT_GROUNDED = process.env.SPOTLIGHT_GROUNDED !== '0';
 
 // Optional dependencies — wrap in try/catch so missing modules don't crash
 let ratelimit = null;
@@ -59,7 +64,7 @@ async function upstashCall(commandParts) {
 const AT_BASE = 'app6Ot3eOb3DangkB';
 const OVERRIDES_TABLE_ID = 'tblh4qgTW3yuDaTbu';
 const CACHE_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
-const CACHE_KEY_PREFIX = 'highlights:v1:';
+const CACHE_KEY_PREFIX = 'highlights:v2:'; // v2: grounded in verified KB
 
 const ALLOWED_ORIGINS = [
   'https://traveldemo.site',
@@ -211,7 +216,10 @@ async function lookupOverride(pageContext, clientRecordId) {
 }
 
 // ─── AI generation ────────────────────────────────────────────────────────
-async function generateCard(pageContext) {
+// verified (optional): { found, evidence } from lib/spotlight-context. When
+// present, the card's specifics are GROUNDED in that verified data; otherwise
+// the model must stay generic and not invent specific places (no hallucination).
+async function generateCard(pageContext, verified) {
   var client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   var pcText = '';
@@ -220,6 +228,11 @@ async function generateCard(pageContext) {
   if (pageContext && pageContext.primaryContent) {
     pcText += 'Page content excerpt:\n' + pageContext.primaryContent.slice(0, 800) + '\n';
   }
+
+  var grounded = !!(verified && verified.found && verified.evidence);
+  var groundingRule = grounded
+    ? '- GROUNDING (critical): any specific place, attraction, beach, landmark, restaurant, event or seasonal claim in your descriptions MUST come from the VERIFIED DATA below. Do NOT add specifics from your own knowledge. You may phrase them warmly, but the facts and names must be traceable to VERIFIED DATA. Do not include specific calendar dates.'
+    : '- GROUNDING (critical): there is no verified data for this destination, so do NOT name specific places, attractions, beaches, restaurants, hotels or events — you would risk inventing them. Keep descriptions to general categories (beaches, old town, local food, mountains, nightlife) and the broad character of the place. Stay evocative but never fabricate a specific name or fact.';
 
   var systemPrompt = [
     'You are Luna, an AI travel guide composing a HIGHLIGHTS CARD for a website visitor.',
@@ -244,13 +257,15 @@ async function generateCard(pageContext) {
     '- Exactly 4 items, exactly 3 pills.',
     '- Each item is a DIFFERENT angle (e.g. wildlife, beaches, culture, landscape). Never four variations of the same thing.',
     '- Icons must be travel-relevant emojis (🦁🏖️🏛️⛰️🍷🚶✈️🌅 etc). Pick distinct icons per item.',
-    '- Descriptions are SPECIFIC and CONFIDENT — mention real places, real seasons, real reasons. No generic phrases like "amazing experiences" or "something for everyone".',
+    '- Descriptions are SPECIFIC and CONFIDENT, but never generic filler like "amazing experiences" or "something for everyone".',
+    groundingRule,
     '- Pills are discover-mode only: NO "Book now", "Get a quote", "Check prices", "Speak to agent". Use research-mode prompts like "Best time to visit", "Hidden gems", "Family-friendly options".',
     '- Greeting is warm and informed, not salesy. Conversational.',
     '- For a continent or region page (Africa, Caribbean, etc), the items should be 4 different DESTINATION-TYPE angles within that region.',
     '- For a single destination page (Greece, Cape Town, etc), the items should be 4 different EXPERIENCE angles in that destination.',
     '- All text in UK English. No em-dashes (—). No Oxford comma.',
     '',
+    (grounded ? ('VERIFIED DATA (the only source for specific names/facts):\n' + verified.evidence + '\n') : ''),
     'CONTEXT:',
     pcText
   ].join('\n');
@@ -312,7 +327,7 @@ async function generateCard(pageContext) {
     greeting: sanitiseText(parsed.greeting || '', 300),
     items: items,
     pills: pills,
-    _source: 'ai'
+    _source: grounded ? 'ai-grounded' : 'ai-generic'
   };
 }
 
@@ -367,8 +382,13 @@ module.exports = async function handler(req, res) {
         card = cached;
         fromCache = true;
       } else {
-        // 3. Fresh AI generation
-        card = await generateCard(pageContext);
+        // 3. Fresh AI generation, grounded in verified KB facts when available.
+        var verified = null;
+        if (SPOTLIGHT_GROUNDED) {
+          try { verified = await spotlight.fetchVerifiedContext(pageContext, process.env.AIRTABLE_KEY); }
+          catch (e) { verified = null; } // grounding is best-effort; never blocks the card
+        }
+        card = await generateCard(pageContext, verified);
         // Fire-and-forget cache write (but await it so Vercel doesn't kill it)
         await setCached(cacheKey, card);
       }
