@@ -17,6 +17,7 @@
     "api/reverify-structured.js": { "maxDuration": 60, "memory": 256 },
     "api/refresh-fcdo.js": { "maxDuration": 60, "memory": 256 },
     "api/review-digest.js": { "maxDuration": 30, "memory": 256 },
+    "api/backfill-search-index.js": { "maxDuration": 60, "memory": 256 },
     "api/whatsapp-webhook.js": { "maxDuration": 30, "memory": 256 },
     "api/whatsapp-send.js": { "maxDuration": 15, "memory": 128 },
     "api/agent-reply-check.js": { "maxDuration": 10, "memory": 128 }
@@ -29,7 +30,8 @@
     { "path": "/api/reverify", "schedule": "0 5 * * *" },
     { "path": "/api/reverify-structured", "schedule": "0 2 * * *" },
     { "path": "/api/refresh-fcdo", "schedule": "0 4 * * *" },
-    { "path": "/api/review-digest", "schedule": "0 6 * * *" }
+    { "path": "/api/review-digest", "schedule": "0 6 * * *" },
+    { "path": "/api/backfill-search-index", "schedule": "30 5 * * *" }
   ],
   "headers": [
     {
