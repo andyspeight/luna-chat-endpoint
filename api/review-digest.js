@@ -223,6 +223,7 @@ function buildHtmlEmail(d) {
   blocks.push(
     '<tr><td style="padding:26px 32px 28px 32px">' +
       '<a href="' + esc(DASHBOARD_URL) + '" style="display:inline-block;background:' + teal + ';color:#FFFFFF;text-decoration:none;font-size:14px;font-weight:600;padding:12px 22px;border-radius:10px">Open the review dashboard →</a>' +
+      '<div style="font-size:12px;color:#5A6B86;margin-top:12px">Or paste this link: <a href="' + esc(DASHBOARD_URL) + '" style="color:' + teal + '">' + esc(DASHBOARD_URL) + '</a></div>' +
       '<div style="font-size:12px;color:#8A92A0;margin-top:10px">In the dashboard: <strong>Approve and make live</strong> or <strong>Dismiss</strong> each suggestion; <strong>Apply update</strong>, <strong>Confirm</strong> or <strong>Dismiss</strong> each re-verification. Nothing changes until you act.</div>' +
     '</td></tr>'
   );
@@ -241,6 +242,33 @@ function buildHtmlEmail(d) {
     'Automated review digest · Luna Brain · Travelgenix</td></tr>',
     '</table></td></tr></table></body></html>'
   ].join('\n');
+}
+
+// Plain-text version (some clients show this, and it guarantees the dashboard
+// link is always present and clickable even when HTML/images are blocked).
+function buildTextEmail(d) {
+  var dateStr = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  var needsDecision = d.reverify.changed + d.reverify.flagged;
+  var lines = ['Luna knowledge — daily review', dateStr, ''];
+  if ((d.suggested.total + d.reverify.total) === 0) {
+    lines.push('Nothing is waiting for review today. The discovery and re-verification jobs ran and found nothing that needs you.', '');
+  } else {
+    lines.push(d.suggested.total + ' discovery suggestion(s) to approve');
+    lines.push(d.reverify.total + ' re-verification(s) (' + needsDecision + ' need a decision)', '');
+    if (d.suggested.sample.length) {
+      lines.push('Suggestions:');
+      d.suggested.sample.forEach(function (s) { lines.push('  - ' + s.question + (s.origin ? (' [' + s.origin + ']') : '')); });
+      lines.push('');
+    }
+    if (d.reverify.sample.length) {
+      lines.push('Re-verifications:');
+      d.reverify.sample.forEach(function (s) { lines.push('  - ' + s.question + ' [' + (s.verdict || 'review') + ']'); });
+      lines.push('');
+    }
+  }
+  lines.push('Review and approve here:', DASHBOARD_URL, '');
+  lines.push('Nothing changes until you act. — Luna Brain, Travelgenix');
+  return lines.join('\n');
 }
 
 function buildSubject(d) {
@@ -289,10 +317,12 @@ module.exports = async function handler(req, res) {
     sgMail.setApiKey(sgKey);
 
     var html = buildHtmlEmail(digest);
+    var text = buildTextEmail(digest);
     var result = await sgMail.send({
       to: to,
       from: { name: 'Luna Brain', email: FROM_EMAIL },
       subject: subject,
+      text: text,
       html: html,
       trackingSettings: { clickTracking: { enable: false }, openTracking: { enable: false } },
       categories: ['knowledge-review-digest']
@@ -307,4 +337,4 @@ module.exports = async function handler(req, res) {
 };
 
 // Exposed for offline tests (pure render helpers; no network/email side effects).
-module.exports._test = { buildHtmlEmail: buildHtmlEmail, buildSubject: buildSubject, tally: tally };
+module.exports._test = { buildHtmlEmail: buildHtmlEmail, buildTextEmail: buildTextEmail, buildSubject: buildSubject, tally: tally };
