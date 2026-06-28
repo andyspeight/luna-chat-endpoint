@@ -19,6 +19,7 @@
     "api/review-digest.js": { "maxDuration": 30, "memory": 256 },
     "api/backfill-search-index.js": { "maxDuration": 60, "memory": 256 },
     "api/fill-gaps.js": { "maxDuration": 60, "memory": 256 },
+    "api/embed-index.js": { "maxDuration": 60, "memory": 512 },
     "api/whatsapp-webhook.js": { "maxDuration": 30, "memory": 256 },
     "api/whatsapp-send.js": { "maxDuration": 15, "memory": 128 },
     "api/agent-reply-check.js": { "maxDuration": 10, "memory": 128 }
@@ -33,7 +34,8 @@
     { "path": "/api/fill-gaps", "schedule": "0 3 * * *" },
     { "path": "/api/refresh-fcdo", "schedule": "0 4 * * *" },
     { "path": "/api/review-digest", "schedule": "0 6 * * *" },
-    { "path": "/api/backfill-search-index", "schedule": "30 5 * * *" }
+    { "path": "/api/backfill-search-index", "schedule": "30 5 * * *" },
+    { "path": "/api/embed-index", "schedule": "0 9 * * *" }
   ],
   "headers": [
     {

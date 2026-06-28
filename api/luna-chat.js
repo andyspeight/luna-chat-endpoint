@@ -2,6 +2,16 @@ const Anthropic = require('@anthropic-ai/sdk');
 const ratelimit = require('../lib/ratelimit');
 const knowledge = require('../lib/knowledge');
 const fcdoLib = require('../lib/fcdo');
+const embeddings = require('../lib/embeddings');
+const vectorstore = require('../lib/vectorstore');
+const kbdoc = require('../lib/kb-doc');
+
+// Semantic search (hybrid). OFF unless SEMANTIC_SEARCH=1 AND the keys are set, so
+// it is fully fallback-safe: any error or missing config silently uses the
+// existing keyword search. Min cosine similarity filters weak matches.
+const SEMANTIC_ON = process.env.SEMANTIC_SEARCH === '1';
+const SEMANTIC_MIN_SIM = parseFloat(process.env.SEMANTIC_MIN_SIM || '0.45');
+function semanticEnabled() { return SEMANTIC_ON && embeddings.configured() && vectorstore.ready(); }
 
 // ─── LUNA BRAIN KNOWLEDGE BASE ───
 const LB_BASE = 'appPKx77relfeiqmq';
@@ -939,6 +949,45 @@ async function enrichDestinationCardImages(reply, atKey) {
   }
 }
 
+// Keyword retrieval (the original behaviour), returning [{ id, fields }] so the
+// caller can de-dupe against semantic hits by record id. Two-phase: the joined
+// top keywords, then a single-keyword fallback if that finds nothing.
+async function keywordSearchLunaBrain(searchQuery, keywords, atKey) {
+  function run(query) {
+    return LB_TABLES.map(function(table) {
+      var url = 'https://api.airtable.com/v0/' + LB_BASE + '/' + table.id
+        + '?pageSize=5'
+        + '&filterByFormula=' + encodeURIComponent('SEARCH("' + sanitizeFormulaLiteral(query) + '", {Search Index})');
+      return fetch(url, { headers: { 'Authorization': 'Bearer ' + atKey } })
+        .then(function(r) { return r.ok ? r.json().then(function(d) { return d.records || []; }) : []; })
+        .catch(function() { return []; });
+    });
+  }
+  try {
+    var out = [];
+    var results = await Promise.all(run(searchQuery));
+    results.forEach(function(recs) { recs.forEach(function(r) { out.push({ id: r.id, fields: r.fields }); }); });
+    if (out.length === 0 && keywords.length > 0) {
+      var fb = await Promise.all(run(keywords[0]));
+      fb.forEach(function(recs) { recs.forEach(function(r) { out.push({ id: r.id, fields: r.fields }); }); });
+    }
+    return out;
+  } catch (e) { return []; }
+}
+
+// Semantic retrieval via Voyage embeddings + the Supabase pgvector store.
+// Returns [{ id, content, similarity }] (content already formatted for the
+// prompt). Fully fail-safe: any error returns [] and the keyword path stands.
+async function semanticSearchLunaBrain(message) {
+  try {
+    var vec = await embeddings.embedQuery(message, { timeoutMs: 6000 });
+    if (!vec) return [];
+    var res = await vectorstore.match(vec, { matchCount: 8, minSimilarity: SEMANTIC_MIN_SIM, timeoutMs: 6000 });
+    if (!res.ok || !res.results) return [];
+    return res.results.map(function(r) { return { id: r.id, content: r.content, similarity: r.similarity }; });
+  } catch (e) { return []; }
+}
+
 async function searchLunaBrain(message, atKey) {
   if (!atKey || !isTravelQuestion(message)) return '';
 
@@ -954,53 +1003,25 @@ async function searchLunaBrain(message, atKey) {
   var searchQuery = keywords.slice(0, 4).join(' ');
 
   try {
-    var allResults = [];
+    // Keyword + semantic run in parallel; semantic is purely additive and any
+    // failure leaves the keyword path untouched (fallback-safe).
+    var keywordP = keywordSearchLunaBrain(searchQuery, keywords, atKey);
+    var semanticP = semanticEnabled() ? semanticSearchLunaBrain(message) : Promise.resolve([]);
+    var both = await Promise.all([keywordP, semanticP]);
+    var keywordHits = both[0];   // [{ id, fields }]
+    var semanticHits = both[1];  // [{ id, content }]
 
-    var searches = LB_TABLES.map(function(table) {
-      var url = 'https://api.airtable.com/v0/' + LB_BASE + '/' + table.id
-        + '?pageSize=5'
-        + '&filterByFormula=' + encodeURIComponent('SEARCH("' + sanitizeFormulaLiteral(searchQuery) + '", {Search Index})');
-
-      return fetch(url, {
-        headers: { 'Authorization': 'Bearer ' + atKey }
-      }).then(function(r) {
-        if (!r.ok) return [];
-        return r.json().then(function(d) { return d.records || []; });
-      }).catch(function() { return []; });
-    });
-
-    var results = await Promise.all(searches);
-    results.forEach(function(recs) {
-      recs.forEach(function(r) { allResults.push(r.fields); });
-    });
-
-    if (allResults.length === 0 && keywords.length > 0) {
-      var topKw = keywords[0];
-      var fallbackSearches = LB_TABLES.map(function(table) {
-        var url = 'https://api.airtable.com/v0/' + LB_BASE + '/' + table.id
-          + '?pageSize=5'
-          + '&filterByFormula=' + encodeURIComponent('SEARCH("' + sanitizeFormulaLiteral(topKw) + '", {Search Index})');
-        return fetch(url, {
-          headers: { 'Authorization': 'Bearer ' + atKey }
-        }).then(function(r) {
-          if (!r.ok) return [];
-          return r.json().then(function(d) { return d.records || []; });
-        }).catch(function() { return []; });
-      });
-
-      var fbResults = await Promise.all(fallbackSearches);
-      fbResults.forEach(function(recs) {
-        recs.forEach(function(r) { allResults.push(r.fields); });
-      });
-    }
-
-    if (allResults.length === 0) return '';
+    // Merge semantic-first (relevance ranked), de-duped by record id, capped at 8.
+    var merged = kbdoc.mergeById(semanticHits, keywordHits, 8);
+    if (merged.length === 0) return '';
 
     var skipFields = new Set(['Search Index', 'Last Verified', 'Source', 'Confidence', 'FCDO Sensitive', 'Seasonal', 'Audience']);
     var context = '\n\n## Travel Knowledge\nUse the following verified travel information to answer the visitor\'s question. Only use facts from this data, do not make up travel information.\n\n';
 
-    allResults.slice(0, 8).forEach(function(rec) {
+    merged.forEach(function(item) {
       context += '---\n';
+      if (item.content) { context += item.content + '\n'; return; } // semantic row (pre-formatted)
+      var rec = item.fields || {};
       Object.keys(rec).forEach(function(k) {
         if (skipFields.has(k)) return;
         var v = rec[k];

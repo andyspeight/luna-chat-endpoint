@@ -22,12 +22,19 @@ The knowledge pipeline runs across the whole global database. Crons (`vercel.jso
 | `/api/refresh-fcdo` | `0 4 * * *` | Writes official FCDO Status to Destinations, verbatim, no LLM (does not touch record‑level Last Verified). |
 | `/api/backfill-search-index` | `30 5 * * *` | Rebuilds empty `Search Index` on Destinations/Transport (deterministic, no LLM) so hand‑added rows are findable. Also returns a field‑gap report. `?all=1` rebuilds every row. |
 | `/api/reverify` | `0 5 * * *` | Q&A re‑verification. Grounded source‑only checker. Trust rule: 1 authoritative source OR 2 independent corroborating sources → auto‑apply; else Pending. Concurrent (`mapLimit`), per‑run capped, prioritises authoritative sources + factual categories. |
+| `/api/embed-index` | `0 9 * * *` | Builds/refreshes the semantic‑search index. Embeds every Knowledge/Destinations/Transport row (Voyage `voyage-3.5-lite`) and upserts vectors into Supabase pgvector. Incremental via content hash; prunes deleted rows. Writes ONLY to the vector store, never the chat path or Airtable. `?dryRun=1`, `?full=1`. |
 | `/api/review-digest` | `0 6 * * *` | Daily email to the owner (`REVIEW_DIGEST_TO`, default andy.speight@agendas.group) summarising both Pending queues with a link to the dashboard. Sends every day (heartbeat) incl. an "all clear"; `DIGEST_SKIP_WHEN_EMPTY=1` opts out. `?dryRun=1` previews JSON; `?force=1` forces a send. |
 | `/api/knowledge-freshness` | `0 8 * * *` | Staleness digest (global + per‑client). |
 | `/api/fcdo?warm=1` | `0 7 * * *` | Pre‑warm FCDO cache. |
 | `/api/monitor` | `*/15` | Heartbeat (now incl. Check C, a real AI round‑trip). |
 
 Review screen: **`/global-brain.html`** (admin‑gated by `ADMIN_PASSWORD`) — three tabs: **Discovery suggestions** + **Re‑verification queue** (search/filter, pagination, apply/dismiss) + **+ Add data** (forms to add a destination or an airport/airline/cruise; Search Index is built on save). Per‑client review: `/luna-brain.html?client=<name>`.
+
+## Semantic search (hybrid, behind a flag)
+Retrieval in `api/luna-chat.js` (`searchLunaBrain`) now runs **keyword + semantic in parallel and merges** (semantic first, de‑duped by record id, cap 8). It is OFF until `SEMANTIC_SEARCH=1` AND the keys are present; any error/missing‑config silently falls back to the existing keyword search, so it cannot break a reply.
+- Vectors live in Supabase project **Luna Agents** (`fybqkrrjxtvzthycljfv`, `https://fybqkrrjxtvzthycljfv.supabase.co`): table `kb_embeddings` + `match_kb()` RPC, `pgvector`, RLS server‑only.
+- Embeddings: Voyage `voyage-3.5-lite` (1024‑dim), `lib/embeddings.js`. Store client: `lib/vectorstore.js` (PostgREST, no npm dep). Doc/hash/merge: `lib/kb-doc.js` (pure, tested). Indexer: `api/embed-index.js`.
+- **To switch ON (owner):** (1) create a Voyage key → `VOYAGE_API_KEY`; (2) copy the Supabase **service_role** key (dashboard → Settings → API) → `SUPABASE_SERVICE_KEY`, and set `SUPABASE_URL=https://fybqkrrjxtvzthycljfv.supabase.co`; (3) run `/api/embed-index?secret=<CRON_SECRET>` once (or wait for the 09:00 cron) to populate; (4) set `SEMANTIC_SEARCH=1`. Tune match threshold with `SEMANTIC_MIN_SIM` (default 0.45). Flip off instantly by unsetting `SEMANTIC_SEARCH`.
 
 ## Adding data (owner)
 - **Destination / city / resort** → `+ Add data` tab (or a Destinations row directly). Name is enough; leave `Last Discovered` blank so discovery auto‑fills its things‑to‑do + events next run. Backend: `api/global-brain.js` `add-destination`.
@@ -51,6 +58,7 @@ Review screen: **`/global-brain.html`** (admin‑gated by `ADMIN_PASSWORD`) — 
 
 ## Env vars (all set in Vercel)
 `ANTHROPIC_API_KEY`, `AIRTABLE_KEY`, `CRON_SECRET`, `ADMIN_PASSWORD`, `TICKETMASTER_API_KEY`, `FOURSQUARE_API_KEY`, `FOURSQUARE_HOST=places-api.foursquare.com`, `TAVILY_API_KEY`, `LUNA_TRUSTED_DOMAINS`, `SENDGRID_API_KEY` (digest + transcript email; sender `noreply@travelgenix.io` is domain‑authenticated). Tuning (optional): `REVERIFY_LIMIT|CORRO_CAP|CONCURRENCY|UNSOURCED_LIMIT|AUTOAPPLY|MODEL`, `DISCOVER_BATCH`, `LUNA_GLOBAL_REVIEW_DAYS`, `DISCOVER_MODEL`, `FILL_LIMIT|FILL_FIELDS|FILL_CONCURRENCY|FILL_SCAN|FILL_TABLES`, `REVIEW_DIGEST_TO|REVIEW_DIGEST_FROM|REVIEW_DASHBOARD_URL|DIGEST_SKIP_WHEN_EMPTY`.
+- Semantic search (optional, off by default): `VOYAGE_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SEMANTIC_SEARCH=1` to enable; tuning `SEMANTIC_MIN_SIM`, `EMBED_MODEL|EMBED_DIM|EMBED_MAX|EMBED_BATCH`.
 - Note: `@sendgrid/mail` is now a declared dependency in `package.json` (was used by the transcript email but undeclared, so it would have failed to install on Vercel).
 
 ## Dev workflow
@@ -62,7 +70,8 @@ Review screen: **`/global-brain.html`** (admin‑gated by `ADMIN_PASSWORD`) — 
 ## Outstanding
 - ✅ **Validate live output** — done. 252 auto‑published connector rows + re‑verify queue inspected; guardrails holding. Foursquare/Ticketmaster noise tightened (PR #32).
 - ✅ **Coverage gaps** — `fill-gaps` now identifies + proposes missing structured facts; `backfill-search-index` reports field gaps. (Original roadmap #4 effectively covered for structured fields.)
-- Still open: #6 ground Destination Spotlight (`api/highlights-card.js`) in verified KB + events; #7 semantic retrieval (pgvector via Supabase) to replace keyword `SEARCH()`. Plus a duplicate‑finder for the global Knowledge table. Possible next: extend `fill-gaps`‑style grounding to richer fields, and a per‑destination coverage % view in the dashboard.
+- ✅ **#7 semantic retrieval** — built (hybrid, behind `SEMANTIC_SEARCH`; see Semantic search section). Awaiting owner to add keys + flip on.
+- Still open: #6 ground Destination Spotlight (`api/highlights-card.js`) in verified KB + events. Plus a duplicate‑finder for the global Knowledge table. Possible next: extend `fill-gaps`‑style grounding to richer fields; a per‑destination coverage % view; run `embed-index` more often if event freshness in semantic results matters.
 
 ## Note: repo scope expanded beyond knowledge
 A parallel session shipped much more to production (all live on `main`): WhatsApp channel (`api/whatsapp-*`, `lib/wa-*`, `lib/providers/*`), file sharing (Vercel Blob), CSAT, read receipts, returning‑visitor memory, behaviour‑based proactive triggers, a showcase page, dashboard onboarding walkthrough, an agent reply‑quality gate, and a **critical fix to a chat 404 (a retired Sonnet model id was breaking every reply)**. Not part of the knowledge pipeline but now part of the product — review when convenient.
