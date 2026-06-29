@@ -1,0 +1,122 @@
+/* Luna Chat — training guide print stylesheet (Travelgenix brand) */
+:root{
+  --navy:#0f1a3d; --navy-2:#1b2a55; --ink:#1f2937; --muted:#5b6680;
+  --accent:#06b6d4; --accent-2:#00b4d8; --accent-deep:#0e7490;
+  --teal-glow:rgba(6,182,212,.10);
+  --green:#10b981; --amber:#f59e0b; --red:#ef4444; --indigo:#4338ca;
+  --line:#e6e9f2; --bg-soft:#f6f8fc; --paper:#ffffff;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,"Helvetica Neue",sans-serif;
+  color:var(--ink); font-size:11pt; line-height:1.6; background:var(--paper);
+  -webkit-print-color-adjust:exact; print-color-adjust:exact;
+}
+@page{ size:A4; margin:18mm 16mm 20mm 16mm; }
+@page:first{ margin:0; }
+
+/* ---------- Cover ---------- */
+.cover{
+  position:relative; height:297mm; width:100%;
+  background:linear-gradient(150deg,#0a1230 0%,#0f1a3d 45%,#103a52 100%);
+  color:#fff; padding:34mm 22mm; page-break-after:always; overflow:hidden;
+}
+.cover::after{ content:""; position:absolute; right:-90mm; top:-60mm; width:200mm; height:200mm;
+  background:radial-gradient(circle, rgba(6,182,212,.35), transparent 60%); }
+.cover-badge{ display:inline-flex; align-items:center; gap:10px; font-weight:700; letter-spacing:.18em;
+  font-size:11pt; color:#7de3f4; text-transform:uppercase; }
+.cover-logo{ width:42px;height:42px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,#22d3ee,#2563eb); color:#fff; font-weight:800; font-size:22px; }
+.cover h1{ font-size:46pt; line-height:1.05; margin:26mm 0 6mm; font-weight:800; letter-spacing:-.5px; }
+.cover h1 span{ color:#5fe0f3; }
+.cover .sub{ font-size:15pt; color:#c7d2e8; max-width:150mm; }
+.cover .meta{ position:absolute; bottom:26mm; left:22mm; right:22mm; display:flex; justify-content:space-between;
+  align-items:flex-end; color:#9fb0d0; font-size:10pt; }
+.cover .meta .audience{ background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.18);
+  padding:8px 16px; border-radius:999px; color:#eaf6fb; font-weight:600; font-size:11pt; }
+
+/* ---------- Headings / sections ---------- */
+h2.section{ font-size:21pt; color:var(--navy); margin:0 0 2mm; font-weight:800; letter-spacing:-.3px;
+  padding-top:2mm; }
+.section-wrap{ page-break-before:always; }
+.section-num{ display:inline-block; background:var(--accent); color:#fff; font-size:11pt; font-weight:800;
+  width:30px;height:30px;border-radius:9px; text-align:center; line-height:30px; margin-right:10px; vertical-align:middle; }
+.section-lead{ color:var(--muted); font-size:11.5pt; margin:1mm 0 6mm; max-width:165mm; }
+h3{ font-size:14pt; color:var(--navy-2); margin:7mm 0 2mm; font-weight:700; }
+h4{ font-size:12pt; color:var(--navy-2); margin:5mm 0 1mm; font-weight:700; }
+p{ margin:0 0 3mm; }
+a{ color:var(--accent-deep); text-decoration:none; }
+strong{ color:var(--navy-2); }
+code{ background:var(--bg-soft); border:1px solid var(--line); border-radius:5px; padding:1px 6px;
+  font-family:"SF Mono",Menlo,Consolas,monospace; font-size:9.5pt; color:#0e7490; }
+
+/* ---------- TOC ---------- */
+.toc{ page-break-after:always; padding-top:6mm; }
+.toc h2{ font-size:20pt;color:var(--navy);font-weight:800;margin-bottom:6mm; }
+.toc ol{ list-style:none; counter-reset:toc; padding:0; margin:0; }
+.toc li{ counter-increment:toc; display:flex; align-items:baseline; gap:12px; padding:3.4mm 0;
+  border-bottom:1px solid var(--line); font-size:12pt; }
+.toc li::before{ content:counter(toc); background:var(--teal-glow); color:var(--accent-deep); font-weight:800;
+  width:26px;height:26px;border-radius:7px; text-align:center; line-height:26px; font-size:10.5pt; flex:0 0 auto; }
+.toc li .t{ color:var(--navy-2); font-weight:600; }
+.toc li .d{ color:var(--muted); font-size:10pt; display:block; font-weight:400; }
+
+/* ---------- Steps ---------- */
+ol.steps{ counter-reset:step; list-style:none; padding:0; margin:3mm 0; }
+ol.steps>li{ counter-increment:step; position:relative; padding:0 0 4mm 13mm; }
+ol.steps>li::before{ content:counter(step); position:absolute; left:0; top:-1mm;
+  background:var(--navy); color:#fff; font-weight:800; width:9mm;height:9mm;border-radius:50%;
+  text-align:center; line-height:9mm; font-size:11pt; }
+ol.steps>li::after{ content:""; position:absolute; left:4.5mm; top:9mm; bottom:0; width:1.5px; background:var(--line); }
+ol.steps>li:last-child::after{ display:none; }
+ul.bullets{ margin:2mm 0 3mm; padding-left:6mm; }
+ul.bullets li{ margin:1.5mm 0; }
+
+/* ---------- Callouts ---------- */
+.tip,.warn,.note{ border-radius:10px; padding:4mm 5mm 4mm 13mm; margin:3mm 0; position:relative;
+  font-size:10.5pt; page-break-inside:avoid; }
+.tip{ background:#ecfdf5; border:1px solid #b7ebd6; color:#065f46; }
+.warn{ background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; }
+.note{ background:var(--bg-soft); border:1px solid var(--line); color:#334155; }
+.tip::before,.warn::before,.note::before{ position:absolute; left:4mm; top:4mm; font-size:14pt; }
+.tip::before{ content:"💡"; } .warn::before{ content:"⚠️"; } .note::before{ content:"ℹ️"; }
+.tip strong,.warn strong{ color:inherit; }
+
+/* ---------- Figures ---------- */
+figure{ margin:4mm 0 5mm; page-break-inside:avoid; }
+figure img{ width:100%; border:1px solid var(--line); border-radius:12px; display:block;
+  box-shadow:0 6px 22px rgba(15,26,61,.10); }
+figure.frame img{ background:var(--bg-soft); }
+figcaption{ font-size:9.5pt; color:var(--muted); margin-top:2mm; text-align:center; }
+figcaption b{ color:var(--accent-deep); }
+.fig-tag{ display:inline-block; background:var(--navy); color:#fff; font-size:8.5pt; font-weight:700;
+  padding:2px 8px; border-radius:5px; letter-spacing:.04em; margin-right:6px; }
+
+/* ---------- Tables ---------- */
+table{ width:100%; border-collapse:collapse; margin:3mm 0 4mm; font-size:10pt; page-break-inside:avoid; }
+th{ background:var(--navy); color:#fff; text-align:left; padding:6px 9px; font-size:9.5pt; font-weight:700; }
+td{ border:1px solid var(--line); padding:6px 9px; vertical-align:top; }
+tr:nth-child(even) td{ background:var(--bg-soft); }
+table code{ font-size:8.8pt; }
+
+/* ---------- Chips / inline UI ---------- */
+.ui{ display:inline-block; background:#eef4ff; border:1px solid #cfe0ff; color:#1d4ed8; border-radius:6px;
+  padding:0 7px; font-weight:600; font-size:9.8pt; white-space:nowrap; }
+.kbd{ background:#fff; border:1px solid #cbd5e1; border-bottom-width:2px; border-radius:5px; padding:0 6px;
+  font-family:monospace; font-size:9.5pt; color:#334155; }
+
+/* ---------- Checklist ---------- */
+ul.check{ list-style:none; padding:0; margin:3mm 0; }
+ul.check li{ position:relative; padding:2.6mm 0 2.6mm 11mm; border-bottom:1px dashed var(--line); font-size:10.8pt; }
+ul.check li::before{ content:""; position:absolute; left:0; top:2.4mm; width:6mm;height:6mm; border-radius:5px;
+  border:2px solid var(--accent); background:#fff; }
+
+/* ---------- Misc ---------- */
+.lead-card{ background:linear-gradient(120deg,var(--teal-glow),transparent); border:1px solid var(--line);
+  border-left:4px solid var(--accent); border-radius:12px; padding:5mm 6mm; margin:4mm 0; }
+.pill-row{ display:flex; flex-wrap:wrap; gap:6px; margin:2mm 0 4mm; }
+.divider{ height:1px; background:var(--line); margin:6mm 0; }
+.small{ font-size:9.5pt; color:var(--muted); }
+.two-col{ display:flex; gap:6mm; } .two-col>div{ flex:1; }
+.end{ text-align:center; color:var(--muted); font-size:10pt; margin-top:10mm; padding-top:6mm; border-top:1px solid var(--line);}
