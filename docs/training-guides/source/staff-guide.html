@@ -2,7 +2,7 @@
 <html lang="en-GB">
 <head>
 <meta charset="utf-8">
-<title>Luna Chat — Staff Provisioning &amp; Operations Guide</title>
+<title>Luna Chat — Account Manager Guide</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -10,356 +10,256 @@
 <!-- ============ COVER ============ -->
 <section class="cover">
   <div class="cover-badge"><span class="cover-logo">L</span> Luna Live Chat · Travelgenix</div>
-  <h1>Luna Chat<br><span>Staff Guide</span></h1>
-  <div class="sub">The internal playbook for provisioning, launching and operating Luna for clients — from creating a client to running the knowledge pipeline and keeping it all green.</div>
+  <h1>Luna Chat<br><span>Account Manager Guide</span></h1>
+  <div class="sub">How to set a client up on Luna and get them live — in plain English, step by step. No technical know‑how needed.</div>
   <div class="meta">
     <div>
-      <div style="font-weight:700;color:#fff;font-size:12pt">Internal — Travelgenix team</div>
-      <div>Provision &middot; deploy &middot; operate &middot; troubleshoot</div>
+      <div style="font-weight:700;color:#fff;font-size:12pt">For Travelgenix account managers</div>
+      <div>Create &middot; hand over &middot; install &middot; go live</div>
     </div>
-    <div class="audience">Audience: Travelgenix staff</div>
+    <div class="audience">Six simple steps</div>
   </div>
 </section>
 
 <!-- ============ TOC ============ -->
 <section class="toc">
-  <h2>Contents</h2>
+  <h2>What's inside</h2>
   <ol>
-    <li><div><span class="t">Architecture overview</span><span class="d">The moving parts and where each one lives</span></div></li>
-    <li><div><span class="t">Onboarding a new client</span><span class="d">The admin‑gated Add New Client flow</span></div></li>
-    <li><div><span class="t">Widget setup &amp; deploy (staff side)</span><span class="d">Connect and Deploy steps; the embed snippet</span></div></li>
-    <li><div><span class="t">Environment variables</span><span class="d">Every key, grouped by feature</span></div></li>
-    <li><div><span class="t">File sharing setup</span><span class="d">Connecting the Vercel Blob store</span></div></li>
-    <li><div><span class="t">WhatsApp provisioning</span><span class="d">Providers, webhook, number mapping</span></div></li>
-    <li><div><span class="t">The knowledge pipeline &amp; review</span><span class="d">Global brain, crons, the review dashboard</span></div></li>
-    <li><div><span class="t">Monitoring &amp; health</span><span class="d">The heartbeat and stats endpoints</span></div></li>
-    <li><div><span class="t">Go‑live checklist (staff)</span><span class="d">Per‑client launch sign‑off</span></div></li>
-    <li><div><span class="t">Troubleshooting</span><span class="d">Common symptoms and their fixes</span></div></li>
+    <li><div><span class="t">Welcome — your part in this</span><span class="d">What you'll do, and what's already done for you</span></div></li>
+    <li><div><span class="t">Before you start — what to collect</span><span class="d">Three or four details from the client</span></div></li>
+    <li><div><span class="t">Step 1 — Create the client</span><span class="d">Fill in one short form</span></div></li>
+    <li><div><span class="t">Step 2 — Send the welcome pack</span><span class="d">Hand over the login and the website code</span></div></li>
+    <li><div><span class="t">Step 3 — Get Luna onto their website</span><span class="d">One line of code, pasted once</span></div></li>
+    <li><div><span class="t">Step 4 — Make Luna look and sound right</span><span class="d">Brand, colours, welcome message</span></div></li>
+    <li><div><span class="t">Step 5 — Give Luna some starter knowledge</span><span class="d">So she answers well from day one</span></div></li>
+    <li><div><span class="t">Step 6 — Try it out together</span><span class="d">A quick test before going live</span></div></li>
+    <li><div><span class="t">Your go‑live checklist</span><span class="d">Everything to tick off</span></div></li>
+    <li><div><span class="t">If something doesn't look right</span><span class="d">Quick, friendly fixes</span></div></li>
   </ol>
 </section>
 
 <!-- ============ SECTION 1 ============ -->
 <section class="section-wrap">
-  <h2 class="section"><span class="section-num">1</span>Architecture overview</h2>
-  <p class="section-lead">Luna is an AI live‑chat widget for travel businesses, branded <strong>Travelgenix</strong>. A visitor opens the chat bubble on a client's site, talks to Luna (the AI), and the conversation appears live in that client's agent dashboard. Luna answers from a shared travel knowledge base until it escalates or a human takes over. The same inbox also receives WhatsApp.</p>
+  <h2 class="section"><span class="section-num">1</span>Welcome — your part in this</h2>
+  <p class="section-lead">Setting a client up on Luna is quick and there's nothing technical to it. Your job is simply to create the client, hand them their login and website code, help them switch it on, and check it's working. This guide walks you through it one step at a time.</p>
 
-  <h3>The pieces (and where each lives)</h3>
-  <table>
-    <tr><th>Piece</th><th>What it is</th></tr>
-    <tr><td><strong>Vercel project</strong> <code>luna-chat-endpoint</code></td><td>The whole product — serverless functions under <code>/api/*</code> and static pages under <code>/public/*</code>. Production: <code>luna-chat-endpoint.vercel.app</code> (also served on <code>chat.travelify.io</code>).</td></tr>
-    <tr><td><strong>Airtable — Global brain</strong></td><td><code>appPKx77relfeiqmq</code>. Shared knowledge powering every client: <code>Knowledge</code>, <code>Destinations</code>, <code>Transport</code> (searched live, no status filter), plus staging/audit tables.</td></tr>
-    <tr><td><strong>Airtable — Per‑client CRM</strong></td><td><code>app6Ot3eOb3DangkB</code>. The client roster and conversations: <code>Clients</code>, per‑client <code>Knowledge</code>, <code>Conversations</code>, <code>Messages</code>.</td></tr>
-    <tr><td><strong>Ably</strong> (realtime)</td><td>Carries live messages between widget, server and dashboard. <strong>Each client uses their own Ably key.</strong></td></tr>
-    <tr><td><strong>Anthropic API</strong></td><td>Generates Luna's replies (<code>api/luna-chat.js</code>) and the copilot.</td></tr>
-    <tr><td><strong>Vercel Blob</strong></td><td>Stores chat file/image attachments at stable public URLs (<code>api/upload.js</code>).</td></tr>
-    <tr><td><strong>WhatsApp providers</strong></td><td>Pluggable under <code>lib/providers/</code> (Gupshup default, 360dialog alternative).</td></tr>
-    <tr><td><strong>Supabase pgvector</strong></td><td>Optional semantic search (project <em>Luna Agents</em>). Off by default.</td></tr>
-  </table>
+  <h3>How Luna works, in a nutshell</h3>
+  <p>A visitor opens the chat bubble on the client's website and chats to <strong>Luna</strong>, the AI assistant. Luna answers travel questions instantly, day and night. When a question needs a real person, the chat hands over to the client's team in their <strong>dashboard</strong> — the same place they'll also see any WhatsApp messages.</p>
+  <figure>
+    <img src="img/showcase-1.png" alt="Luna answering a holiday enquiry, with the client's team seeing it live in their dashboard">
+    <figcaption><span class="fig-tag">THE BIG PICTURE</span> The visitor chats with Luna on the right; the client's team sees everything live on the left and can step in whenever they like.</figcaption>
+  </figure>
 
-  <div class="tip"><strong>Tip.</strong> The single admin review hub for the shared knowledge base is <code>…/global-brain.html</code>, gated by the admin password.</div>
-  <div class="warn"><strong>Warning.</strong> The global brain is read live with <em>no status filter</em>. Anything written into <code>Knowledge</code>/<code>Destinations</code>/<code>Transport</code> is immediately visible to every client's Luna. Treat direct edits as going straight to production.</div>
-  <div class="note"><strong>Two hosts, one project.</strong> <code>luna-chat-endpoint.vercel.app</code> (onboard/setup/dashboard URLs, AI endpoint) and <code>chat.travelify.io</code> (WhatsApp webhook, monitor alerts) both point at the same Vercel project.</div>
+  <div class="lead-card">
+    <strong>Good news — most of it is already done for you.</strong> You don't set up any of the clever bits. The AI brain, the security, photo and document sharing, WhatsApp, translation and behind‑the‑scenes monitoring are all built in and switched on for every client. You only ever do the four simple things below.
+    <ul class="bullets" style="margin:3mm 0 0">
+      <li><strong>Create the client</strong> — one short form (Step&nbsp;1).</li>
+      <li><strong>Hand over their welcome pack</strong> — login and website code (Steps&nbsp;2–3).</li>
+      <li><strong>Help it look and sound right</strong> — branding and a little starter knowledge (Steps&nbsp;4–5).</li>
+      <li><strong>Check it works</strong> — a quick test, then go live (Step&nbsp;6).</li>
+    </ul>
+  </div>
+
+  <div class="tip"><strong>Tip.</strong> Keep this guide and the <em>Luna Chat User Guide</em> side by side. This one gets the client <em>set up</em>; the User Guide shows them how to <em>use</em> Luna every day — share it with them once they're live.</div>
 </section>
 
 <!-- ============ SECTION 2 ============ -->
 <section class="section-wrap">
-  <h2 class="section"><span class="section-num">2</span>Onboarding a new client</h2>
-  <p class="section-lead">Onboarding happens at <code>/onboard.html</code>, behind the <strong>Admin Access</strong> password screen (checked against <code>ADMIN_PASSWORD</code>). New clients are written to the CRM base.</p>
-  <figure>
-    <img src="img/staff-onboard-form.png" alt="Client Onboarding — Existing Clients list and the Add New Client form">
-    <figcaption><span class="fig-tag">ONBOARD</span> The <b>Add New Client</b> form. Everything except the fields shown is generated automatically.</figcaption>
-  </figure>
+  <h2 class="section"><span class="section-num">2</span>Before you start — what to collect</h2>
+  <p class="section-lead">Gather a few details from the client first and the whole set‑up takes about five minutes. Here's your shopping list.</p>
 
-  <h3>Steps</h3>
-  <ol class="steps">
-    <li>Open <code>/onboard.html</code>, enter the <strong>admin password</strong>, then <span class="ui">Continue</span>.</li>
-    <li>Review the <strong>Existing Clients</strong> list — each shows name, slug and a status chip. <span class="ui">View</span> reopens that client's dashboard URL and embed code to re‑share.</li>
-    <li>Complete every field in <strong>Add New Client</strong> (see table), then <span class="ui">Create Client</span>.</li>
-    <li>On success, copy the three boxes: <strong>Dashboard URL</strong>, <strong>Widget Embed Code</strong> and <strong>Login Credentials</strong>, and share them securely.</li>
-  </ol>
+  <ul class="check">
+    <li><strong>The client's company name</strong> — exactly how they want it to appear (e.g. <em>Sunshine Travel</em>).</li>
+    <li><strong>A contact email</strong> — where you'll send their welcome pack and where chat enquiries can land.</li>
+    <li><strong>Their live‑chat connection key</strong> — a short code that links the chat to the client's own private line, so their conversations stay theirs alone. The client creates this in a free account (it takes a couple of minutes) and sends it to you. <em>Not sure how? See the tip below.</em></li>
+    <li><strong>Their booking‑search number</strong> <span class="small">(optional)</span> — the client's Travelgenix site number. It switches on the handy "search holidays" feature inside the chat. You can always add this later.</li>
+  </ul>
 
-  <table>
-    <tr><th>Field</th><th>What it is / where to get it</th></tr>
-    <tr><td><strong>Client Name</strong></td><td>The client's company name (e.g. <em>Sunshine Travel</em>). The canonical identity — embedded in the dashboard URL and the widget's <code>data-clientName</code>; login and stats match on it. Saved as <code>ClientName</code>.</td></tr>
-    <tr><td><strong>Client Slug</strong></td><td>Read‑only, auto‑generated (lowercase, hyphenated). Used for namespacing (e.g. Blob paths). Saved as <code>ClientSlug</code>.</td></tr>
-    <tr><td><strong>Contact Email</strong></td><td>The client's contact address. Saved as <code>ContactEmail</code>.</td></tr>
-    <tr><td><strong>Dashboard Password</strong></td><td>Auto‑generated; what the client types to log in. Saved as <code>DashboardPassword</code>.</td></tr>
-    <tr><td><strong>Ably API Key</strong></td><td><em>The client's own</em> key (<code>xxxxx.yyyyy:zzzzzzzzzz</code>). They create an account at <strong>ably.com</strong>, make a <strong>Pub/Sub app</strong> and copy the API key. Each client needs their own so conversations stay private. <strong>Required.</strong></td></tr>
-    <tr><td><strong>Deep Link Site ID</strong></td><td>The Travelgenix site ID for holiday‑search deep links (e.g. <code>250</code>). Enables the in‑chat booking search. Saved as <code>DeepLinkSiteID</code>. Optional.</td></tr>
-  </table>
+  <div class="tip"><strong>Tip — about the connection key.</strong> Think of it like a private phone line for the client's chat. If the client hasn't got one yet, send them our short <em>"Getting your connection key"</em> one‑pager, or ask the Travelgenix tech team to sort one for them. You can't finish Step&nbsp;1 without it, so line this up first.</div>
 
-  <div class="tip"><strong>Tip.</strong> If the client doesn't yet have an Ably key, send them the Ably Setup Guide first — you can't create the client without it.</div>
-  <div class="warn"><strong>Warning.</strong> The generated Dashboard URL can contain the Ably key and password in the query string. Share it over a secure channel, never in a public ticket.</div>
-  <div class="warn"><strong>Warning.</strong> <code>ADMIN_PASSWORD</code> has an in‑code fallback if unset — make sure it's actually set in Vercel.</div>
+  <div class="tip"><strong>Tip.</strong> Double‑check the spelling of the company name with the client now. It's used in a few places behind the scenes, so getting it right first time saves a tidy‑up later.</div>
+
+  <div class="note"><strong>You won't need:</strong> any passwords, servers, software to install, or anything to pay for. Luna creates the client's password for you automatically, and everything runs in the cloud.</div>
 </section>
 
 <!-- ============ SECTION 3 ============ -->
 <section class="section-wrap">
-  <h2 class="section"><span class="section-num">3</span>Widget setup &amp; deploy (staff side)</h2>
-  <p class="section-lead">The visual configurator at <code>/setup.html</code> is a six‑step wizard (Brand · Theme · Behaviour · Size · Connect · Deploy) with a live preview. Steps 1–4 are cosmetic; staff care most about <strong>Connect</strong> and <strong>Deploy</strong>.</p>
+  <h2 class="section"><span class="section-num">3</span>Step 1 — Create the client</h2>
+  <p class="section-lead">Open the <strong>Client Onboarding</strong> page, enter the team password when asked, and you'll see the form below. This is where you turn those few details into a ready‑to‑go Luna account.</p>
+  <figure>
+    <img src="img/staff-onboard-form.png" alt="The Add New Client form with company name, email, connection key and booking-search number">
+    <figcaption><span class="fig-tag">CREATE A CLIENT</span> The <b>Add New Client</b> form. Fill in the boxes — Luna sorts out everything else automatically.</figcaption>
+  </figure>
 
-  <div class="two-col">
-    <div>
-      <figure><img src="img/setup-5-connect.png" alt="Setup — Connect step"><figcaption><span class="fig-tag">STEP 5</span> Connect</figcaption></figure>
-    </div>
-    <div>
-      <figure><img src="img/setup-6-deploy.png" alt="Setup — Deploy step"><figcaption><span class="fig-tag">STEP 6</span> Deploy</figcaption></figure>
-    </div>
-  </div>
-
-  <h3>Step 5 — Connect</h3>
+  <h3>Filling in the form</h3>
   <ol class="steps">
-    <li><strong>Ably API Key</strong> — paste the client's key (<code>xxxxx.yyyyy:zzzzzzzzzz</code>). Becomes <code>data-ablyKey</code> on the embed and powers live handover. Without it the widget runs AI‑only with no live inbox.</li>
-    <li><strong>AI Endpoint</strong> — defaults to <code>…/api/luna-chat</code>, which includes the full Luna travel knowledge brain. Only change it for a custom deployment (maps to <code>data-endpoint</code>).</li>
+    <li><strong>Client Name</strong> — type the client's company name exactly as they want it shown.</li>
+    <li><strong>Client Slug</strong> — this fills in by itself. Just leave it.</li>
+    <li><strong>Contact Email</strong> — the client's contact address.</li>
+    <li><strong>Dashboard Password</strong> — created for you automatically. No need to think one up.</li>
+    <li><strong>Connection Key</strong> (shown as "Ably API Key") — paste the live‑chat connection key the client gave you.</li>
+    <li><strong>Booking‑search number</strong> (shown as "Deep Link Site ID") — pop in the client's Travelgenix site number if you have it, or leave it blank for now.</li>
+    <li>Press <span class="ui">Create Client</span>.</li>
   </ol>
 
-  <h3>Step 6 — Deploy</h3>
-  <ol class="steps">
-    <li>The wizard renders a single‑line <strong>embed snippet</strong> that only includes <code>data-*</code> attributes differing from defaults.</li>
-    <li>Click <span class="ui">Copy</span>.</li>
-    <li>Give the client the snippet to paste just before <code>&lt;/body&gt;</code> (install methods for Duda, WordPress, Shopify, Wix and plain HTML are listed in the wizard).</li>
-  </ol>
-  <div class="tip"><strong>Tip.</strong> The onboarding success panel's embed code is the minimal version (just <code>data-clientName</code> + <code>data-ablyKey</code>). Use <code>setup.html</code> when the client wants custom branding, colours, hints or window size.</div>
-  <div class="warn"><strong>Warning.</strong> <code>data-clientName</code> must <em>exactly</em> match the Client Name in Airtable (watch for trailing spaces / casing), or login, stats and conversation attribution won't resolve.</div>
-  <div class="warn"><strong>Warning.</strong> "Deploy" here means giving the client a snippet for their own site. It does <em>not</em> redeploy Vercel — that happens automatically on merge to <code>main</code>.</div>
+  <div class="tip"><strong>Tip.</strong> Everything marked "auto‑generated" looks after itself — the slug and the password both fill in for you. The only things you really type are the name, the email and the connection key.</div>
+  <div class="warn"><strong>Heads up.</strong> You can't create the client without the connection key, so make sure you've got it from them before you start (see Step&nbsp;2 of the previous page).</div>
+  <div class="note"><strong>Already got the client in the list?</strong> The <strong>Existing Clients</strong> list at the top lets you press <span class="ui">View</span> to pull up their welcome details again any time — handy if they lose their login.</div>
 </section>
 
 <!-- ============ SECTION 4 ============ -->
 <section class="section-wrap">
-  <h2 class="section"><span class="section-num">4</span>Environment variables</h2>
-  <p class="section-lead">All env vars live on the <code>luna-chat-endpoint</code> Vercel project. Grouped by feature.</p>
+  <h2 class="section"><span class="section-num">4</span>Step 2 — Send the welcome pack</h2>
+  <p class="section-lead">The moment you press <span class="ui">Create Client</span>, Luna shows you the client's <strong>welcome pack</strong> — three ready‑to‑copy boxes. This is everything the client needs to get going.</p>
+  <figure>
+    <img src="img/staff-welcome-pack.png" alt="The welcome pack: dashboard link, website code and login details, each with a Copy button">
+    <figcaption><span class="fig-tag">WELCOME PACK</span> Three boxes, each with a <b>Copy</b> button. Send these to the client.</figcaption>
+  </figure>
 
-  <h3>Core chat / realtime / admin</h3>
   <table>
-    <tr><th>Var</th><th>Req?</th><th>What it does</th></tr>
-    <tr><td><code>ANTHROPIC_API_KEY</code></td><td>Yes</td><td>Anthropic key for Luna's replies and copilot.</td></tr>
-    <tr><td><code>AIRTABLE_KEY</code></td><td>Yes</td><td>Airtable PAT used by almost every endpoint.</td></tr>
-    <tr><td><code>AIRTABLE_PAT</code></td><td>Copilot</td><td>Alias used by the copilot endpoint.</td></tr>
-    <tr><td><code>ABLY_ROOT_KEY</code></td><td>Yes</td><td>Server‑side Ably root key for publishing / token signing.</td></tr>
-    <tr><td><code>ADMIN_PASSWORD</code></td><td>Yes</td><td>Gates <code>/onboard.html</code> and <code>/global-brain.html</code>. Set it explicitly.</td></tr>
-    <tr><td><code>CRON_SECRET</code></td><td>Yes</td><td>Protects every cron endpoint and manual runs.</td></tr>
-    <tr><td><code>LUNA_MODEL</code> / <code>LUNA_HAIKU_MODEL</code> / <code>LUNA_SHORT_MODEL</code></td><td>Opt</td><td>Model overrides (in‑code defaults used if unset).</td></tr>
-    <tr><td><code>UPSTASH_REDIS_REST_URL</code> / <code>_TOKEN</code></td><td>Rec.</td><td>Distributed rate limiting, monitor strike‑state, WhatsApp dedupe + memory.</td></tr>
+    <tr><th>Box</th><th>What it is &amp; what to do with it</th></tr>
+    <tr><td><strong>Dashboard URL</strong></td><td>The web address where the client's team logs in to answer chats. Send it to them and suggest they bookmark it.</td></tr>
+    <tr><td><strong>Widget Embed Code</strong></td><td>The little piece of code that puts the chat bubble on their website. They (or their web person) paste it in once — see Step&nbsp;3.</td></tr>
+    <tr><td><strong>Login Credentials</strong></td><td>The client's dashboard address, password and email in one place. This is what they sign in with.</td></tr>
   </table>
 
-  <h3>Copilot</h3>
-  <table>
-    <tr><th>Var</th><th>Req?</th><th>What it does</th></tr>
-    <tr><td><code>ANTHROPIC_API_KEY</code> · <code>AIRTABLE_PAT</code></td><td>Yes</td><td>Reused; reads the client's Luna Brain for grounded suggestions.</td></tr>
-    <tr><td><code>LUNA_COPILOT_MODEL</code></td><td>Opt</td><td>Defaults to a Haiku‑class model.</td></tr>
-  </table>
+  <ol class="steps">
+    <li>Press <span class="ui">Copy</span> on each box in turn.</li>
+    <li>Paste them into an email (or your handover document) for the client.</li>
+    <li>Use <span class="ui">Open Dashboard</span> if you'd like to take a quick look yourself, or <span class="ui">Add Another Client</span> to set up the next one.</li>
+  </ol>
 
-  <h3>Knowledge pipeline</h3>
-  <table>
-    <tr><th>Var</th><th>Req?</th><th>What it does</th></tr>
-    <tr><td><code>TICKETMASTER_API_KEY</code></td><td>Disc.</td><td>Events connector (auto‑publishes).</td></tr>
-    <tr><td><code>FOURSQUARE_API_KEY</code> / <code>FOURSQUARE_HOST</code></td><td>Disc.</td><td>Things‑to‑do connector (host defaults to <code>places-api.foursquare.com</code>).</td></tr>
-    <tr><td><code>TAVILY_API_KEY</code></td><td>Reverify</td><td>Web search for grounded checks.</td></tr>
-    <tr><td><code>LUNA_TRUSTED_DOMAINS</code></td><td>Opt</td><td>Authoritative‑source allowlist.</td></tr>
-    <tr><td colspan="2"><em>Tuning (optional)</em></td><td><code>REVERIFY_LIMIT</code>, <code>CORRO_CAP</code>, <code>CONCURRENCY</code>, <code>AUTOAPPLY</code>, <code>DISCOVER_BATCH</code>, <code>FILL_*</code>, etc.</td></tr>
-  </table>
-
-  <h3>Email / SendGrid</h3>
-  <table>
-    <tr><th>Var</th><th>Req?</th><th>What it does</th></tr>
-    <tr><td><code>SENDGRID_API_KEY</code></td><td>Yes*</td><td>Daily review digest + transcript emails. Sender <code>noreply@travelgenix.io</code> is domain‑authenticated. (*for digests/transcripts)</td></tr>
-    <tr><td><code>REVIEW_DIGEST_TO</code> / <code>_FROM</code></td><td>Opt</td><td>Recipient (default <code>andy.speight@agendas.group</code>) and sender.</td></tr>
-    <tr><td><code>REVIEW_DASHBOARD_URL</code></td><td>Opt</td><td>Link in the digest (defaults to the global‑brain page).</td></tr>
-    <tr><td><code>DIGEST_SKIP_WHEN_EMPTY</code></td><td>Opt</td><td><code>=1</code> suppresses the daily all‑clear.</td></tr>
-  </table>
-
-  <h3>WhatsApp</h3>
-  <table>
-    <tr><th>Var</th><th>Req?</th><th>What it does</th></tr>
-    <tr><td><code>WHATSAPP_PROVIDER</code></td><td>No</td><td><code>gupshup</code> (default) or <code>360dialog</code>.</td></tr>
-    <tr><td><code>WHATSAPP_VERIFY_TOKEN</code></td><td>Yes</td><td>Shared secret on the webhook URL (<code>?token=…</code>, fail‑closed).</td></tr>
-    <tr><td><code>WHATSAPP_NUMBER_MAP</code></td><td>Yes</td><td>JSON mapping number/app → client record id.</td></tr>
-    <tr><td><code>WHATSAPP_AI_AUTOREPLY</code></td><td>No</td><td><code>false</code> routes every WhatsApp chat to a human.</td></tr>
-    <tr><td><code>GUPSHUP_API_KEY</code></td><td>Gupshup</td><td>Account‑level Gupshup key (or per‑entry <code>apiKey</code>).</td></tr>
-    <tr><td><code>WHATSAPP_D360_KEYS</code> / <code>_API_KEY</code></td><td>360dialog</td><td>Per‑number or global 360dialog key.</td></tr>
-  </table>
-
-  <h3>Semantic search (off by default) · File sharing · Monitoring</h3>
-  <table>
-    <tr><th>Var</th><th>Req?</th><th>What it does</th></tr>
-    <tr><td><code>SEMANTIC_SEARCH</code></td><td>Flag</td><td><code>=1</code> turns hybrid retrieval on (needs keys below).</td></tr>
-    <tr><td><code>VOYAGE_API_KEY</code> · <code>SUPABASE_URL</code> · <code>SUPABASE_SERVICE_KEY</code></td><td>If on</td><td>Voyage embeddings + Supabase pgvector store.</td></tr>
-    <tr><td><code>BLOB_READ_WRITE_TOKEN</code></td><td>Uploads</td><td>Set automatically when a Vercel Blob store is linked. Without it, uploads return <code>503</code>.</td></tr>
-    <tr><td><code>TELEGRAM_BOT_TOKEN</code> / <code>_CHAT_ID</code></td><td>Alerts</td><td>Where the heartbeat sends down/recovery alerts.</td></tr>
-  </table>
-  <div class="tip"><strong>Tip.</strong> <code>@sendgrid/mail</code>, <code>@vercel/blob</code> and <code>@anthropic-ai/sdk</code> are declared in <code>package.json</code> — no manual install on Vercel.</div>
+  <div class="warn"><strong>Please share this securely.</strong> The login details are like a key to the client's chat. Send them in a private email straight to your contact — never in a public message, shared ticket or group chat.</div>
+  <div class="tip"><strong>Tip.</strong> Pop the <em>Luna Chat User Guide</em> in the same email. That way the client gets their login <em>and</em> the friendly how‑to‑use guide in one go.</div>
 </section>
 
 <!-- ============ SECTION 5 ============ -->
 <section class="section-wrap">
-  <h2 class="section"><span class="section-num">5</span>File sharing setup</h2>
-  <p class="section-lead">Chat file/image sharing is stored in <strong>Vercel Blob</strong> (handler <code>api/upload.js</code>). It needs one one‑time setup.</p>
-  <h3>One‑time setup (required)</h3>
+  <h2 class="section"><span class="section-num">5</span>Step 3 — Get Luna onto their website</h2>
+  <p class="section-lead">For the chat bubble to appear, the <strong>Widget Embed Code</strong> from the welcome pack needs to go onto the client's website. It's a one‑off, takes a minute, and you don't need to understand the code itself.</p>
+
+  <h3>The simplest way</h3>
   <ol class="steps">
-    <li>In the <strong>Vercel dashboard</strong>, open the <code>luna-chat-endpoint</code> project.</li>
-    <li>Go to <strong>Storage → Create / Connect → Blob</strong>.</li>
-    <li>Connecting the store <strong>automatically sets <code>BLOB_READ_WRITE_TOKEN</code></strong> — the only var the upload endpoint needs.</li>
+    <li>Send the client the <strong>Widget Embed Code</strong> you copied in Step&nbsp;2.</li>
+    <li>Ask them to give it to whoever looks after their website (or do it yourself if you have access).</li>
+    <li>It's pasted in once, at the bottom of the website's pages. The guide below covers the most common website builders.</li>
   </ol>
-  <h3>Limits</h3>
-  <ul class="bullets">
-    <li><strong>Max 4&nbsp;MB</strong> per file. The widget lets visitors pick images up to 15&nbsp;MB and downscales them to ≤1600px client‑side.</li>
-    <li><strong>Allowed:</strong> JPEG, PNG, GIF, WebP, PDF, DOC/DOCX, XLS/XLSX, CSV, TXT (anything else → <code>415</code>).</li>
-    <li>Per‑IP rate limited; unknown client → <code>404</code>; files namespaced <code>luna-chat/&lt;slug&gt;/&lt;file&gt;</code>.</li>
-  </ul>
-  <div class="warn"><strong>Warning.</strong> If <code>BLOB_READ_WRITE_TOKEN</code> is not set, every upload returns <strong>503 "File uploads are not configured"</strong> and the attach button shows a friendly message — nothing else breaks. 503s on attach = Blob store not connected.</div>
-  <div class="warn"><strong>Warning.</strong> The Blob store is public‑read by design. URLs are unguessable but not access‑controlled — don't use chat file sharing for anything that must stay private.</div>
+
+  <table>
+    <tr><th>If their website is built with…</th><th>Where it goes</th></tr>
+    <tr><td>Duda</td><td>Settings › Head &amp; Body Scripts › Body End</td></tr>
+    <tr><td>WordPress</td><td>A "Header &amp; Footer Scripts" plugin (or the theme footer)</td></tr>
+    <tr><td>Shopify</td><td>Online Store › Themes › Edit code › before the closing body tag</td></tr>
+    <tr><td>Wix</td><td>Settings › Custom Code › Body End</td></tr>
+    <tr><td>Any other site</td><td>Their web person pastes it just before the closing body tag</td></tr>
+  </table>
+
+  <div class="tip"><strong>Tip.</strong> Not sure who manages the client's site? Just ask "who looks after your website?" and forward them the code with a one‑line note: <em>"Please pop this just before the closing &lt;/body&gt; tag — it adds our live chat."</em> That's all they need.</div>
+  <div class="tip"><strong>Tip.</strong> Once it's in, open the client's website in a new tab and look for the chat bubble in the corner. Send it a quick "hello" to see Luna reply — that's your proof it's live.</div>
 </section>
 
 <!-- ============ SECTION 6 ============ -->
 <section class="section-wrap">
-  <h2 class="section"><span class="section-num">6</span>WhatsApp provisioning</h2>
-  <p class="section-lead">WhatsApp brings a client's own number into the <strong>same inbox</strong> as the web widget — multi‑tenant, each client attributed to their own number. Inbound: <code>api/whatsapp-webhook.js</code>; outbound: <code>api/whatsapp-send.js</code>; provider logic under <code>lib/providers/</code>, selected by <code>WHATSAPP_PROVIDER</code>.</p>
+  <h2 class="section"><span class="section-num">6</span>Step 4 — Make Luna look and sound right</h2>
+  <p class="section-lead">Now make Luna feel like part of the client's brand. The <strong>Widget Setup</strong> page does this with a simple, click‑through wizard and a live preview that updates as you go — no design skills needed.</p>
+  <figure>
+    <img src="img/setup-1-brand.png" alt="The Widget Setup wizard with a live preview of the chat">
+    <figcaption><span class="fig-tag">LOOK &amp; FEEL</span> Type on the left, watch the chat update on the right. Move through with the <b>Next</b> button.</figcaption>
+  </figure>
 
-  <h3>Provider choice</h3>
-  <table>
-    <tr><th>Provider</th><th>When</th><th>Cost shape</th></tr>
-    <tr><td><strong><code>gupshup</code></strong> (default)</td><td>Demo / initial setup</td><td>No fixed fee; pay‑as‑you‑go (~$0.001/msg + Meta).</td></tr>
-    <tr><td><code>360dialog</code></td><td>Scale / clean exit</td><td>~£500–1,000/mo partner fee + ~€25/number. Easiest migration to direct Meta.</td></tr>
-  </table>
-  <p>Start on <strong>Gupshup</strong> (cheapest to stand up). Switching later is a change to <code>WHATSAPP_PROVIDER</code> plus the number map — the orchestration code is unchanged.</p>
-
-  <h3>Webhook URL</h3>
-  <p>The provider POSTs inbound messages to:</p>
-  <p><code>https://chat.travelify.io/api/whatsapp-webhook?token=&lt;WHATSAPP_VERIFY_TOKEN&gt;</code></p>
-  <p><code>GET</code> on that URL is the verification handshake. The token is verified fail‑closed.</p>
-
-  <h3>Per‑client number mapping</h3>
-  <p><code>WHATSAPP_NUMBER_MAP</code> is JSON mapping each number/app to a client record id (<code>recXXXX</code>).</p>
+  <h3>What you can set</h3>
   <ul class="bullets">
-    <li><strong>Gupshup</strong> — keyed by app name: <code>{"LunaDemoApp":{"clientId":"rec…","phone":"447700900000"}}</code>, plus <code>GUPSHUP_API_KEY</code>.</li>
-    <li><strong>360dialog</strong> — keyed by <code>phone_number_id</code>: <code>{"111222333":{"clientId":"rec…","apiKey":"D360-…"}}</code>.</li>
+    <li><strong>Brand</strong> — the assistant's name, a small tagline, the logo letter and the client's company name.</li>
+    <li><strong>Theme</strong> — pick a colour style that matches their website (Ocean and Light suit most travel sites).</li>
+    <li><strong>Behaviour</strong> — the welcome message, a few suggested questions, and the wording of the "Talk to a human" button.</li>
+    <li><strong>Size</strong> — how big the chat window is (Standard is right for nearly everyone).</li>
   </ul>
-  <p>Conversation id is deterministic: <code>wa_&lt;businessNumber&gt;_&lt;customerNumber&gt;</code>. The same Ably channels carry it, so the dashboard shows it with a <strong>WhatsApp</strong> badge and no special handling.</p>
 
-  <h3>Going live (Gupshup demo)</h3>
-  <ol class="steps">
-    <li>Create a Gupshup account → a WhatsApp app (sandbox to test instantly, or a real number).</li>
-    <li>Copy the API key → <code>GUPSHUP_API_KEY</code>. Note the app name and source number.</li>
-    <li>Set <code>WHATSAPP_PROVIDER=gupshup</code>, <code>WHATSAPP_VERIFY_TOKEN</code>, <code>WHATSAPP_NUMBER_MAP</code>.</li>
-    <li>In Gupshup, set the inbound/callback URL to the webhook URL above.</li>
-    <li>Message the number — the chat should appear in the inbox; Luna replies on the phone; an agent reply reaches the phone.</li>
-  </ol>
-  <div class="tip"><strong>Tip.</strong> Set up Upstash. Without it, provider retries aren't de‑duplicated and Luna loses multi‑turn memory (each message answered statelessly).</div>
-  <div class="warn"><strong>Warning — 24‑hour window.</strong> Free‑form replies are only allowed within 24h of the customer's last message. Outside it you need approved templates, which are <em>not</em> wired up here.</div>
-  <div class="warn"><strong>Warning.</strong> Use real <code>rec…</code> ids and keep <code>WHATSAPP_NUMBER_MAP</code> valid JSON. A bad map means inbound messages can't be attributed and won't appear.</div>
+  <div class="two-col">
+    <div><figure><img src="img/setup-2-theme.png" alt="Choosing a colour theme"><figcaption>Pick a colour theme</figcaption></figure></div>
+    <div><figure><img src="img/setup-3-behaviour.png" alt="Setting the welcome message and suggested questions"><figcaption>Set the welcome &amp; prompts</figcaption></figure></div>
+  </div>
+
+  <div class="tip"><strong>Tip.</strong> Write the <strong>suggested questions</strong> as the things the client's customers really ask — like "Best Greek islands for families?" or "All‑inclusive under £800?". They double as a friendly menu and get conversations going.</div>
+  <div class="tip"><strong>Tip.</strong> Keep an eye on the <strong>live preview</strong> as you type — what you see is exactly what visitors will see. The full detail of every option is in the <em>Luna Chat User Guide</em> if the client wants to fine‑tune later.</div>
 </section>
 
 <!-- ============ SECTION 7 ============ -->
 <section class="section-wrap">
-  <h2 class="section"><span class="section-num">7</span>The knowledge pipeline &amp; review</h2>
-  <p class="section-lead">The pipeline keeps the <strong>global brain</strong> fresh and accurate, with a strong human‑review gate for anything a model produced.</p>
-
-  <div class="lead-card">
-    <strong>Prime directives (never break)</strong>
-    <ul class="bullets" style="margin-bottom:0">
-      <li><strong>Zero hallucination.</strong> Facts come only from trusted/fetched sources, never the model's memory. Anything that can't be grounded is flagged, never invented. Fail safe — an ambiguous reply becomes "unverifiable", never a false confirm.</li>
-      <li><strong>Voice:</strong> UK English, no em‑dashes, no Oxford commas, plain and warm.</li>
-      <li><strong>FCDO guardrail:</strong> Luna never voices a safety assessment; the server attaches the official FCDO status as a card.</li>
-      <li><strong>Auto‑publish policy:</strong> deterministic connector data (Ticketmaster/Foursquare, <em>no LLM</em>) auto‑publishes to live Knowledge; anything a model <em>extracted</em> stays human‑gated.</li>
-    </ul>
-  </div>
-
-  <h3>The review dashboard — <code>/global-brain.html</code></h3>
-  <p>Admin‑gated. One page, three tabs (each with a count badge): <strong>Discovery suggestions</strong> (approve/dismiss scraped suggestions), <strong>Re‑verification queue</strong> (apply/dismiss re‑checked or gap‑filled facts), and <strong>+ Add data</strong> (add a destination or an airport/airline/cruise; the Search Index builds on save). Per‑client review: <code>/luna-brain.html?client=&lt;name&gt;</code>.</p>
+  <h2 class="section"><span class="section-num">7</span>Step 5 — Give Luna some starter knowledge</h2>
+  <p class="section-lead">Luna already knows a huge amount about destinations and travel. To make her brilliant for <em>this</em> client, give her a little of their own information too — their prices, opening hours, booking terms and anything special they offer. This all happens in <strong>Luna Brain</strong>.</p>
   <figure>
-    <img src="img/staff-globalbrain-add.png" alt="Global Knowledge Review — the + Add data tab with destination and transport forms">
-    <figcaption><span class="fig-tag">GLOBAL BRAIN</span> The <b>+ Add data</b> tab. Add a destination (name is enough — discovery auto‑fills the rest) or a transport record (what you type is what Luna serves).</figcaption>
+    <img src="img/cust-luna-brain.png" alt="Luna Brain — approving suggested answers and clearing knowledge gaps in one click">
+    <figcaption><span class="fig-tag">LUNA BRAIN</span> Where the client keeps Luna accurate. Most updates are a single click — approve a good answer, or tidy one up first.</figcaption>
   </figure>
 
-  <h3>Crons (from <code>vercel.json</code>)</h3>
-  <table>
-    <tr><th>Cron</th><th>Schedule</th><th>Purpose</th></tr>
-    <tr><td><code>/api/monitor</code></td><td><code>*/15 * * * *</code></td><td>Heartbeat (checks A/B/C).</td></tr>
-    <tr><td><code>/api/reverify-structured</code></td><td><code>0 2 * * *</code></td><td>Re‑check structured Destination/Transport fields via corroboration.</td></tr>
-    <tr><td><code>/api/fill-gaps</code></td><td><code>0 3 * * *</code></td><td>Extract blank structured fields from sources; stage as Pending (never auto‑applies).</td></tr>
-    <tr><td><code>/api/refresh-fcdo</code></td><td><code>0 4 * * *</code></td><td>Write official FCDO status verbatim, no LLM.</td></tr>
-    <tr><td><code>/api/reverify</code></td><td><code>0 5 * * *</code></td><td>Q&amp;A re‑verification; 1 authoritative or 2 corroborating sources → auto‑apply, else Pending.</td></tr>
-    <tr><td><code>/api/backfill-search-index</code></td><td><code>30 5 * * *</code></td><td>Rebuild empty Search Index + gap report.</td></tr>
-    <tr><td><code>/api/review-digest</code></td><td><code>0 6 * * *</code></td><td>Daily digest email of both Pending queues.</td></tr>
-    <tr><td><code>/api/knowledge-freshness</code></td><td><code>0 8 * * *</code></td><td>Staleness digest (global + per‑client).</td></tr>
-    <tr><td><code>/api/embed-index</code></td><td><code>0 9 * * *</code></td><td>Build/refresh semantic‑search vectors.</td></tr>
-    <tr><td><code>/api/discover-scan</code></td><td><code>0 */3 * * *</code></td><td>~230 Destinations, batch‑25 rotation: curated scrape → Pending; connectors → auto‑publish.</td></tr>
-  </table>
-
-  <h3>Daily review digest</h3>
-  <p>Sent by <code>api/review-digest.js</code> at 06:00 to <code>REVIEW_DIGEST_TO</code>, linking the global‑brain page. Sends every day including an "all clear" unless <code>DIGEST_SKIP_WHEN_EMPTY=1</code>. <code>?dryRun=1</code> previews JSON; <code>?force=1</code> forces a send.</p>
-
-  <h3>Turning on semantic search</h3>
+  <h3>A simple starter routine</h3>
   <ol class="steps">
-    <li>Create a Voyage key → <code>VOYAGE_API_KEY</code>.</li>
-    <li>Copy the Supabase service_role key → <code>SUPABASE_SERVICE_KEY</code>; set <code>SUPABASE_URL</code>.</li>
-    <li>Run <code>/api/embed-index?secret=&lt;CRON_SECRET&gt;</code> once (or wait for the 09:00 cron).</li>
-    <li>Set <code>SEMANTIC_SEARCH=1</code>. Unset it to flip off instantly.</li>
+    <li>Jot down the <strong>ten questions</strong> the client's customers ask most.</li>
+    <li>Make sure Luna has a clear, correct answer for each — add or tidy them in Luna Brain.</li>
+    <li>Glance at <strong>Knowledge gaps</strong> — these are real questions Luna couldn't answer. Approve a good suggested answer, or use <span class="ui">Edit first</span> to correct it.</li>
   </ol>
-  <div class="tip"><strong>Tip.</strong> Retrieval runs keyword + semantic in parallel and merges. Any error or missing config silently falls back to keyword search, so semantic search can't break a reply.</div>
-  <div class="warn"><strong>Warning.</strong> Approving items writes to <em>live</em> Knowledge. Only approve grounded, sourced facts — never bypass the human gate for model‑extracted content.</div>
+
+  <div class="tip"><strong>Tip.</strong> Where a price or policy is involved, always read the suggested answer and use <span class="ui">Edit first</span> to put in the client's exact wording. Better a precise answer than a roughly‑right one.</div>
+  <div class="note"><strong>This is mostly the client's job long‑term.</strong> You just help them get started. The <em>Luna Chat User Guide</em> shows them how to keep Luna sharp week to week — it really is mostly one‑click.</div>
 </section>
 
 <!-- ============ SECTION 8 ============ -->
 <section class="section-wrap">
-  <h2 class="section"><span class="section-num">8</span>Monitoring &amp; health</h2>
-  <h3>Heartbeat — <code>api/monitor.js</code></h3>
-  <p>Runs every 15 minutes (cron‑only; manual with <code>?secret=&lt;CRON_SECRET&gt;</code>). Three checks in parallel:</p>
-  <ul class="bullets">
-    <li><strong>Check A — Visitor path:</strong> POSTs <code>/api/ably-token</code> like a widget. Catches a stuck rate limiter or dead signing key.</li>
-    <li><strong>Check B — Dashboard path:</strong> authenticates Travelgenix's dashboard Ably key. Catches a revoked/dead key.</li>
-    <li><strong>Check C — AI path:</strong> a tiny real Anthropic call against each distinct model Luna uses. Catches a retired/renamed model id, a bad key or an outage.</li>
-  </ul>
-  <p>Alerts fire only after <strong>two consecutive failures</strong> (~15 min real outage): one "down" Telegram, silence, then one "recovered". Strike‑state lives in Upstash. Returns 200 when healthy, 503 when not.</p>
-  <div class="tip"><strong>Tip.</strong> Test alert wiring without an outage: <code>GET /api/monitor?secret=&lt;CRON_SECRET&gt;&amp;test=alert</code>.</div>
+  <h2 class="section"><span class="section-num">8</span>Step 6 — Try it out together</h2>
+  <p class="section-lead">Before you call it live, run one quick test with the client watching. It takes two minutes and gives everyone confidence.</p>
+  <figure>
+    <img src="img/cust-dashboard-full.png" alt="The client's dashboard during a live chat, with Take Over and Resolve buttons">
+    <figcaption><span class="fig-tag">THE DASHBOARD</span> Where the client's team answers. Note the <b>Take Over</b>, <b>Resolve</b> and quick‑reply tools.</figcaption>
+  </figure>
 
-  <h3>Stats — <code>api/luna-stats.js</code></h3>
-  <p>Powers the dashboard Stats panel. <code>GET</code> with <code>X-Client-Name</code> (or <code>?client=</code>). Computes totals, AI‑only vs escalated split, avg duration/messages, visitor CSAT with distribution, last‑14‑days counts, peak hour, top pages and top topics.</p>
+  <h3>The two‑minute test</h3>
+  <ol class="steps">
+    <li>On the client's website, open the chat and ask a real question. Watch Luna answer.</li>
+    <li>Tap <span class="ui">Talk to a human</span> in the chat.</li>
+    <li>In the dashboard, the chat should pop up waiting for a person. Press <span class="ui">Take Over</span>, type a reply and send it.</li>
+    <li>Check the reply appears back in the chat on the website. Then press <span class="ui">Resolve</span> to close it.</li>
+  </ol>
+
+  <div class="tip"><strong>Tip.</strong> Do this with two screens (or two people) — one on the website as the "customer", one watching the dashboard. Seeing a message travel from the website to the dashboard and back is the best possible reassurance for a nervous client.</div>
+  <div class="tip"><strong>Tip.</strong> Show the client the <span class="ui">Take Over</span> button while you're here. Knowing they can always step in is usually the thing that wins them over.</div>
 </section>
 
 <!-- ============ SECTION 9 ============ -->
 <section class="section-wrap">
-  <h2 class="section"><span class="section-num">9</span>Go‑live checklist (staff)</h2>
-  <p class="section-lead">Run through this per client before declaring them live.</p>
+  <h2 class="section"><span class="section-num">9</span>Your go‑live checklist</h2>
+  <p class="section-lead">Run through this with the client and you're ready to switch on with confidence.</p>
   <ul class="check">
-    <li><strong>Client created</strong> in <code>/onboard.html</code> (appears in Existing Clients; all fields populated).</li>
-    <li><strong>Ably connected</strong> — client's own key saved and present in the embed (<code>data-ablyKey</code>).</li>
-    <li><strong>Widget deployed</strong> on the client's site (snippet before <code>&lt;/body&gt;</code>; <code>data-clientName</code> matches Airtable exactly; bubble loads, Luna responds).</li>
-    <li><strong>Login works</strong> — client signs in; a live test chat appears; agent reply reaches the widget.</li>
-    <li><strong>Knowledge seeded</strong> — relevant destinations/transport present; review digest landing.</li>
-    <li><strong>WhatsApp live (if used)</strong> — number map entry set, callback URL with <code>?token=</code>, end‑to‑end test passes.</li>
-    <li><strong>Blob connected (if file sharing)</strong> — <code>BLOB_READ_WRITE_TOKEN</code> set; attach uploads without 503.</li>
-    <li><strong>Digests landing</strong> at <code>REVIEW_DIGEST_TO</code>.</li>
-    <li><strong>Monitor green</strong> — <code>/api/monitor</code> returns <code>healthy: true</code>; Telegram alerts confirmed.</li>
+    <li><strong>Client created</strong> — you filled in the form and got the welcome pack.</li>
+    <li><strong>Welcome pack sent</strong> — login details and website code emailed securely to the client.</li>
+    <li><strong>Chat bubble live</strong> — the code is on their website and the bubble appears.</li>
+    <li><strong>Looks on‑brand</strong> — name, colours, welcome message and suggested questions all set.</li>
+    <li><strong>Starter knowledge added</strong> — Luna has good answers to their top questions.</li>
+    <li><strong>Test passed</strong> — you ran the two‑minute test: Luna answered, you took over, the reply came through.</li>
+    <li><strong>Client knows the basics</strong> — they can log in, set themselves "online", take over a chat and resolve it.</li>
+    <li><strong>User Guide shared</strong> — the client has the <em>Luna Chat User Guide</em> for day‑to‑day use.</li>
   </ul>
+  <div class="tip"><strong>Tip.</strong> For the first week, check in with the client and glance at their <strong>Knowledge gaps</strong> together. Clearing a few early on makes Luna noticeably sharper and shows the client the value straight away.</div>
 </section>
 
 <!-- ============ SECTION 10 ============ -->
 <section class="section-wrap">
-  <h2 class="section"><span class="section-num">10</span>Troubleshooting</h2>
+  <h2 class="section"><span class="section-num">10</span>If something doesn't look right</h2>
+  <p class="section-lead">Most hiccups have a simple cause. Here are the usual ones and the quick fix — and when in doubt, the Travelgenix tech team is one message away.</p>
   <table>
-    <tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr>
-    <tr><td>Attach shows "uploads not configured" / upload <code>503</code></td><td>Blob store not linked</td><td>Link a Blob store (Section&nbsp;5).</td></tr>
-    <tr><td>Upload <code>413</code></td><td>File over 4&nbsp;MB</td><td>Re‑send under 4&nbsp;MB.</td></tr>
-    <tr><td>Upload <code>415</code></td><td>Unsupported type</td><td>Use an allowed type.</td></tr>
-    <tr><td>Upload <code>404</code> "Unknown client"</td><td><code>clientName</code> mismatch</td><td>Check the widget's <code>data-clientName</code> matches <code>ClientName</code>.</td></tr>
-    <tr><td>Every chat reply fails / chat 404</td><td>Anthropic model id retired/renamed</td><td>Check <code>LUNA_*_MODEL</code>; monitor Check C reports the model + 404.</td></tr>
-    <tr><td>Copilot <code>503</code></td><td>Missing <code>ANTHROPIC_API_KEY</code>/<code>AIRTABLE_PAT</code></td><td>Set copilot env vars; confirm allowed origin.</td></tr>
-    <tr><td><code>429</code> on chat/token/upload</td><td>Rate limit / stuck limiter</td><td>Wait; verify Upstash healthy (monitor Check A flags a stuck limiter).</td></tr>
-    <tr><td>Dashboard can't connect / no live chat</td><td>Dashboard Ably key revoked</td><td>Monitor Check B reports it; re‑issue the key in Airtable.</td></tr>
-    <tr><td>Onboard/global‑brain <code>401</code></td><td>Wrong admin password / unset</td><td>Set <code>ADMIN_PASSWORD</code>; use the correct value.</td></tr>
-    <tr><td>Client login fails</td><td>Name mismatch or wrong password</td><td>Confirm <code>ClientName</code> casing/spaces and saved <code>DashboardPassword</code>.</td></tr>
-    <tr><td>WhatsApp never reaches inbox</td><td>Bad number map / wrong token / dedupe failing</td><td>Validate JSON map + rec ids; confirm <code>?token=</code>; ensure Upstash set.</td></tr>
-    <tr><td>WhatsApp reply not sent</td><td>Outside 24h window or missing key</td><td>Reply within 24h; set the provider API key.</td></tr>
-    <tr><td>New Airtable rows not found</td><td>Empty Search Index</td><td>05:30 backfill indexes them; or run it manually (<code>?all=1</code>).</td></tr>
-    <tr><td>Semantic search "silently off"</td><td>Flag unset / keys missing / not populated</td><td>By design (falls back to keyword). Follow Section&nbsp;7 to enable.</td></tr>
-    <tr><td>No daily digest</td><td><code>SENDGRID_API_KEY</code> unset or skip‑when‑empty</td><td>Set the key; <code>?force=1</code> to force, <code>?dryRun=1</code> to preview.</td></tr>
-    <tr><td>Stats show zeros</td><td>No conversations / wrong client id</td><td>Confirm <code>X-Client-Name</code> matches <code>ClientName</code>.</td></tr>
+    <tr><th>What you're seeing</th><th>What to do</th></tr>
+    <tr><td>The chat bubble isn't on the website</td><td>Check the website code was pasted in (and the page saved/published). Ask the client's web person to confirm it's there, just before the closing body tag.</td></tr>
+    <tr><td>The client can't log in</td><td>Check they're using the exact details from the welcome pack, and that the company name matches what you typed. Re‑open their details from the <strong>Existing Clients</strong> list to double‑check.</td></tr>
+    <tr><td>Luna's answers aren't quite right</td><td>Add or tidy the answer in <strong>Luna Brain</strong> (Step&nbsp;5). A minute there usually fixes it for good.</td></tr>
+    <tr><td>A test chat didn't reach the dashboard</td><td>Make sure the connection key from Step&nbsp;1 was the client's own. If you're unsure it's correct, ask the tech team to check it.</td></tr>
+    <tr><td>The client wants WhatsApp in their inbox</td><td>Great news — it's already built. Just send the client's WhatsApp number to the tech team and they'll connect it.</td></tr>
+    <tr><td>Sharing photos or documents isn't working</td><td>This is switched on for everyone, so it shouldn't fail — if it does, flag it to the tech team and they'll take a look.</td></tr>
+    <tr><td>Anything else</td><td>Don't wrestle with it — drop the Travelgenix tech team a note with the client's name and what you're seeing.</td></tr>
   </table>
 
   <div class="end">
-    Internal use · <strong>Luna Chat</strong> · Travelgenix<br>
-    <span class="small">Keep the prime directives intact — when in doubt, fail safe.</span>
+    That's it — you're ready to set clients live. <strong>Luna Chat</strong> · Travelgenix<br>
+    <span class="small">Questions? The Travelgenix team is always happy to help.</span>
   </div>
 </section>
 
