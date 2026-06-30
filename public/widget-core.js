@@ -4163,6 +4163,14 @@ function doLeaveMessage() {
   }
   var botHistory = msgs.filter(function(m){return m.role!=="system" && m.role!=="widget";}).map(function(m){return m.role+": "+m.content;}).join("\n");
   persistConversation({ visitorName: userName || "Anonymous", email: email, handler: "Closed", startedAt: now, history: "[Left a message] "+message+"\n\n--- Bot history ---\n"+botHistory });
+  /* Email the client so out-of-hours messages aren't missed. Fire-and-forget:
+     never block or fail the visitor's "message sent" experience. */
+  try {
+    fetch(C.endpoint.replace("/api/luna-chat", "/api/notify-lead"), {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientName: C.clientName, name: userName || "", email: email, message: message, page: window.location.href, convId: convId, type: "left_message" })
+    }).catch(function(){});
+  } catch (e) {}
   if (ov) ov.remove();
   sysMsg("Message sent! We'll be in touch soon.");
 }
