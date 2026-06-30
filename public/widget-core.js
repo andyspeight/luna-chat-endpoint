@@ -3849,6 +3849,7 @@ function initAbly() {
   chatChannel.subscribe("message", function(msg){
     var d = msg.data;
     if (d && d.from === "agent") {
+      cancelNoResponseTimer(); // an agent replied — they've picked up
       // Acknowledge receipt so the agent sees delivered/read on their message.
       if (d.id) {
         publishReceipt([d.id], "delivered");
@@ -3889,11 +3890,13 @@ function initAbly() {
     var d = msg.data;
     if (!d) return;
     if (d.handler === "agent" || (d.handler && d.handler !== "waiting" && d.handler !== "ai")) {
+      cancelNoResponseTimer(); // an agent took over
       sysMsg((d.agentName || "An agent") + " has joined the chat.");
       liveMode = true;
       $escBar.classList.remove("active");
     }
     if (d.handler === "resolved" || d.handler === "closed") {
+      cancelNoResponseTimer();
       sysMsg("This conversation has been closed.");
       liveMode = false;
       showRatingOverlay(chatChannel);   // rate on the still-valid current channel
@@ -5065,6 +5068,7 @@ async function escalateToHuman() {
     liveMode = true;
     $escBar.classList.remove("active");
     sysMsg("You're in the queue. An agent will be with you shortly.");
+    startNoResponseTimer();
   } else {
     /* No agents online */
     sysMsg("Sorry, there are no agents available right now. You can leave us a message and we'll get back to you, or you can carry on chatting with " + C.name + ".");
@@ -5078,6 +5082,37 @@ async function escalateToHuman() {
       }
     });
   }
+}
+
+/* ─── NO-RESPONSE FALLBACK ──────────────────────────────────
+   Presence only tells us an agent has the dashboard OPEN, not that anyone is
+   actually watching. If a visitor is queued ("Waiting") and nobody picks up
+   within NO_RESPONSE_MS, offer the leave-a-message path so they are never
+   stranded. Cancelled the moment an agent replies or takes over. */
+var noResponseTimer = null;
+var NO_RESPONSE_MS = 120000; // 2 minutes
+
+function cancelNoResponseTimer() {
+  if (noResponseTimer) { clearTimeout(noResponseTimer); noResponseTimer = null; }
+}
+function startNoResponseTimer() {
+  cancelNoResponseTimer();
+  noResponseTimer = setTimeout(onNoAgentResponse, NO_RESPONSE_MS);
+}
+function onNoAgentResponse() {
+  noResponseTimer = null;
+  if (!liveMode) return; // already taken over, closed, or handed back
+  sysMsg("Sorry to keep you waiting — nobody on the team has picked up just yet. You can leave a message and we'll get back to you, or carry on chatting with " + C.name + ".");
+  showPills(["Leave a message", "Continue chatting"], function(choice) {
+    liveMode = false; // hand back to Luna unless they leave a message
+    if (choice === "Leave a message") {
+      showLeaveOverlay();
+    } else {
+      clearPills();
+      sysMsg("No problem! I'm still here to help. What can I do for you?");
+      $input.focus();
+    }
+  });
 }
 
 /* ─── START CHAT ─────────────────────────────────────────── */
