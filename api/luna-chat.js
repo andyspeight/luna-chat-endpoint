@@ -3007,6 +3007,12 @@ No problem, drop your email and departure date in below and I'll find it.
   }
   if (visitorName) systemPrompt += `\nThe visitor's name is ${visitorName}.`;
 
+  // Grounding signal. True when the reply had verified Luna Brain knowledge or
+  // destination context in front of the model — i.e. Luna was answering from the
+  // curated brain, not free-styling from training data. Surfaced on the response
+  // (kbGrounded) so the staging smoke test and dashboards can SEE the brain being
+  // used, which is the fastest way to catch a silent retrieval regression.
+  var kbGrounded = false;
   var useHaiku = false;
   if (!isTravelgenix) {
     var atKey = process.env.AIRTABLE_KEY;
@@ -3015,6 +3021,7 @@ No problem, drop your email and departure date in below and I'll find it.
     mark('brainSearchDone');
     if (kbContext) {
       systemPrompt += kbContext;
+      kbGrounded = true;
       // Phase 3.5: status update — we found something in the knowledge base
       // Suppressed when ack is in use: the ack already conveys progress and
       // we don't want it overwritten on the typing-status line.
@@ -3026,6 +3033,7 @@ No problem, drop your email and departure date in below and I'll find it.
     mark('destCtxDone');
     if (destCtx) {
       systemPrompt += destCtx;
+      kbGrounded = true;
       // Phase 3.5: status update — destination data fetched
       if (wantStream && !openerRequest && !wantAck) emitStatus('Looking up destination details…');
     }
@@ -3038,7 +3046,7 @@ No problem, drop your email and departure date in below and I'll find it.
       mark('destCtxStart');
       var destCtxTg = await getDestinationContext(message, atKeyTg);
       mark('destCtxDone');
-      if (destCtxTg) systemPrompt += destCtxTg;
+      if (destCtxTg) { systemPrompt += destCtxTg; kbGrounded = true; }
     }
   }
 
@@ -3254,6 +3262,7 @@ No problem, drop your email and departure date in below and I'll find it.
           longPart: longText,
           escalate: escalate2,
           convId: convId,
+          kbGrounded: kbGrounded,
           mode: 'two-pass',
           usage: {
             short_input_tokens: shortFinal && shortFinal.usage ? shortFinal.usage.input_tokens : null,
@@ -3431,6 +3440,7 @@ No problem, drop your email and departure date in below and I'll find it.
           reply: cleanReply,
           escalate: escalate,
           convId: convId,
+          kbGrounded: kbGrounded,
           usage: {
             input_tokens: finalMessage && finalMessage.usage ? finalMessage.usage.input_tokens : null,
             output_tokens: finalMessage && finalMessage.usage ? finalMessage.usage.output_tokens : null
@@ -3577,6 +3587,7 @@ No problem, drop your email and departure date in below and I'll find it.
       reply: cleanReply,
       escalate: escalate,
       convId: convId,
+      kbGrounded: kbGrounded,
       usage: {
         input_tokens: response.usage?.input_tokens,
         output_tokens: response.usage?.output_tokens
