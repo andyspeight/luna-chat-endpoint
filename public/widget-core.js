@@ -1769,9 +1769,24 @@ function saveSession() {
       convId: convId,
       convStarted: convStarted,
       conversationLang: conversationLang,
-      currentScreen: currentScreen
+      currentScreen: currentScreen,
+      liveMode: liveMode
     }));
   } catch(e) {}
+}
+// Keep the model-visible `history` in sync with bot-authored messages the visitor
+// sees but never typed (welcome line, auto-trigger opener, contextual opener).
+// Without this the model receives the visitor's reply ("yes please") with no
+// record of the question it just asked, so it answers generically or contradicts
+// its own opener — a direct cause of the "it forgot / argued" experience.
+// Before the visitor has said anything, collapse to a single leading assistant
+// turn so a welcome that gets upgraded to a contextual opener doesn't stack two
+// greetings in the history.
+function recordBotOpener(text) {
+  if (!text || typeof text !== "string") return;
+  var hasUser = history.some(function(h){ return h.role === "user"; });
+  if (!hasUser) { history.length = 0; }
+  history.push({ role: "assistant", content: text });
 }
 function restoreSession() {
   try {
@@ -1789,6 +1804,10 @@ function restoreSession() {
     convStarted = !!s.convStarted;
     conversationLang = s.conversationLang || "";
     currentScreen = s.currentScreen || "home";
+    // Restore live-agent takeover state. Without this, a page reload during a
+    // human takeover resets liveMode to false and the widget silently resumes
+    // routing to the AI while the agent is still replying — the bot "argues".
+    liveMode = !!s.liveMode;
     return true;
   } catch(e) { return false; }
 }
@@ -3548,9 +3567,16 @@ function parseResponse(text) {
 
   var hasBlocks = blockItems.some(function (i) { return i.type === "block"; });
   if (!hasBlocks) {
-    /* Pure legacy path — identical to original parseResponse */
+    /* Pure legacy path. Reaching here with a [BLOCK] present means the block's
+       JSON was malformed (truncation, trailing comma) so the parser produced no
+       usable block. Strip any complete or partial [BLOCK] fragments FIRST so a
+       broken block never renders raw JSON into the visitor's chat bubble. */
+    var legacyText = text
+      .replace(/\[BLOCK\][\s\S]*?\[\/BLOCK\]/g, "")   // complete but unparseable blocks
+      .replace(/\[BLOCK\][\s\S]*$/g, "")               // truncated block with no closing marker
+      .replace(/\[\/BLOCK\]/g, "");                    // stray closing marker
     var fqs = [], opts = [], clean = [];
-    text.split("\n").forEach(function (line) {
+    legacyText.split("\n").forEach(function (line) {
       var trimmed = line.trim();
       if (/^\[FQ\]/i.test(trimmed)) fqs.push(trimmed.replace(/^\[FQ\]\s*/i, ""));
       else if (/^\[OPT\]/i.test(trimmed)) opts.push(trimmed.replace(/^\[OPT\]\s*/i, ""));
@@ -4413,8 +4439,11 @@ function showRatingOverlay(ratingChannel) {
 async function streamFromLuna(userText) {
   history.push({role: "user", content: userText});
   var requestBody = {
+    // history excludes the turn we just pushed — it is sent separately as
+    // `message`, so slicing to -1 stops the current message being sent twice
+    // (the server would otherwise see the visitor's line duplicated).
     message: userText, convId: convId, visitorName: userName || undefined,
-    clientName: C.clientName, history: history.slice(-16), page: window.location.pathname,
+    clientName: C.clientName, history: history.slice(-16, -1), page: window.location.pathname,
     visitorContext: visitorMemoryContext || undefined,
     stream: true,
     useAck: true,
@@ -4785,8 +4814,10 @@ async function callLuna(userText) {
   history.push({role: "user", content: userText});
   try {
     var requestBody = {
+      // history excludes the turn we just pushed (sent separately as `message`)
+      // so the current message is not delivered to the model twice.
       message: userText, convId: convId, visitorName: userName || undefined,
-      clientName: C.clientName, history: history.slice(-16), page: window.location.pathname,
+      clientName: C.clientName, history: history.slice(-16, -1), page: window.location.pathname,
       visitorContext: visitorMemoryContext || undefined
     };
     /* Attach the redacted booking summary if the visitor has retrieved a
@@ -4893,6 +4924,11 @@ function setTypingStatus(text) {
 
 async function sendToAI(text) {
   if (!text.trim()) return;
+  // A human agent has taken over this conversation. Never let the AI answer over
+  // them — no matter which entry point called this. handleSend() checks liveMode,
+  // but pills, capability cards, starters and card actions call sendToAI directly,
+  // so the guard must live here too or the bot ends up "arguing" with the agent.
+  if (liveMode) { sendToAgent(text); return; }
   cancelAutoTrigger();
   cancelPendingPillReleases();   /* drop any stale booking-pill observers from earlier turns */
   clearPills();
@@ -5200,6 +5236,7 @@ function maybeRegreet(){
       var text = "Welcome back, " + userName + "! How can I help today?";
       msgs[0].content = text;
       if (bubble) renderSafeMarkdown(bubble, text);
+      recordBotOpener(text);
       saveSession();
     }
   } catch(e){}
@@ -5215,6 +5252,7 @@ function startChat() {
     welcomeText = applyTimeAwareGreeting(welcomeText);
   }
   addMsg("bot", welcomeText);
+  recordBotOpener(welcomeText);
   showPills(C.hints, function(h){ sendToAI(h); });
 }
 
@@ -6057,6 +6095,7 @@ async function boot() {
             bubble.textContent = '';
             renderSafeMarkdown(bubble, data.reply);
             msgs[0].content = data.reply;
+            recordBotOpener(data.reply);
             bubbleUpdated = true;
           }
         }
@@ -6064,6 +6103,7 @@ async function boot() {
           // Visitor has interacted already, or DOM structure unexpected — append
           // as an additional bot message rather than overwriting.
           addMsg("bot", data.reply);
+          recordBotOpener(data.reply);
         }
         // Phase 3: contextual discover-mode pills under the greeting.
         // One-shot — clicking removes all, sends as user message.
@@ -6350,6 +6390,7 @@ async function boot() {
         if (!nameCollected) nameCollected = true;
         switchToChat();
         addMsg("bot", at.message);
+        recordBotOpener(at.message);
         if (C.hints && C.hints.length > 0) showPills(C.hints, function(h){ sendToAI(h); });
         if (!document.hidden) playNotifSound();
       };

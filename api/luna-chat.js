@@ -949,29 +949,73 @@ async function enrichDestinationCardImages(reply, atKey) {
   }
 }
 
-// Keyword retrieval (the original behaviour), returning [{ id, fields }] so the
-// caller can de-dupe against semantic hits by record id. Two-phase: the joined
-// top keywords, then a single-keyword fallback if that finds nothing.
+// Concatenate a record's searchable text (Search Index plus any string field)
+// lowercased, so ranking can count how many of the query keywords a row covers.
+function recordSearchText(rec) {
+  var f = (rec && rec.fields) || {};
+  if (typeof f['Search Index'] === 'string' && f['Search Index']) return f['Search Index'].toLowerCase();
+  var parts = [];
+  Object.keys(f).forEach(function(k) {
+    var v = f[k];
+    if (typeof v === 'string') parts.push(v);
+    else if (typeof v === 'number') parts.push(String(v));
+    else if (v && typeof v === 'object' && v.name) parts.push(v.name);
+    else if (Array.isArray(v)) v.forEach(function(x) { if (typeof x === 'string') parts.push(x); else if (x && x.name) parts.push(x.name); });
+  });
+  return parts.join(' ').toLowerCase();
+}
+
+// Keyword retrieval against the Luna Brain.
+//
+// Previous behaviour searched the Search Index for the keywords joined into one
+// CONTIGUOUS phrase (SEARCH("crete currency plug", {Search Index})), which is a
+// substring match and therefore almost never hit, then fell back to the FIRST
+// keyword only — case-sensitively, so lowercase query keywords missed the mixed-
+// case index entirely. The net effect was that curated facts were frequently not
+// retrieved, leaving Luna to answer from training data (i.e. hallucinate).
+//
+// Now: a case-insensitive OR across all query keywords (LOWER({Search Index})),
+// then rank each row by how many DISTINCT query keywords it covers so the most
+// relevant curated rows float to the top. Fully fail-safe: any error yields the
+// rows gathered so far, or [].
 async function keywordSearchLunaBrain(searchQuery, keywords, atKey) {
-  function run(query) {
+  var terms = (keywords || []).map(function(k) { return sanitizeFormulaLiteral(k).toLowerCase(); })
+    .filter(function(k) { return k.length > 1; });
+  // De-dupe while preserving order, cap to bound the formula/URL size.
+  var seenTerm = {}, uniqueTerms = [];
+  terms.forEach(function(t) { if (!seenTerm[t]) { seenTerm[t] = 1; uniqueTerms.push(t); } });
+  uniqueTerms = uniqueTerms.slice(0, 6);
+  if (uniqueTerms.length === 0) return [];
+
+  // OR(SEARCH("kw1", LOWER({Search Index})), SEARCH("kw2", LOWER({Search Index})), ...)
+  var clauses = uniqueTerms.map(function(t) { return 'SEARCH("' + t + '", LOWER({Search Index}))'; });
+  var formula = clauses.length === 1 ? clauses[0] : ('OR(' + clauses.join(',') + ')');
+
+  function run() {
     return LB_TABLES.map(function(table) {
       var url = 'https://api.airtable.com/v0/' + LB_BASE + '/' + table.id
-        + '?pageSize=5'
-        + '&filterByFormula=' + encodeURIComponent('SEARCH("' + sanitizeFormulaLiteral(query) + '", {Search Index})');
+        + '?pageSize=10'
+        + '&filterByFormula=' + encodeURIComponent(formula);
       return fetch(url, { headers: { 'Authorization': 'Bearer ' + atKey } })
         .then(function(r) { return r.ok ? r.json().then(function(d) { return d.records || []; }) : []; })
         .catch(function() { return []; });
     });
   }
+
   try {
     var out = [];
-    var results = await Promise.all(run(searchQuery));
-    results.forEach(function(recs) { recs.forEach(function(r) { out.push({ id: r.id, fields: r.fields }); }); });
-    if (out.length === 0 && keywords.length > 0) {
-      var fb = await Promise.all(run(keywords[0]));
-      fb.forEach(function(recs) { recs.forEach(function(r) { out.push({ id: r.id, fields: r.fields }); }); });
-    }
-    return out;
+    var results = await Promise.all(run());
+    results.forEach(function(recs) {
+      recs.forEach(function(r) {
+        var text = recordSearchText(r);
+        var score = 0;
+        uniqueTerms.forEach(function(t) { if (text.indexOf(t) !== -1) score++; });
+        out.push({ id: r.id, fields: r.fields, _score: score });
+      });
+    });
+    // Rank by keyword coverage (desc); stable sort keeps Airtable order within a tier.
+    out.sort(function(a, b) { return b._score - a._score; });
+    return out.slice(0, 8).map(function(item) { return { id: item.id, fields: item.fields }; });
   } catch (e) { return []; }
 }
 
@@ -2533,6 +2577,20 @@ module.exports = async function handler(req, res) {
     + '- If an answer was ambiguous, acknowledge what they did say and ask only for the precise missing piece — never re-ask the whole question from scratch.\n'
     + '- Repeating a question the visitor has already answered makes you look broken and erodes trust. If you are ever unsure whether you already have something, assume you do and proceed, rather than asking again.\n';
 
+  // -- Anti-fabrication + knowledge primacy (every client) -----------------
+  // The single most damaging failure is stating a travel fact that turns out to
+  // be invented. When a Travel Knowledge or Destination context section is
+  // present below, it is verified, curated data and takes priority over general
+  // knowledge. When the answer is NOT in that data, Luna must NOT guess — she
+  // says she will check. This sits high in the assembled prompt for salience.
+  systemPrompt += '\n\n## Facts must be grounded, never invented (CRITICAL)\n'
+    + 'Accuracy protects the client\'s reputation. Follow this on every reply:\n'
+    + '- When a "Travel Knowledge" or "Destination context" section appears below, treat it as VERIFIED, curated fact and use it as the primary source. It overrides your general knowledge on any specific detail (prices, visas, currency, plug types, transfer times, opening rules, policies).\n'
+    + '- Prefer a specific fact from that data over a vague general statement. If the data answers the question, lead with it.\n'
+    + '- Never invent or estimate a specific figure, date, price, visa or entry rule, health requirement, or booking detail. If the specific fact is not in the provided data and you are not certain, say so plainly and offer to check or hand off, e.g. "I want to give you the right figure on that, let me confirm it with the team." A short honest answer beats a confident wrong one.\n'
+    + '- Do not present guesses as fact, and do not dress a guess up as certainty. Uncertainty stated honestly builds trust; a made-up detail destroys it.\n'
+    + '- The exception is the Holiday Search deep link, where you SHOULD use your own knowledge of airport codes and geography to build the URL. That is a search starting point the visitor refines, not a factual claim.\n';
+
   // Returning-visitor memory: the widget passes a compact, client-side summary
   // of who this visitor is and what they discussed in prior chats (same-browser
   // recall). Lets Luna greet them as a returning customer with continuity.
@@ -3587,7 +3645,17 @@ function buildMessages(history, currentMessage) {
 
   const lastRole = messages.length > 0 ? messages[messages.length - 1].role : null;
   if (lastRole === 'user') {
-    messages[messages.length - 1].content += '\n' + currentMessage;
+    // De-dupe: several deployed widgets push the current turn into `history`
+    // AND send it again as `message`, so the trailing history turn already
+    // ends with (or equals) currentMessage. Appending again would make the
+    // model see the visitor's message twice — it reads as the visitor
+    // insisting/repeating and skews the reply. Only append when it is genuinely
+    // new content.
+    const trailing = (messages[messages.length - 1].content || '').trim();
+    const incoming = (currentMessage || '').trim();
+    if (incoming && trailing !== incoming && !trailing.endsWith(incoming)) {
+      messages[messages.length - 1].content += '\n' + currentMessage;
+    }
   } else {
     messages.push({ role: 'user', content: currentMessage });
   }
