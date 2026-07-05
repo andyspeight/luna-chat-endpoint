@@ -1255,8 +1255,14 @@ a:hover { text-decoration: underline; }
     }
     body.question = gap.question;
     api('approve-gap', { method: 'POST', body: body })
-      .then(function() {
-        toast('Added to knowledge — Luna will use this from now on.', 'success');
+      .then(function(res) {
+        // Unedited AI suggestions are staged as a draft (not live) — tell the
+        // owner so the outcome is never a surprise.
+        if (res && res.staged) {
+          toast(res.message || 'Saved as a draft to review before it goes live.', '');
+        } else {
+          toast('Added to knowledge — Luna will use this from now on.', 'success');
+        }
         state.editingGap = null;
         return loadFeed();
       })

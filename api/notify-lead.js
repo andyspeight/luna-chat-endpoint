@@ -66,7 +66,7 @@ module.exports = async function handler(req, res) {
   try {
     // Resolve the client's notification recipient (ContactEmail) by name.
     var url = 'https://api.airtable.com/v0/' + AT_BASE + '/' + AT_CLIENTS
-      + '?filterByFormula=' + encodeURIComponent("LOWER({ClientName})='" + clientName.toLowerCase().replace(/'/g, "\\'") + "'")
+      + '?filterByFormula=' + encodeURIComponent("LOWER({ClientName})='" + clientName.toLowerCase().replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'")
       + '&maxRecords=1';
     var r = await fetch(url, { headers: { Authorization: 'Bearer ' + atKey } });
     var d = await r.json();

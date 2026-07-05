@@ -38,7 +38,7 @@ function applyCors(req, res) {
 
 async function findClient(atKey, clientName) {
   var url = 'https://api.airtable.com/v0/' + AT_BASE + '/' + CLIENTS_TABLE
-    + '?filterByFormula=' + encodeURIComponent("{ClientName}='" + clientName.replace(/'/g, "\\'") + "'")
+    + '?filterByFormula=' + encodeURIComponent("{ClientName}='" + clientName.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'")
     + '&maxRecords=1';
   var r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + atKey } });
   if (!r.ok) return null;
@@ -49,8 +49,11 @@ async function findClient(atKey, clientName) {
 // Page over all Conversations for the client — uses ARRAYJOIN({Client}) by name
 // (matches the pattern we proved works in luna-brain.js).
 async function fetchAllConversations(atKey, clientName) {
-  var safe = clientName.replace(/'/g, "\\'");
-  var formula = "FIND('" + safe + "', ARRAYJOIN({Client})) > 0";
+  var safe = clientName.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  // Exact match, not substring: FIND(...) > 0 also matched clients whose name is a
+  // substring of another ("Sun Travel" leaking "Sun Travel Plus"). Each record links
+  // exactly one client, so ARRAYJOIN({Client}) equals that client's name exactly.
+  var formula = "ARRAYJOIN({Client}) = '" + safe + "'";
   var records = [];
   var offset = null;
   var pageCount = 0;

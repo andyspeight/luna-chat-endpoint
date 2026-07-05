@@ -171,7 +171,23 @@ async function runCheck(anthropic, record) {
   var resp = await anthropic.messages.create({ model: MODEL, max_tokens: 700, system: prompt.system, messages: [{ role: 'user', content: prompt.user }] });
   var text = '';
   if (resp && resp.content) { for (var i = 0; i < resp.content.length; i++) { if (resp.content[i].type === 'text') text += resp.content[i].text; } }
-  return reverify.parseVerdict(text);
+  // Keep the scraped source alongside the verdict so the apply step can confirm
+  // the model's evidence quote actually appears in it before overwriting a live
+  // answer (anti-fabrication guard — see evidenceInSource).
+  return Object.assign(reverify.parseVerdict(text), { sourceText: scraped.content });
+}
+
+// True when the model's evidence quote genuinely appears in the fetched source.
+// Mirrors the guard fill-gaps.js already uses. A leading slice tolerates minor
+// trailing edits, but the substance must be present verbatim. Fail-closed: an
+// empty/too-short quote returns false so we never auto-apply on thin evidence.
+function reverifyNorm(s) { return String(s == null ? '' : s).toLowerCase().replace(/\s+/g, ' ').trim(); }
+function evidenceInSource(evidence, sourceText) {
+  var e = reverifyNorm(evidence);
+  if (e.length < 8) return false;
+  var hay = reverifyNorm(sourceText);
+  var needle = e.slice(0, Math.min(60, e.length));
+  return hay.indexOf(needle) !== -1;
 }
 
 // Seek independent corroboration for a fact whose own source is not
@@ -264,13 +280,24 @@ module.exports = async function handler(req, res) {
       if (!p || !p.v) { counts.pending++; return; }
       counts.checked++;
       counts[p.v.verdict] = (counts[p.v.verdict] || 0) + 1;
-      if (AUTOAPPLY && p.tr.trusted && (p.v.verdict === 'confirmed' || p.v.verdict === 'changed')) {
+      // A "changed" verdict OVERWRITES the live answer, so it must clear a higher
+      // bar than "confirmed" (which only stamps freshness): the model's evidence
+      // quote has to actually appear in the scraped source. If it does not, the
+      // correction may be fabricated or misattributed (a cookie wall, the wrong
+      // section), so we do NOT auto-apply it — it drops to human review instead.
+      var changedButUnsupported = p.v.verdict === 'changed' && !evidenceInSource(p.v.evidence, p.v.sourceText);
+      if (AUTOAPPLY && p.tr.trusted && (p.v.verdict === 'confirmed' || p.v.verdict === 'changed') && !changedButUnsupported) {
         p.status = 'Applied';
         p.action = 'auto-' + p.v.verdict + ' (' + p.tr.reason + ')';
         p.apply = (p.v.verdict === 'confirmed')
           ? { 'Last Verified': today }
           : { 'Consumer Answer': p.v.suggestedAnswer, 'Search Index': gk.buildSearchIndex({ question: p.rec.question, consumerAnswer: p.v.suggestedAnswer, category: p.rec.category, relatedTo: p.rec.relatedTo }), 'Last Verified': today };
         counts.autoApplied++;
+      } else if (changedButUnsupported) {
+        // Left Pending for a human: a claimed change we could not ground in the source.
+        p.status = 'Pending';
+        p.action = 'changed, held for review (evidence not found in source)';
+        counts.pending++;
       } else if (AUTOAPPLY && (p.v.verdict === 'confirmed' || p.v.verdict === 'unverifiable' || p.v.verdict === 'source_unreachable')) {
         needCorro.push(p);
       } else {
@@ -350,3 +377,6 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: e.message });
   }
 };
+
+// Exposed for unit testing only (does not change the handler contract).
+module.exports.evidenceInSource = evidenceInSource;

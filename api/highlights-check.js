@@ -80,7 +80,7 @@ async function lookupHasOverride(path) {
 
   try {
     var p = path.toLowerCase();
-    var formula = "AND({Active}=TRUE(), LOWER({Page Path})='" + p.replace(/'/g, "\\'") + "')";
+    var formula = "AND({Active}=TRUE(), LOWER({Page Path})='" + p.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "')";
     var url = 'https://api.airtable.com/v0/' + AT_BASE + '/' + OVERRIDES_TABLE_ID +
               '?filterByFormula=' + encodeURIComponent(formula) +
               '&maxRecords=1' +
