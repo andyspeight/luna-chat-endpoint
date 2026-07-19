@@ -41,6 +41,7 @@ const KNOWN_BLOCK_TYPES = new Set([
   'location_card',
   'weather_card',
   'quick_replies',
+  'enquiry_card',
   'fcdo_card'
 ]);
 
@@ -822,6 +823,109 @@ function renderQuickReplies(props, ctx) {
   return wrap;
 }
 
+// ─────────── BLOCK: enquiry_card ───────────
+// The agent bridge. Luna emits this when a visitor accepts the offer to have
+// the agency price their trip. Props ARE the trip brief (Luna fills them from
+// the conversation). Renders a summary + a tiny contact form; submission is
+// dispatched to the shell ('enquiry_submit'), which owns the network call and
+// the dashboard ping. All dynamic text via textContent — no HTML injection.
+
+const ENQUIRY_BRIEF_KEYS = [
+  'destination', 'departureAirport', 'departureDate', 'returnDate', 'nights',
+  'dateFlexibility', 'adults', 'children', 'childAges', 'board', 'budget',
+  'holidayType', 'notes'
+];
+
+function renderEnquiryCard(props, ctx) {
+  const card = el('div', 'luna-enquiry-card');
+  const agency = (ctx && ctx.agencyName) || 'the team';
+
+  card.appendChild(el('div', 'luna-enquiry-title', 'Get this priced by ' + agency));
+
+  // Trip summary rows — only what Luna actually knows.
+  const partyBits = [];
+  if (props.adults) partyBits.push(props.adults + ' adult' + (props.adults > 1 ? 's' : ''));
+  if (props.children) {
+    partyBits.push(props.children + ' child' + (props.children > 1 ? 'ren' : '')
+      + (props.childAges ? ' (' + props.childAges + ')' : ''));
+  }
+  const rows = [
+    ['Destination', props.destination],
+    ['Dates', props.departureDate
+      ? props.departureDate + (props.nights ? ', ' + props.nights + ' nights' : '')
+      : props.dateFlexibility],
+    ['Travelling', partyBits.join(' + ')],
+    ['From', props.departureAirport],
+    ['Board', props.board],
+    ['Budget', props.budget]
+  ].filter(r => r[1]);
+  if (rows.length) {
+    const sum = el('div', 'luna-enquiry-summary');
+    rows.forEach(r => {
+      const line = el('div', 'luna-enquiry-row');
+      line.appendChild(el('span', 'luna-enquiry-key', r[0]));
+      line.appendChild(el('span', 'luna-enquiry-val', String(r[1])));
+      sum.appendChild(line);
+    });
+    card.appendChild(sum);
+  }
+  card.appendChild(el('div', 'luna-enquiry-note',
+    'Real availability, checked by a human — they’ll come back to you personally.'));
+
+  // Contact form, prefilled with anything the widget already knows.
+  const visitor = (ctx && ctx.visitor) || {};
+  const form = el('div', 'luna-enquiry-form');
+  const nameIn = document.createElement('input');
+  nameIn.type = 'text'; nameIn.placeholder = 'Your name'; nameIn.autocomplete = 'name';
+  nameIn.value = visitor.name || '';
+  const emailIn = document.createElement('input');
+  emailIn.type = 'email'; emailIn.placeholder = 'Email'; emailIn.autocomplete = 'email';
+  emailIn.value = visitor.email || '';
+  const phoneIn = document.createElement('input');
+  phoneIn.type = 'tel'; phoneIn.placeholder = 'Phone (optional)'; phoneIn.autocomplete = 'tel';
+  const err = el('div', 'luna-enquiry-err', '');
+  const send = el('button', 'luna-enquiry-send', 'Send to ' + agency);
+  send.type = 'button';
+  append(form, nameIn, emailIn, phoneIn, err, send);
+  card.appendChild(form);
+
+  send.addEventListener('click', () => {
+    err.textContent = '';
+    const name = nameIn.value.trim();
+    const email = emailIn.value.trim();
+    const phone = phoneIn.value.trim();
+    if (!name) { err.textContent = 'Your name, please.'; return; }
+    if (!email && !phone) { err.textContent = 'An email or phone number so they can reach you.'; return; }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { err.textContent = 'That email doesn’t look right.'; return; }
+
+    const brief = {};
+    ENQUIRY_BRIEF_KEYS.forEach(k => { if (props[k] != null && props[k] !== '') brief[k] = props[k]; });
+
+    send.disabled = true;
+    send.textContent = 'Sending…';
+    if (ctx && ctx.dispatch) {
+      ctx.dispatch({
+        type: 'enquiry_submit',
+        brief: brief,
+        contact: { name: name, email: email, phone: phone },
+        onDone: function () {
+          form.remove();
+          card.appendChild(el('div', 'luna-enquiry-done',
+            '✓ Done — ' + agency + ' has your trip and will be in touch'
+            + (email ? ' at ' + email : '') + '. Keep chatting with me in the meantime.'));
+        },
+        onFail: function () {
+          send.disabled = false;
+          send.textContent = 'Send to ' + agency;
+          err.textContent = 'Couldn’t send just now — please try again.';
+        }
+      });
+    }
+  });
+
+  return card;
+}
+
 // ─────────── FALLBACK: unknown / malformed ───────────
 
 function renderFallback(blockType, props) {
@@ -1262,6 +1366,7 @@ const RENDERERS = {
   location_card:       renderLocationCard,
   weather_card:        renderWeatherCard,
   quick_replies:       renderQuickReplies,
+  enquiry_card:        renderEnquiryCard,
   fcdo_card:           renderFcdoCard
 };
 
@@ -1662,6 +1767,7 @@ var marketingConsent = false;
 var panelOpen = false;
 var nameCollected = false;
 var convId = null;
+var lastDeepLink = null;   /* last booking search deep link Luna emitted — attached to enquiries */
 var convStarted = false;
 var pendingNewConv = false;  // set when a conversation is resolved/cleared; the next send opens a fresh conversation on a fresh connection
 var liveMode = false;
@@ -2324,6 +2430,18 @@ function injectCSS() {
   +'#tgx-cw .tgx-footer{display:none}'
 
   // Block renderer styles
+  +'#tgx-cw .luna-enquiry-card{background:#fff;border:1px solid rgba(15,26,61,0.08);border-radius:18px;padding:16px;box-shadow:0 8px 20px rgba(15,26,61,0.06)}'
+  +'#tgx-cw .luna-enquiry-title{font-family:"Fraunces",Georgia,serif;font-weight:500;font-size:17px;letter-spacing:-0.01em;color:'+C.brandColor+';margin-bottom:10px}'
+  +'#tgx-cw .luna-enquiry-summary{border:1px solid rgba(15,26,61,0.06);border-radius:12px;padding:10px 12px;margin-bottom:10px}'
+  +'#tgx-cw .luna-enquiry-row{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;padding:2px 0}'
+  +'#tgx-cw .luna-enquiry-key{opacity:.55}'
+  +'#tgx-cw .luna-enquiry-val{font-weight:600;text-align:right}'
+  +'#tgx-cw .luna-enquiry-note{font-size:12px;opacity:.65;line-height:1.45;margin-bottom:10px}'
+  +'#tgx-cw .luna-enquiry-form input{width:100%;box-sizing:border-box;margin:0 0 8px;padding:10px 12px;border:1px solid rgba(15,26,61,0.14);border-radius:10px;font-size:13px;font-family:inherit;background:#fff;color:#1a1a1a}'
+  +'#tgx-cw .luna-enquiry-err{color:#C0392B;font-size:12px;min-height:14px;margin:0 0 6px}'
+  +'#tgx-cw .luna-enquiry-send{width:100%;border:none;border-radius:10px;padding:11px 16px;font-size:13.5px;font-weight:600;cursor:pointer;background:'+(C.accentColor||"#00B4D8")+';color:#fff}'
+  +'#tgx-cw .luna-enquiry-send:disabled{opacity:.6;cursor:default}'
+  +'#tgx-cw .luna-enquiry-done{font-size:13px;line-height:1.5;color:#1B7A43;font-weight:500}'
   +'#tgx-cw .luna-dest-card{background:#fff;border:1px solid rgba(15,26,61,0.06);border-radius:18px;overflow:hidden;transition:transform .25s cubic-bezier(.22,1,.36,1),border-color .18s,box-shadow .25s}'
   +'#tgx-cw .luna-dest-card:hover{transform:translateY(-2px);border-color:rgba(15,26,61,0.14);box-shadow:0 14px 28px rgba(15,26,61,0.08)}'
   +'#tgx-cw .luna-dest-img{width:100%;height:160px;background:#FAFAF6;overflow:hidden}'
@@ -3478,6 +3596,12 @@ function appendBlockRow(role, blockType, props, ctx) {
     return;
   }
 
+  /* Remember the last search deep link so an enquiry can carry the exact
+     search the visitor saw */
+  if (props && typeof props.deepLink === "string" && /^https?:\/\//i.test(props.deepLink)) {
+    lastDeepLink = props.deepLink;
+  }
+
   /* All other blocks render as a full-width row in the thread */
   var row = document.createElement("div");
   row.className = "tgx-msg-row tgx-msg-row-widget";
@@ -3500,6 +3624,8 @@ function appendBlockRow(role, blockType, props, ctx) {
 /* ─── HELPER: buildBlockContext — dispatch callback for block events ─── */
 function buildBlockContext() {
   return {
+    agencyName: C.clientName || "",
+    visitor: { name: userName || "", email: visitorEmail || "" },
     dispatch: function (event) {
       if (!event || typeof event !== "object") return;
       switch (event.type) {
@@ -3507,6 +3633,9 @@ function buildBlockContext() {
           if (typeof event.text === "string" && event.text.trim()) {
             sendToAI(event.text);
           }
+          break;
+        case "enquiry_submit":
+          submitEnquiry(event);
           break;
         case "booking_action":
           if (event.action === "pay_balance") {
@@ -4175,6 +4304,45 @@ function showLeaveOverlay() {
     document.getElementById("tgxLeaveGo").addEventListener("click", doLeaveMessage);
     document.getElementById("tgxLeaveCancel").addEventListener("click", function(){ ov.remove(); });
   }, 50);
+}
+
+/* ─── BOOKING ASSIST: submit a qualified enquiry (enquiry_card block) ────
+   The server writes the Enquiries table + emails the client; we ping the
+   agent dashboard over the existing channel so an online agent sees it
+   instantly. Dashboard ping is fire-and-forget — the enquiry itself is the
+   source of truth. */
+function submitEnquiry(event) {
+  var contact = event.contact || {};
+  var payload = {
+    clientId: C.clientId || "",
+    conversationId: convId,
+    visitorId: visitorId || "",
+    name: contact.name, email: contact.email || null, phone: contact.phone || null,
+    brief: event.brief || {},
+    searchUrl: lastDeepLink || null
+  };
+  fetch(C.endpoint.replace("/api/luna-chat", "/api/luna-enquiry"), {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  }).then(function (r) {
+    return r.json().then(function (j) { return { ok: r.ok, j: j }; });
+  }).then(function (r) {
+    if (!r.ok) throw new Error((r.j && r.j.error) || "enquiry failed");
+    if (dashChannel) {
+      try {
+        dashChannel.publish("enquiry", {
+          convId: convId,
+          enquiryRecordId: r.j.enquiryRecordId,
+          name: contact.name,
+          summary: r.j.summary || ""
+        });
+      } catch (e) {}
+    }
+    if (typeof event.onDone === "function") event.onDone();
+  }).catch(function (e) {
+    console.warn("[Luna] enquiry submit failed:", e && e.message);
+    if (typeof event.onFail === "function") event.onFail();
+  });
 }
 
 function doLeaveMessage() {

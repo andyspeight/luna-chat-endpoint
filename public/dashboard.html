@@ -3021,6 +3021,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     dashboardChannel = ably.channels.get(CONFIG.DASHBOARD_CHANNEL);
     dashboardChannel.subscribe('new_conversation', msg => handleNewConversation(msg.data));
     dashboardChannel.subscribe('conversation_resolved', msg => handleConversationResolved(msg.data));
+    dashboardChannel.subscribe('enquiry', msg => handleEnquiry(msg.data));
 
     // Agent presence
     presenceChannel = ably.channels.get(CONFIG.PRESENCE_CHANNEL);
@@ -3146,6 +3147,30 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     renderConvList();
     if (!data._silent) {
       lunaAlertSignal('newchat', conv.visitor.name, conv.visitor.page || 'New visitor');
+    }
+  }
+
+  // Booking Assist: a visitor submitted a qualified enquiry (enquiry_card).
+  // The record already lives in the Enquiries table (written by
+  // /api/luna-enquiry) — this is the live "someone wants a price NOW" nudge.
+  function handleEnquiry(data) {
+    if (!data) return;
+    lunaAlertSignal('enquiry',
+      '💰 Booking enquiry — ' + (data.name || 'Visitor'),
+      data.summary || 'Qualified trip brief ready to price');
+    const conv = data.convId && conversations[data.convId];
+    if (conv) {
+      conv.enquiry = { recordId: data.enquiryRecordId || null, summary: data.summary || '' };
+      conv.unread = true;
+      const note = {
+        from: 'ai',
+        text: '💰 Booking enquiry submitted — ' + (data.summary || 'trip brief ready to price')
+          + ' Full details are in the Enquiries list in Airtable.',
+        timestamp: new Date().toISOString()
+      };
+      conv.messages.push(note);
+      if (data.convId === activeConvId) appendMessage(note);
+      renderConvList();
     }
   }
 
