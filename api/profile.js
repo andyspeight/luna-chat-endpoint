@@ -1,8 +1,24 @@
 // Luna Client Profile API
 // Read and write business profile data
 
+const crypto = require('crypto');
+
 const AT_BASE = 'app6Ot3eOb3DangkB';
 const AT_TABLE = 'tbl6CZ7aVzq1wHF2v';
+
+// Timing-safe compare — avoids leaking the password via response timing.
+function safeCompare(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
+  try { return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b)); } catch (e) { return false; }
+}
+
+// Secrets are never sent to the browser in the clear. A configured key is shown
+// as a fixed mask; an empty one stays empty so the dashboard can tell them apart.
+const SECRET_MASK = '••••••••••••';
+function maskSecret(v) { return v ? SECRET_MASK : ''; }
+// A value made only of bullet characters is the mask coming back unchanged on
+// save — do NOT overwrite the stored secret with it.
+function isMaskedSecret(v) { return typeof v === 'string' && v.length > 0 && /^[•]+$/.test(v); }
 
 // CORS allowlist — origins that can call this endpoint.
 const ALLOWED_ORIGINS = [
@@ -48,7 +64,7 @@ module.exports = async function handler(req, res) {
     var filterField = slug ? 'ClientSlug' : 'ClientName';
     var filterValue = slug || clientName;
     var searchUrl = 'https://api.airtable.com/v0/' + AT_BASE + '/' + AT_TABLE
-      + '?filterByFormula=' + encodeURIComponent("{" + filterField + "}='" + filterValue.replace(/'/g, "\\'") + "'")
+      + '?filterByFormula=' + encodeURIComponent("{" + filterField + "}='" + filterValue.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'")
       + '&maxRecords=1';
     var sRes = await fetch(searchUrl, { headers: atHeaders });
     var sData = await sRes.json();
@@ -60,10 +76,15 @@ module.exports = async function handler(req, res) {
     var record = sData.records[0];
     var fields = record.fields || {};
 
-    // Verify password only if one was sent. If no password header is present,
-    // we trust the central-auth gate that fronts the dashboard.
-    if (pass && fields.DashboardPassword && fields.DashboardPassword !== pass) {
-      return res.status(401).json({ error: 'Invalid password' });
+    // If this client has a DashboardPassword configured, it is REQUIRED and must
+    // match (timing-safe). Previously the check was skipped whenever no password
+    // header was sent, so anyone who knew a client's public name could read the
+    // profile (including the stored email-platform key) and overwrite its config.
+    // The dashboard always sends X-Client-Pass, so requiring it here is safe.
+    if (fields.DashboardPassword) {
+      if (!safeCompare(pass, fields.DashboardPassword)) {
+        return res.status(401).json({ error: 'Invalid password' });
+      }
     }
 
     // GET = read profile
@@ -111,7 +132,10 @@ module.exports = async function handler(req, res) {
           autoTriggerUrlPatterns: fields.AutoTriggerUrlPatterns || '',
           privacyPolicyUrl: fields.PrivacyPolicyUrl || '',
           emailPlatform: fields.EmailPlatform ? (typeof fields.EmailPlatform === 'object' ? fields.EmailPlatform.name : fields.EmailPlatform) : 'none',
-          emailPlatformApiKey: fields.EmailPlatformApiKey || '',
+          // Never return the raw key. Masked for display; the boolean tells the
+          // dashboard whether one is set without exposing it.
+          emailPlatformApiKey: maskSecret(fields.EmailPlatformApiKey),
+          emailPlatformApiKeySet: !!fields.EmailPlatformApiKey,
           emailPlatformListId: fields.EmailPlatformListId || '',
           multilingualEnabled: !!fields.MultilingualEnabled,
           supportedLanguages: fields.SupportedLanguages || '',
@@ -174,7 +198,9 @@ module.exports = async function handler(req, res) {
       if (body.autoTriggerUrlPatterns !== undefined) updateFields.AutoTriggerUrlPatterns = String(body.autoTriggerUrlPatterns || '').slice(0, 500);
       if (body.privacyPolicyUrl !== undefined) updateFields.PrivacyPolicyUrl = body.privacyPolicyUrl;
       if (body.emailPlatform !== undefined) updateFields.EmailPlatform = body.emailPlatform;
-      if (body.emailPlatformApiKey !== undefined) updateFields.EmailPlatformApiKey = body.emailPlatformApiKey;
+      // Preserve-on-save: if the dashboard sends back the mask unchanged, keep the
+      // stored key. Only write a genuinely new value (or an explicit empty clear).
+      if (body.emailPlatformApiKey !== undefined && !isMaskedSecret(body.emailPlatformApiKey)) updateFields.EmailPlatformApiKey = body.emailPlatformApiKey;
       if (body.emailPlatformListId !== undefined) updateFields.EmailPlatformListId = body.emailPlatformListId;
       if (body.multilingualEnabled !== undefined) updateFields.MultilingualEnabled = body.multilingualEnabled;
       if (body.supportedLanguages !== undefined) updateFields.SupportedLanguages = body.supportedLanguages;
@@ -214,3 +240,6 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: e.message });
   }
 };
+
+// Exposed for unit testing only (does not change the handler contract).
+module.exports._test = { maskSecret: maskSecret, isMaskedSecret: isMaskedSecret, safeCompare: safeCompare };

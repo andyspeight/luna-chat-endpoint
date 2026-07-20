@@ -4757,8 +4757,13 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       if (ta && ta.value.trim()) body.answer = ta.value.trim();
     }
     if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
-    brainApi('approve-gap', { method: 'POST', body: body }).then(function() {
-      brainToast('Added to knowledge — Luna will use this from now on.', 'success');
+    brainApi('approve-gap', { method: 'POST', body: body }).then(function(res) {
+      // Unedited AI suggestions are staged as a draft (not live) — say so.
+      if (res && res.staged) {
+        brainToast(res.message || 'Saved as a draft to review before it goes live.', '');
+      } else {
+        brainToast('Added to knowledge — Luna will use this from now on.', 'success');
+      }
       brainState.editingGap = null;
       return brainApi('feed').then(function(data) { brainState.feed = data; renderBrainAll(); });
     }).catch(function(err) {

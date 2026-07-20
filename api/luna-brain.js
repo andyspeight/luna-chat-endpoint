@@ -76,7 +76,7 @@ function applyCors(req, res) {
 
 async function findClient(atKey, clientName) {
   var url = 'https://api.airtable.com/v0/' + AT_BASE + '/' + CLIENTS_TABLE
-    + '?filterByFormula=' + encodeURIComponent("{ClientName}='" + clientName.replace(/'/g, "\\'") + "'")
+    + '?filterByFormula=' + encodeURIComponent("{ClientName}='" + clientName.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'")
     + '&maxRecords=1';
   var r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + atKey } });
   if (!r.ok) return null;
@@ -110,8 +110,11 @@ async function actionFeed(atKey, clientRecordId, clientName) {
   // Filter conversations / gaps / knowledge by the linked-client name.
   // Airtable's ARRAYJOIN() on a linked record field returns the linked records'
   // display names, not their IDs. So we match by name (which is unique per client).
-  var safeName = (clientName || '').replace(/'/g, "\\'");
-  var clientLinkFilter = "FIND('" + safeName + "', ARRAYJOIN({Client})) > 0";
+  var safeName = (clientName || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  // Exact match, not substring: FIND(...) > 0 also matched another client whose
+  // name contains this one ("Sun Travel" would pull "Sun Travel Plus" rows). Each
+  // record links exactly one client, so ARRAYJOIN({Client}) is that name exactly.
+  var clientLinkFilter = "ARRAYJOIN({Client}) = '" + safeName + "'";
 
   var gapsP = atFetch(atKey,
     '/' + GAPS_TABLE
@@ -315,8 +318,21 @@ async function actionApproveGap(atKey, clientRecordId, body) {
     throw new Error('Gap belongs to a different client');
   }
   if (!question) question = gapFields.Question || 'Untitled';
+  var ownerProvidedAnswer = answer;   // what the owner actually typed (before fallback)
   if (!answer) answer = gapFields.SuggestedAnswer || '';
   if (!answer) throw new Error('No answer provided');
+
+  // Anti-hallucination gate. The suggested answer is AI-drafted from a past chat,
+  // not grounded in a verified source. If the owner published it WITHOUT writing
+  // or editing it (empty box, or the exact draft text), we must NOT put it live as
+  // fact — it is staged as a Draft for the owner to review and promote. A genuinely
+  // authored or edited answer is the owner's own words and goes live as before.
+  var aiDraft = (gapFields.SuggestedAnswer || '').trim();
+  var normEq = function (a, b) {
+    return String(a).toLowerCase().replace(/\s+/g, ' ').trim() === String(b).toLowerCase().replace(/\s+/g, ' ').trim();
+  };
+  var isUneditedAiDraft = !ownerProvidedAnswer || (aiDraft && normEq(answer, aiDraft));
+  var newStatus = isUneditedAiDraft ? 'Draft' : 'Active';
 
   // Create Knowledge item
   var nowIso = new Date().toISOString();
@@ -329,7 +345,7 @@ async function actionApproveGap(atKey, clientRecordId, body) {
           Answer: answer,
           Client: [clientRecordId],
           Type: type,
-          Status: 'Active',
+          Status: newStatus,
           Source: 'From Escalation',
           Confidence: 'Needs Review',
           CreatedAt: nowIso,
@@ -354,7 +370,16 @@ async function actionApproveGap(atKey, clientRecordId, body) {
     }
   });
 
-  return { ok: true, knowledgeId: newKnowledgeId, gapId: gapId };
+  return {
+    ok: true,
+    knowledgeId: newKnowledgeId,
+    gapId: gapId,
+    status: newStatus,
+    staged: isUneditedAiDraft,
+    message: isUneditedAiDraft
+      ? 'Saved as a draft to review. Because this was the AI suggested wording, it will not go live until you open it, check it and publish.'
+      : 'Added to knowledge. Luna will use this from now on.'
+  };
 }
 
 async function actionUpdateGap(atKey, clientRecordId, body) {

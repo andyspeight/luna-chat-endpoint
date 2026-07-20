@@ -40,7 +40,7 @@ module.exports = async function handler(req, res) {
 
   try {
     var searchUrl = 'https://api.airtable.com/v0/' + AT_BASE + '/' + AT_TABLE
-      + '?filterByFormula=' + encodeURIComponent("LOWER({ClientName})='" + clientName.toLowerCase().replace(/'/g, "\\'") + "'")
+      + '?filterByFormula=' + encodeURIComponent("LOWER({ClientName})='" + clientName.toLowerCase().replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'")
       + '&maxRecords=1';
     var sRes = await fetch(searchUrl, { headers: { 'Authorization': 'Bearer ' + atKey } });
     var sData = await sRes.json();

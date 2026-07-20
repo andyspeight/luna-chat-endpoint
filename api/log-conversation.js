@@ -65,7 +65,7 @@ function sanitiseStr(s, maxLen) {
 
 async function findClientByName(atKey, clientName) {
   var url = 'https://api.airtable.com/v0/' + AT_BASE + '/' + CLIENTS_TABLE
-    + '?filterByFormula=' + encodeURIComponent("{ClientName}='" + clientName.replace(/'/g, "\\'") + "'")
+    + '?filterByFormula=' + encodeURIComponent("{ClientName}='" + clientName.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'")
     + '&maxRecords=1';
   var r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + atKey } });
   if (!r.ok) return null;
@@ -75,7 +75,7 @@ async function findClientByName(atKey, clientName) {
 
 async function findConversation(atKey, convId) {
   var url = 'https://api.airtable.com/v0/' + AT_BASE + '/' + CONV_TABLE
-    + '?filterByFormula=' + encodeURIComponent("{ConversationID}='" + convId.replace(/'/g, "\\'") + "'")
+    + '?filterByFormula=' + encodeURIComponent("{ConversationID}='" + convId.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'")
     + '&maxRecords=1';
   var r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + atKey } });
   if (!r.ok) return null;

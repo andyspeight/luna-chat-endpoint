@@ -157,7 +157,7 @@ async function lookupOverride(pageContext, clientRecordId) {
     var path = pageContext.path.toLowerCase();
     // Filter: Active is true AND lowercased Page Path matches.
     // Reference by field name in formula (Airtable accepts both names and IDs).
-    var formula = "AND({Active}=TRUE(), LOWER({Page Path})='" + path.replace(/'/g, "\\'") + "')";
+    var formula = "AND({Active}=TRUE(), LOWER({Page Path})='" + path.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "')";
     var url = 'https://api.airtable.com/v0/' + AT_BASE + '/' + OVERRIDES_TABLE_ID +
               '?filterByFormula=' + encodeURIComponent(formula) +
               '&maxRecords=1';

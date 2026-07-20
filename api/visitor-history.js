@@ -72,8 +72,8 @@ module.exports = async function handler(req, res) {
     var clientRecId = crec.id || crec;
 
     var clauses = [];
-    if (useEmail) clauses.push("{VisitorEmail}='" + email.replace(/'/g, "\\'") + "'");
-    if (useVid) clauses.push("{VisitorId}='" + visitorId.replace(/'/g, "\\'") + "'");
+    if (useEmail) clauses.push("{VisitorEmail}='" + email.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'");
+    if (useVid) clauses.push("{VisitorId}='" + visitorId.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'");
     var formula = clauses.length > 1 ? 'OR(' + clauses.join(',') + ')' : clauses[0];
 
     var url = 'https://api.airtable.com/v0/' + BASE + '/' + TABLE

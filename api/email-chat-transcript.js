@@ -12,13 +12,17 @@
 //   accentColor?: string       // optional — for HTML email accent
 // }
 
+const ratelimit = require('../lib/ratelimit');
+const { escapeFormulaString } = require('../lib/atescape');
+
 const AT_BASE = 'app6Ot3eOb3DangkB';
 const AT_TABLE = 'tbl6CZ7aVzq1wHF2v';
 
 // CORS: the widget runs on ANY client's website, so we cannot maintain an
 // allowlist. Abuse risk is mitigated by: (1) Airtable client lookup — only
-// real Travelgenix clients can send, (2) SendGrid domain auth — bad actors
-// can't send as someone else, (3) SendGrid daily/per-key rate limits.
+// real Travelgenix clients can send (ENFORCED below, not just advisory),
+// (2) per-IP rate limiting, (3) SendGrid domain auth — bad actors can't send
+// as someone else, (4) SendGrid daily/per-key rate limits.
 function applyCors(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -191,6 +195,13 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: 'Server not configured' });
   }
 
+  // Per-IP rate limit — this endpoint sends mail from an authenticated domain,
+  // so cap how fast any one source can trigger sends. Fails open if Redis is down.
+  var rl = await ratelimit.checkIpAndKey(req, { ipKey: 'email-transcript', ipMax: 5, ipWindowSecs: 300 });
+  if (!rl.allowed) {
+    return res.status(429).json({ error: 'Too many requests. Please wait a moment and try again.' });
+  }
+
   var body = req.body || {};
 
   // Validate + sanitise inputs
@@ -206,16 +217,20 @@ module.exports = async function handler(req, res) {
   if (!isEmail(visitorEmail)) return res.status(400).json({ error: 'Invalid email address' });
   if (!transcript || transcript.length < 10) return res.status(400).json({ error: 'Missing or empty transcript' });
 
-  // Look up the client to get the contact email (Reply-To)
+  // Look up the client. This is REQUIRED, not advisory: only a real Travelgenix
+  // client may send mail through this endpoint. An unknown clientName is rejected
+  // so the endpoint cannot be used as an open relay from our authenticated domain.
   var clientReplyEmail = null;
+  var clientFound = false;
   try {
     var searchUrl = 'https://api.airtable.com/v0/' + AT_BASE + '/' + AT_TABLE
-      + '?filterByFormula=' + encodeURIComponent("{ClientName}='" + clientName.replace(/'/g, "\\'") + "'")
+      + '?filterByFormula=' + encodeURIComponent("{ClientName}='" + escapeFormulaString(clientName) + "'")
       + '&maxRecords=1';
     var sRes = await fetch(searchUrl, { headers: { 'Authorization': 'Bearer ' + atKey } });
     if (sRes.ok) {
       var sData = await sRes.json();
       if (sData.records && sData.records.length > 0) {
+        clientFound = true;
         var fields = sData.records[0].fields || {};
         if (fields.ContactEmail && isEmail(fields.ContactEmail)) {
           clientReplyEmail = fields.ContactEmail;
@@ -223,10 +238,14 @@ module.exports = async function handler(req, res) {
       }
     } else {
       console.warn('[email-transcript] Airtable lookup returned ' + sRes.status);
+      return res.status(502).json({ error: 'Could not verify client' });
     }
   } catch (err) {
     console.warn('[email-transcript] Airtable lookup failed:', err.message);
-    // Non-fatal — continue without Reply-To
+    return res.status(502).json({ error: 'Could not verify client' });
+  }
+  if (!clientFound) {
+    return res.status(403).json({ error: 'Unknown client' });
   }
 
   // Build and send
