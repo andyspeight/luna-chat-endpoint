@@ -2063,6 +2063,53 @@ function sanitizeBookingContext(ctx) {
   return Object.keys(out).length > 0 ? out : null;
 }
 
+// --- TRIP BRIEF (working memory) ---
+// The widget accumulates a structured trip brief across the whole conversation
+// (and across visits, persisted on the visitor profile) and sends it back so
+// Luna has it as working memory: she uses it, does not re-ask for it, and can
+// warmly pick up an in-progress trip when a visitor returns. Everything is
+// whitelisted and sanitised — the wire is never trusted. Mirrors the widget's
+// TRIP_BRIEF_KEYS and the enquiry_card props exactly.
+function sanitizeTripBrief(brief) {
+  if (!brief || typeof brief !== 'object' || Array.isArray(brief)) return null;
+  const out = {};
+  const str = function (k, max) { const v = sanitizeBookingContextString(brief[k], max); if (v) out[k] = v; };
+  const date = function (k) { const v = sanitizeBookingContextDate(brief[k]); if (v) out[k] = v; };
+  const int = function (k, min, max, keepZero) { const v = sanitizeBookingContextInt(brief[k], min, max); if (v != null && (keepZero || v > 0)) out[k] = v; };
+  str('destination', 80);
+  str('departureAirport', 80);
+  date('departureDate');
+  date('returnDate');
+  int('nights', 1, 365);
+  str('dateFlexibility', 80);
+  int('adults', 0, 20);
+  int('children', 0, 20, true);   // 0 children is meaningful (explicitly adults-only)
+  str('childAges', 40);
+  str('board', 60);
+  str('budget', 80);
+  str('holidayType', 60);
+  str('notes', 200);
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+// Render the sanitised brief as a compact, human-readable list for the prompt.
+function formatTripBriefForPrompt(brief) {
+  var LABELS = {
+    destination: 'Destination', departureAirport: 'Departing from', departureDate: 'Departure date',
+    returnDate: 'Return date', nights: 'Nights', dateFlexibility: 'Timing', adults: 'Adults',
+    children: 'Children', childAges: 'Child ages', board: 'Board', budget: 'Budget',
+    holidayType: 'Holiday type', notes: 'Notes'
+  };
+  var order = ['destination', 'departureAirport', 'departureDate', 'returnDate', 'nights',
+    'dateFlexibility', 'adults', 'children', 'childAges', 'board', 'budget', 'holidayType', 'notes'];
+  var lines = [];
+  for (var i = 0; i < order.length; i++) {
+    var k = order[i];
+    if (Object.prototype.hasOwnProperty.call(brief, k)) lines.push('- ' + LABELS[k] + ': ' + brief[k]);
+  }
+  return lines.join('\n');
+}
+
 // --- COMPREHENSIVE CONTENT FILTER ---
 const FILTER_PROFANITY = [
   'fuck','fucking','fucked','fucker','fuckers','fucks','motherfucker',
@@ -2503,6 +2550,9 @@ module.exports = async function handler(req, res) {
   const clientName = sanitizeInput(body.clientName);
   const visitorContext = sanitizeInput(body.visitorContext);
   const bookingContext = sanitizeBookingContext(body.bookingContext);
+  // Trip brief: the visitor's in-progress trip, accumulated by the widget across
+  // this conversation and prior visits. Working memory for Luna (see below).
+  const tripBrief = sanitizeTripBrief(body.tripBrief);
   const history = Array.isArray(body.history) ? body.history.map(h => ({
     role: h.role === 'user' ? 'user' : 'assistant',
     content: sanitizeInput(h.content)
@@ -2709,6 +2759,22 @@ module.exports = async function handler(req, res) {
     + '- Dates are real ISO dates (YYYY-MM-DD) resolved from the conversation; if only a rough period is known, omit departureDate and put the period in dateFlexibility (e.g. "late September"). nights, adults, children are numbers, not strings.\n'
     + '- Only emit the marker when something changed. If the visitor\'s latest message adds no new trip facts, do NOT emit it.\n'
     + '- The brief is separate from, and does not replace, any [BLOCK] cards, the enquiry_card, or the search deep link. It is silent memory that makes those richer.';
+
+  // -- Trip in progress: read the brief back as working memory --------------
+  // The widget sends the brief it has accumulated (this conversation, and any
+  // carried over from a prior visit on this device). Giving it back to Luna
+  // stops her re-asking facts the visitor already gave, and lets her warmly
+  // pick up an abandoned trip when someone returns. She still never invents.
+  if (tripBrief) {
+    systemPrompt += '\n\n## Trip in progress (what you already know)\n'
+      + 'The visitor already has this trip taking shape. It is shown to them on screen as a "Your trip" summary, so it is real and shared — treat it as established fact you both can see:\n'
+      + formatTripBriefForPrompt(tripBrief) + '\n'
+      + 'How to use it:\n'
+      + '- Do NOT ask again for anything already listed here. Re-asking for what they have told you is the single biggest thing that makes a visitor feel unheard. Move the conversation forward instead.\n'
+      + '- If a fact here conflicts with what they now say, the NEW message wins — update quietly (emit an updated [BRIEF]) and never argue about the old value.\n'
+      + '- If this is the START of a conversation (an opener or their first message) and there is already a substantial trip above, greet them warmly and briefly recap it, then offer to carry on or change it, e.g. "Welcome back. Last time we were looking at 7 nights in Crete for 2 in September. Want to pick that up, or start something new?". Keep it to one short sentence, do not dump every field.\n'
+      + '- Only surface fields that are actually listed. Never fill a gap with a guess.';
+  }
 
   if (isTravelgenix) {
     try {
@@ -3838,3 +3904,5 @@ module.exports.buildTemporalContext = buildTemporalContext;
 module.exports.parseLeadingMeta = parseLeadingMeta;
 module.exports.leadingMetaComplete = leadingMetaComplete;
 module.exports.extractBriefMarkers = extractBriefMarkers;
+module.exports.sanitizeTripBrief = sanitizeTripBrief;
+module.exports.formatTripBriefForPrompt = formatTripBriefForPrompt;
