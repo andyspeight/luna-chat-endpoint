@@ -1867,7 +1867,7 @@ function buildShortPromptAugment() {
     + 'provided in this system prompt — answer the visitor\'s question with '
     + 'a real factual answer, not a referral to the team. '
     + 'Plain prose only. No greetings, no preamble, no follow-up questions, '
-    + 'no markdown, no bullet lists, no [BLOCK]/[FQ]/[BOOKING_LOOKUP] markers, '
+    + 'no markdown, no bullet lists, no [BLOCK]/[FQ]/[BOOKING_LOOKUP]/[BRIEF] markers, '
     + 'no links, no emojis (those all belong to the longer answer that will '
     + 'follow automatically). '
     + 'Lead with the most useful single fact or recommendation. '
@@ -2286,6 +2286,69 @@ function stripInternalTokens(text) {
     .trim();
 }
 
+// ── Trip brief (structured slot-filling) ─────────────────────────────────────
+// Luna maintains a running trip brief and emits it as a hidden marker at the
+// very start of a reply, right after [LANG:]:
+//   [LANG:English][BRIEF]{"destination":"Crete","adults":2}[/BRIEF]Here you go…
+// The server strips it before any visible text reaches the visitor (same
+// posture as [LANG:]) and returns the parsed object as `brief` on the response,
+// which the widget merges into its trip-brief state. Fail-safe throughout:
+// unparseable JSON is ignored and the reply is never affected.
+var LEADING_LANG_RE = /^\s*\[LANG:([^\]]+)\]/;
+var LEADING_BRIEF_RE = /^\s*\[BRIEF\]([\s\S]*?)\[\/BRIEF\]/;
+var ANY_BRIEF_RE = /\[BRIEF\]([\s\S]*?)\[\/BRIEF\]/g;
+// Max chars to hold while waiting for the leading markers to close. A normal
+// brief marker is well under 500 chars; this only guards a malformed one from
+// stalling the whole stream.
+var LEAD_BUFFER_CAP = 4000;
+
+// Strip leading [LANG:...] and [BRIEF]{...}[/BRIEF] markers (repeated, in any
+// order) from the front of `text`. Returns { cleaned, lang, brief }.
+function parseLeadingMeta(text) {
+  var s = String(text == null ? '' : text);
+  var lang = null, brief = null, m;
+  while (true) {
+    if ((m = s.match(LEADING_LANG_RE))) { if (!lang) lang = m[1].trim(); s = s.slice(m[0].length); continue; }
+    if ((m = s.match(LEADING_BRIEF_RE))) {
+      try { var o = JSON.parse(m[1].trim()); if (o && typeof o === 'object' && !Array.isArray(o)) brief = o; } catch (e) { /* ignore bad JSON */ }
+      s = s.slice(m[0].length); continue;
+    }
+    break;
+  }
+  return { cleaned: s.replace(/^\s+/, ''), lang: lang, brief: brief };
+}
+
+// Decide whether the streaming buffer can stop waiting: true once the leading
+// markers are COMPLETE (no half-formed [LANG:/[BRIEF] at the front). Keeps the
+// buffer held until a [BRIEF] closes, so its JSON never streams to the visitor.
+function leadingMetaComplete(text) {
+  var s = String(text == null ? '' : text), m;
+  while (true) {
+    if ((m = s.match(LEADING_LANG_RE))) { s = s.slice(m[0].length); continue; }
+    if ((m = s.match(LEADING_BRIEF_RE))) { s = s.slice(m[0].length); continue; }
+    break;
+  }
+  s = s.replace(/^\s+/, '');
+  if (s === '') return false;                                   // nothing after markers yet
+  if (/^\[LANG:/.test(s) && !/\]/.test(s)) return false;        // [LANG: with no closing ]
+  if (/^\[BRIEF\]/.test(s) && !/\[\/BRIEF\]/.test(s)) return false; // [BRIEF] not yet closed
+  var openers = ['[LANG:', '[BRIEF]'];
+  for (var i = 0; i < openers.length; i++) { if (openers[i].indexOf(s) === 0) return false; } // growing prefix of an opener
+  return true;
+}
+
+// Safety net: remove any [BRIEF]{...}[/BRIEF] anywhere in the text (not just the
+// front) and return the last valid one. Used on the final assembled reply so a
+// stray marker can never reach the visitor even if the model misplaced it.
+function extractBriefMarkers(text) {
+  var brief = null;
+  var cleaned = String(text == null ? '' : text).replace(ANY_BRIEF_RE, function (_, json) {
+    try { var o = JSON.parse(String(json).trim()); if (o && typeof o === 'object' && !Array.isArray(o)) brief = o; } catch (e) { /* ignore */ }
+    return '';
+  });
+  return { cleaned: cleaned, brief: brief };
+}
+
 // ── FCDO status card (server-sourced, model never assesses safety) ───────────
 // Luna's safety guardrail makes her point to the exact FCDO country page
 // (gov.uk/foreign-travel-advice/<country>) and stop. We detect that link in her
@@ -2615,6 +2678,22 @@ module.exports = async function handler(req, res) {
   // with no per-client flag. The [LANG:...] marker is stripped before the
   // visitor sees the reply (see marker-stripping below). Fails safe to English.
   systemPrompt += '\n\n## Multilingual support\nYou speak multiple languages fluently. Detect the language the visitor is writing in and respond in that same language throughout the conversation. If the visitor switches language mid-conversation, follow their lead. The travel knowledge base is in English, so translate facts and information naturally into the visitor\'s language. Keep your warm, friendly tone in every language. Do not mention that you are translating or that the knowledge base is in English.\n\nCRITICAL: Start EVERY response with [LANG:LanguageName] on its own line (e.g. [LANG:French] or [LANG:English]). This tag will be removed before the visitor sees it. Always include it, even for English.';
+
+  // -- Trip brief: structured slot-filling (every client) ------------------
+  // Luna keeps a running, structured brief of the visitor's trip and emits it
+  // as a hidden marker the server strips before the visitor sees anything. It
+  // gives fully pre-filled deep links, a ready-to-quote handoff, and clean
+  // memory — and reduces drift because the facts are held explicitly rather
+  // than re-read from the transcript each turn.
+  systemPrompt += '\n\n## Trip brief (hidden structured memory)\n'
+    + 'As the conversation goes, quietly maintain a structured brief of the visitor\'s trip. Whenever you have LEARNED or CHANGED any of these facts in the latest turn, emit a single [BRIEF] marker IMMEDIATELY AFTER the [LANG:...] tag, before any visible text, on its own line:\n'
+    + '[BRIEF]{"destination":"...","departureAirport":"...","departureDate":"YYYY-MM-DD","returnDate":"YYYY-MM-DD","nights":<number>,"dateFlexibility":"...","adults":<number>,"children":<number>,"childAges":"...","board":"...","budget":"...","holidayType":"...","notes":"..."}[/BRIEF]\n'
+    + 'Rules for the brief:\n'
+    + '- The JSON MUST be valid and on a SINGLE line. This marker is stripped before the visitor sees it, exactly like [LANG:]. Never mention it or describe it.\n'
+    + '- It is a MERGE, not a full snapshot: include ONLY the fields you have actual information for this turn. Omit anything you do not know. Never guess or invent a value to fill a field, and never emit a field you are unsure about (this follows the grounding rule above).\n'
+    + '- Dates are real ISO dates (YYYY-MM-DD) resolved from the conversation; if only a rough period is known, omit departureDate and put the period in dateFlexibility (e.g. "late September"). nights, adults, children are numbers, not strings.\n'
+    + '- Only emit the marker when something changed. If the visitor\'s latest message adds no new trip facts, do NOT emit it.\n'
+    + '- The brief is separate from, and does not replace, any [BLOCK] cards, the enquiry_card, or the search deep link. It is silent memory that makes those richer.';
 
   if (isTravelgenix) {
     try {
@@ -3266,6 +3345,11 @@ No problem, drop your email and departure date in below and I'll find it.
         }
         combinedClean = stripInternalTokens(combinedClean);
 
+        // Trip brief: strip any [BRIEF] marker (the long call emits it) and capture it.
+        var briefSweep2 = extractBriefMarkers(combinedClean);
+        combinedClean = briefSweep2.cleaned;
+        var replyBrief2 = briefSweep2.brief;
+
         var escalate2 = detectEscalation(combinedClean, message);
 
         var donePayload2 = {
@@ -3275,6 +3359,7 @@ No problem, drop your email and departure date in below and I'll find it.
           escalate: escalate2,
           convId: convId,
           kbGrounded: kbGrounded,
+          brief: replyBrief2 || undefined,
           mode: 'two-pass',
           usage: {
             short_input_tokens: shortFinal && shortFinal.usage ? shortFinal.usage.input_tokens : null,
@@ -3313,6 +3398,7 @@ No problem, drop your email and departure date in below and I'll find it.
       var accumulated = '';
       var firstTextChunkSeen = false;
       var detectedLang = null;
+      var replyBrief = null;
 
       try {
         mark('llmCallStart');
@@ -3339,24 +3425,20 @@ No problem, drop your email and departure date in below and I'll find it.
 
             if (langPhase === 'buffering') {
               langBuffer += deltaText;
-              // Need at least 32 chars (or stream end) to confidently classify
-              if (langBuffer.length < 32) {
-                // Still buffering, await more chunks
+              // Hold until the leading [LANG:]/[BRIEF] markers are COMPLETE, so
+              // neither the language tag nor the brief JSON ever streams to the
+              // visitor. Capped so a malformed/never-closing marker can't hold
+              // the whole reply hostage.
+              if (!leadingMetaComplete(langBuffer) && langBuffer.length < LEAD_BUFFER_CAP) {
                 continue;
               }
-              // We have enough — classify
-              // Strip ALL leading [LANG:...] markers (model occasionally emits more than one)
-              var lm = langBuffer.match(/^\[LANG:([^\]]+)\]\s*/);
-              if (lm) {
-                detectedLang = lm[1].trim();
-                while (/^\[LANG:[^\]]+\]\s*/.test(langBuffer)) {
-                  langBuffer = langBuffer.replace(/^\[LANG:[^\]]+\]\s*/, '');
-                }
-              }
+              var meta = parseLeadingMeta(langBuffer);
+              if (meta.lang) detectedLang = meta.lang;
+              if (meta.brief) replyBrief = meta.brief;
               // Flush buffered (cleaned) text and switch to streaming mode
-              if (langBuffer.length > 0) {
+              if (meta.cleaned.length > 0) {
                 if (!firstTextChunkSeen) mark('firstToken');
-                sendEvent('text', { delta: langBuffer });
+                sendEvent('text', { delta: meta.cleaned });
                 firstTextChunkSeen = true;
               }
               langBuffer = '';
@@ -3375,15 +3457,11 @@ No problem, drop your email and departure date in below and I'll find it.
         // If the stream ended while still buffering (very short response),
         // flush whatever we have left.
         if (langPhase === 'buffering' && langBuffer.length > 0) {
-          var lm2 = langBuffer.match(/^\[LANG:([^\]]+)\]\s*/);
-          if (lm2) {
-            detectedLang = lm2[1].trim();
-            while (/^\[LANG:[^\]]+\]\s*/.test(langBuffer)) {
-              langBuffer = langBuffer.replace(/^\[LANG:[^\]]+\]\s*/, '');
-            }
-          }
-          if (langBuffer.length > 0) {
-            sendEvent('text', { delta: langBuffer });
+          var metaEnd = parseLeadingMeta(langBuffer);
+          if (metaEnd.lang) detectedLang = metaEnd.lang;
+          if (metaEnd.brief) replyBrief = metaEnd.brief;
+          if (metaEnd.cleaned.length > 0) {
+            sendEvent('text', { delta: metaEnd.cleaned });
             firstTextChunkSeen = true;
           }
         }
@@ -3392,15 +3470,14 @@ No problem, drop your email and departure date in below and I'll find it.
         var finalMessage = await stream.finalMessage();
         mark('streamEnd');
 
-        // Post-process the accumulated text (enrichment + output filter)
-        var cleanReply = accumulated;
-        // Strip leading [LANG:...] markers from the final reply too — they shouldn't
-        // make it into the final text or downstream block parsing.
-        while (/^\[LANG:[^\]]+\]\s*/.test(cleanReply)) {
-          var lmFinal = cleanReply.match(/^\[LANG:([^\]]+)\]\s*/);
-          if (lmFinal && !detectedLang) detectedLang = lmFinal[1].trim();
-          cleanReply = cleanReply.replace(/^\[LANG:[^\]]+\]\s*/, '');
-        }
+        // Post-process the accumulated text. Strip leading [LANG:]/[BRIEF] meta
+        // and any stray [BRIEF] elsewhere; capture the brief for the payload.
+        var leadMeta = parseLeadingMeta(accumulated);
+        if (leadMeta.lang && !detectedLang) detectedLang = leadMeta.lang;
+        if (leadMeta.brief && !replyBrief) replyBrief = leadMeta.brief;
+        var briefSweep = extractBriefMarkers(leadMeta.cleaned);
+        if (briefSweep.brief && !replyBrief) replyBrief = briefSweep.brief;
+        var cleanReply = briefSweep.cleaned;
 
         // Strip [KNOWLEDGE:recXXX] markers and track which items were used.
         // Detection strategy: prefer markers if emitted, fall back to substance similarity.
@@ -3459,6 +3536,7 @@ No problem, drop your email and departure date in below and I'll find it.
           }
         };
         if (detectedLang) donePayload.detectedLanguage = detectedLang;
+        if (replyBrief) donePayload.brief = replyBrief;
         try { var __fcdo1 = await buildFcdoCardFromReply(donePayload.reply); if (__fcdo1) donePayload.fcdoCard = __fcdo1; } catch (e) { /* never block the reply */ }
 
         sendEvent('done', donePayload);
@@ -3509,12 +3587,13 @@ No problem, drop your email and departure date in below and I'll find it.
       .trim();
 
     var detectedLang = null;
-    var cleanReply = replyText;
-    var langMatch = replyText.match(/^\[LANG:([^\]]+)\]\s*/);
-    if (langMatch) {
-      detectedLang = langMatch[1].trim();
-      cleanReply = replyText.replace(/^\[LANG:[^\]]+\]\s*/, '').trim();
-    }
+    var replyBrief = null;
+    var leadMeta0 = parseLeadingMeta(replyText);
+    detectedLang = leadMeta0.lang;
+    replyBrief = leadMeta0.brief;
+    var briefSweep0 = extractBriefMarkers(leadMeta0.cleaned);
+    if (briefSweep0.brief && !replyBrief) replyBrief = briefSweep0.brief;
+    var cleanReply = briefSweep0.cleaned.trim();
 
     // Strip [KNOWLEDGE:recXXX] markers and infer which items were used.
     // NOTE: must await — Vercel kills fire-and-forget work when the function returns.
@@ -3606,6 +3685,7 @@ No problem, drop your email and departure date in below and I'll find it.
       }
     };
     if (detectedLang) responseJson.detectedLanguage = detectedLang;
+    if (replyBrief) responseJson.brief = replyBrief;
     if (openerPills && openerPills.length > 0) responseJson.pills = openerPills;
     try { var __fcdo0 = await buildFcdoCardFromReply(responseJson.reply); if (__fcdo0) responseJson.fcdoCard = __fcdo0; } catch (e) { /* never block the reply */ }
 
@@ -3740,3 +3820,6 @@ function detectEscalation(aiReply, visitorMessage) {
 // Exposed for unit testing only. Vercel invokes the default handler export
 // above; attaching helpers as properties does not change that contract.
 module.exports.buildTemporalContext = buildTemporalContext;
+module.exports.parseLeadingMeta = parseLeadingMeta;
+module.exports.leadingMetaComplete = leadingMetaComplete;
+module.exports.extractBriefMarkers = extractBriefMarkers;

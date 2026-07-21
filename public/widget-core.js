@@ -837,6 +837,19 @@ const ENQUIRY_BRIEF_KEYS = [
 ];
 
 function renderEnquiryCard(props, ctx) {
+  // Fill any gaps from the accumulated trip brief. The card's own props (what
+  // Luna stated for this card) win, but only when they carry a real value — a
+  // blank card prop never wipes something the brief learned earlier in the chat.
+  const brief = (ctx && ctx.tripBrief) || {};
+  const merged = Object.assign({}, brief);
+  const cardProps = props || {};
+  Object.keys(cardProps).forEach(function (k) {
+    var v = cardProps[k];
+    if (v === null || v === undefined) return;
+    if (typeof v === 'string' && !v.trim()) return;
+    merged[k] = v;
+  });
+  props = merged;
   const card = el('div', 'luna-enquiry-card');
   const agency = (ctx && ctx.agencyName) || 'the team';
 
@@ -1768,6 +1781,45 @@ var panelOpen = false;
 var nameCollected = false;
 var convId = null;
 var lastDeepLink = null;   /* last booking search deep link Luna emitted — attached to enquiries */
+/* tripBrief — hidden structured memory of the visitor's trip, accumulated across
+   the whole conversation from the server's [BRIEF] marker. It is a running merge:
+   a new known value overwrites, but a blank/undefined never wipes a value we
+   already learned. Payoff: the enquiry_card prefills from everything learned, not
+   just what Luna restated in that one turn. Persisted with the visitor profile. */
+var tripBrief = {};
+/* The trip fields we accept from a [BRIEF] payload — must match the enquiry_card
+   keys and the server prompt. Anything else is ignored (never trust the wire). */
+var TRIP_BRIEF_KEYS = [
+  'destination', 'departureAirport', 'departureDate', 'returnDate', 'nights',
+  'dateFlexibility', 'adults', 'children', 'childAges', 'board', 'budget',
+  'holidayType', 'notes'
+];
+/* Merge a [BRIEF] payload into tripBrief. New known values win; blanks never
+   wipe. Only whitelisted keys are read. Returns true if anything changed. */
+function mergeTripBrief(brief) {
+  if (!brief || typeof brief !== "object") return false;
+  var changed = false;
+  for (var i = 0; i < TRIP_BRIEF_KEYS.length; i++) {
+    var k = TRIP_BRIEF_KEYS[i];
+    if (!Object.prototype.hasOwnProperty.call(brief, k)) continue;
+    var v = brief[k];
+    if (v === null || v === undefined) continue;
+    if (typeof v === "string") { v = v.trim(); if (!v) continue; }
+    if (tripBrief[k] !== v) { tripBrief[k] = v; changed = true; }
+  }
+  if (changed) { try { persistTripBrief(); } catch (e) {} }
+  return changed;
+}
+/* Persist the accumulated brief onto the visitor profile so it survives reload
+   and returning visits. Best-effort — never throws into the caller. */
+function persistTripBrief() {
+  try {
+    if (typeof ensureProfile === "function") {
+      var p = ensureProfile();
+      if (p) { p.tripBrief = tripBrief; saveVisitorProfile(p); }
+    }
+  } catch (e) {}
+}
 var convStarted = false;
 var pendingNewConv = false;  // set when a conversation is resolved/cleared; the next send opens a fresh conversation on a fresh connection
 var liveMode = false;
@@ -3626,6 +3678,10 @@ function buildBlockContext() {
   return {
     agencyName: C.clientName || "",
     visitor: { name: userName || "", email: visitorEmail || "" },
+    /* Everything learned about the trip across the whole conversation. The
+       enquiry_card fills gaps from this so it prefills fully even when Luna's
+       card props only restate part of the brief. Copy so blocks can't mutate it. */
+    tripBrief: Object.assign({}, tripBrief),
     dispatch: function (event) {
       if (!event || typeof event !== "object") return;
       switch (event.type) {
@@ -4906,6 +4962,7 @@ async function streamFromLuna(userText) {
       } else if (eventName === 'done') {
         donePayload = data;
         if (data.detectedLanguage) detectedLanguage = data.detectedLanguage;
+        if (data.brief) mergeTripBrief(data.brief);
       } else if (eventName === 'error') {
         // Server-side stream error — show fallback text
         donePayload = {
@@ -5008,6 +5065,7 @@ async function callLuna(userText) {
     var data = await res.json();
     var reply = data.reply || "Sorry, I'm having trouble connecting right now.";
     history.push({role: "assistant", content: reply});
+    if (data.brief) mergeTripBrief(data.brief);
     if (data.detectedLanguage) { conversationLang = data.detectedLanguage; localiseUiLabels(); }
     saveSession();
     return data;
@@ -5819,6 +5877,7 @@ async function boot() {
       if (visitorProfile.name && !userName) userName = visitorProfile.name;
       if (visitorProfile.email && !visitorEmail) visitorEmail = visitorProfile.email;
       if (typeof visitorProfile.marketingConsent === "boolean") marketingConsent = visitorProfile.marketingConsent;
+      if (visitorProfile.tripBrief && typeof visitorProfile.tripBrief === "object") mergeTripBrief(visitorProfile.tripBrief);
       if (userName) nameCollected = true; /* we already know them — skip the name prompt */
     }
     var _vp = ensureProfile();
