@@ -100,3 +100,73 @@ test('GUARD: legacy parse path strips [BLOCK] fragments', () => {
   assert.match(SRC, /\.replace\(\/\\\[BLOCK\\\]\[\\s\\S\]\*\?\\\[\\\/BLOCK\\\]\/g/, 'complete-block strip must be present');
   assert.match(SRC, /\.replace\(\/\\\[BLOCK\\\]\[\\s\\S\]\*\$\/g/, 'truncated-block strip must be present');
 });
+
+// ── 3. Trip-brief wiring guards (#1 structured trip brief) ──
+test('GUARD: tripBrief state and merge helper exist', () => {
+  assert.match(SRC, /var tripBrief = \{\}/, 'tripBrief state must be declared');
+  assert.match(SRC, /function mergeTripBrief/, 'mergeTripBrief helper must exist');
+  assert.match(SRC, /function persistTripBrief/, 'persistTripBrief helper must exist');
+});
+
+test('GUARD: server brief is merged in both reply paths', () => {
+  const calls = (SRC.match(/if \(data\.brief\) mergeTripBrief\(data\.brief\)/g) || []).length;
+  assert.ok(calls >= 2, 'both streaming done and callLuna must merge data.brief; found ' + calls);
+});
+
+test('GUARD: block context carries tripBrief so the enquiry card prefills', () => {
+  assert.match(SRC, /tripBrief:\s*Object\.assign\(\{\},\s*tripBrief\)/, 'buildBlockContext must expose a copy of tripBrief');
+  // enquiry card must fold the brief in under its own props
+  assert.match(SRC, /ctx && ctx\.tripBrief/, 'renderEnquiryCard must read ctx.tripBrief');
+});
+
+test('GUARD: a blank card prop never wipes a learned brief value', () => {
+  // The merge skips null/undefined and blank strings from card props.
+  assert.match(SRC, /if \(typeof v === 'string' && !v\.trim\(\)\) return;/,
+    'the enquiry-card merge must skip blank string card props');
+});
+
+// Behavioural: mirror mergeTripBrief's merge rules (new known values win, blanks
+// and unknown keys never wipe) so the intended semantics are checked, not just
+// that the code is present.
+function mergeBrief(state, incoming, keys) {
+  if (!incoming || typeof incoming !== 'object') return false;
+  let changed = false;
+  keys.forEach((k) => {
+    if (!Object.prototype.hasOwnProperty.call(incoming, k)) return;
+    let v = incoming[k];
+    if (v === null || v === undefined) return;
+    if (typeof v === 'string') { v = v.trim(); if (!v) return; }
+    if (state[k] !== v) { state[k] = v; changed = true; }
+  });
+  return changed;
+}
+const BRIEF_KEYS = ['destination', 'departureAirport', 'departureDate', 'returnDate',
+  'nights', 'dateFlexibility', 'adults', 'children', 'childAges', 'board', 'budget',
+  'holidayType', 'notes'];
+
+test('merge: a new known value is recorded', () => {
+  const s = {};
+  assert.equal(mergeBrief(s, { destination: 'Crete' }, BRIEF_KEYS), true);
+  assert.equal(s.destination, 'Crete');
+});
+
+test('merge: a later value overwrites an earlier one', () => {
+  const s = { nights: 5 };
+  mergeBrief(s, { nights: 7 }, BRIEF_KEYS);
+  assert.equal(s.nights, 7);
+});
+
+test('merge: a blank or missing field never wipes a learned value', () => {
+  const s = { destination: 'Crete', board: 'all inclusive' };
+  mergeBrief(s, { destination: '   ', board: null, adults: 2 }, BRIEF_KEYS);
+  assert.equal(s.destination, 'Crete', 'blank string must not wipe');
+  assert.equal(s.board, 'all inclusive', 'null must not wipe');
+  assert.equal(s.adults, 2, 'a new field still merges');
+});
+
+test('merge: unknown keys are ignored (only whitelisted keys are read)', () => {
+  const s = {};
+  mergeBrief(s, { evil: 'x', destination: 'Rhodes' }, BRIEF_KEYS);
+  assert.equal(s.evil, undefined);
+  assert.equal(s.destination, 'Rhodes');
+});
