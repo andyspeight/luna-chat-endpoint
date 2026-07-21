@@ -1322,6 +1322,66 @@
   .welcome-tour-cta-title { font-size:13px; font-weight:600; }
   .welcome-tour-cta-meta { font-size:11px; color:rgba(255,255,255,0.55); margin-top:2px; }
 
+  /* ═══ SETUP GUIDE MODAL ═══ */
+  .sgv-overlay {
+    position:fixed; inset:0;
+    background:rgba(11,29,58,0.55);
+    backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+    z-index:10000;
+    opacity:0; transition:opacity 0.25s ease; pointer-events:none;
+    display:flex; align-items:center; justify-content:center;
+    padding:32px;
+  }
+  .sgv-overlay.active { opacity:1; pointer-events:auto; }
+  .sgv-overlay[hidden] { display:none !important; }
+  .sgv-modal {
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius-lg);
+    box-shadow:0 24px 60px rgba(11,29,58,0.35);
+    width:min(960px, 100%); height:min(88vh, 100%);
+    display:flex; flex-direction:column; overflow:hidden;
+    outline:none;
+  }
+  .sgv-head {
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:14px 16px; border-bottom:1px solid var(--border);
+    background:var(--surface-raised); flex:none;
+  }
+  .sgv-head h3 {
+    font-size:var(--text-md, 15px); font-weight:600; color:var(--text);
+    margin:0; display:flex; align-items:center; gap:8px;
+  }
+  .sgv-head h3 svg { color:var(--teal); flex:none; }
+  .sgv-actions { display:flex; align-items:center; gap:8px; }
+  .sgv-download {
+    display:inline-flex; align-items:center; gap:6px;
+    font-size:13px; font-weight:600; text-decoration:none;
+    color:#fff; background:var(--teal); border:none;
+    padding:8px 12px; border-radius:var(--radius); cursor:pointer;
+    transition:background .15s;
+  }
+  .sgv-download:hover { background:var(--teal-dark); }
+  .sgv-close {
+    display:inline-flex; align-items:center; justify-content:center;
+    width:34px; height:34px; border-radius:var(--radius);
+    border:1px solid var(--border); background:var(--surface);
+    color:var(--text-dim); cursor:pointer; transition:background .15s, color .15s;
+  }
+  .sgv-close:hover { background:var(--navy-light); color:var(--text); }
+  .sgv-body { flex:1; min-height:0; background:var(--navy-light); position:relative; }
+  .sgv-body iframe { width:100%; height:100%; border:0; display:block; }
+  .sgv-fallback {
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    text-align:center; color:var(--text-dim); font-size:13px; padding:24px; pointer-events:none;
+  }
+  .sgv-fallback a { color:var(--teal); pointer-events:auto; }
+  @media (max-width:600px) {
+    .sgv-overlay { padding:0; }
+    .sgv-modal { width:100%; height:100%; border-radius:0; border:0; }
+    .sgv-download span { display:none; }
+  }
+
   /* ═══ SHOWCASE MODAL ═══ */
   .showcase-overlay {
     position:fixed; inset:0;
@@ -1898,6 +1958,7 @@
     <div class="sidebar-footer">
       <button class="topbar-stats-btn" id="welcomeBtn" onclick="window._openShowcase('topbar')" title="See what Luna can do"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg> Tour</button>
       <button class="topbar-stats-btn" id="guideBtn" onclick="window._lunaTourStart()" title="Interactive walkthrough — features &amp; first-time setup"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg> Guide</button>
+      <button class="topbar-stats-btn" id="setupGuideBtn" onclick="window._openSetupGuide()" title="Luna Chat setup guide — view on screen or download the PDF"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg> Setup Guide</button>
       <button class="topbar-stats-btn" id="customizeBtn" onclick="window._openWidgetEditor()" title="Customise widget appearance"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg> Customise</button>
       <button class="topbar-stats-btn" id="statsToggle" onclick="window._toggleStats()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg> Stats</button>
       <button class="topbar-stats-btn" id="settingsToggle" onclick="window._toggleSettings()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> Settings</button>
@@ -7196,6 +7257,40 @@ function closeShowcase() {
   document.body.style.overflow = '';
 }
 
+/* ═══ SETUP GUIDE MODAL ═══
+   Opens the Luna Chat Setup Guide PDF in a modal (native browser PDF viewer)
+   with a download button. The 1.2MB PDF is loaded lazily on first open, not on
+   every dashboard load. Closes on the × button, on backdrop click, and on Esc. */
+window._openSetupGuide = function () {
+  var overlay = document.getElementById('setup-guide-overlay');
+  if (!overlay) return;
+  var frame = document.getElementById('sgv-frame');
+  if (frame && frame.getAttribute('src') === 'about:blank') {
+    frame.setAttribute('src', '/Luna-Chat-Setup-Guide.pdf#view=FitH');
+  }
+  overlay.hidden = false;
+  setTimeout(function () { overlay.classList.add('active'); }, 10);
+  document.body.style.overflow = 'hidden';
+  var modal = document.getElementById('sgv-modal');
+  if (modal) setTimeout(function () { modal.focus(); }, 100);
+};
+window._closeSetupGuide = function () {
+  var overlay = document.getElementById('setup-guide-overlay');
+  if (!overlay) return;
+  overlay.classList.remove('active');
+  setTimeout(function () { overlay.hidden = true; }, 250);
+  document.body.style.overflow = '';
+};
+// Esc closes the guide when open. Registered on document (always present); the
+// overlay is looked up at event time, so this is safe even though the modal
+// markup appears later in the document than this script. Backdrop-click close is
+// wired inline on the overlay element itself.
+document.addEventListener('keydown', function (e) {
+  if (e.key !== 'Escape') return;
+  var overlay = document.getElementById('setup-guide-overlay');
+  if (overlay && !overlay.hidden) window._closeSetupGuide();
+});
+
 function showcaseGoTo(idx) {
   var max = showcaseState.chapters.length - 1;
   if (idx < 0) idx = 0;
@@ -8077,6 +8172,23 @@ setTimeout(function () {
   }
 })();
 </script>
+
+<!-- ═══ SETUP GUIDE MODAL (view the PDF on screen or download it) ═══ -->
+<div id="setup-guide-overlay" class="sgv-overlay" role="dialog" aria-modal="true" aria-labelledby="sgv-title" hidden onclick="if(event.target===this)window._closeSetupGuide()">
+  <div class="sgv-modal" id="sgv-modal" tabindex="-1">
+    <div class="sgv-head">
+      <h3 id="sgv-title"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg> Luna Chat Setup Guide</h3>
+      <div class="sgv-actions">
+        <a class="sgv-download" href="/Luna-Chat-Setup-Guide.pdf" download="Luna-Chat-Setup-Guide.pdf"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg><span>Download PDF</span></a>
+        <button class="sgv-close" onclick="window._closeSetupGuide()" aria-label="Close setup guide"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+    </div>
+    <div class="sgv-body">
+      <div class="sgv-fallback">Loading the guide… if it doesn't appear, <a href="/Luna-Chat-Setup-Guide.pdf" target="_blank" rel="noopener">open it in a new tab</a>.</div>
+      <iframe id="sgv-frame" title="Luna Chat Setup Guide" src="about:blank" loading="lazy"></iframe>
+    </div>
+  </div>
+</div>
 
 <!-- ═══ SHOWCASE MODAL (popover, triggered from welcome panel or topbar) ═══ -->
 <div id="showcase-overlay" class="showcase-overlay" role="dialog" aria-modal="true" aria-labelledby="showcase-headline" hidden>
