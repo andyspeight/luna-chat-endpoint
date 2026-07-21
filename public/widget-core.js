@@ -4919,6 +4919,11 @@ async function streamFromLuna(userText) {
   if (_currentBookingContext && typeof _currentBookingContext === "object") {
     requestBody.bookingContext = _currentBookingContext;
   }
+  // Send the accumulated trip brief so Luna has it as working memory (she uses
+  // it, never re-asks, and can pick up an in-progress trip on return).
+  if (tripBrief && Object.keys(tripBrief).length > 0) {
+    requestBody.tripBrief = tripBrief;
+  }
 
   var streamedBubbleRow = null;
   var streamedBubble = null;
@@ -5284,6 +5289,10 @@ async function callLuna(userText) {
        facts already on screen. Set/captured by watchForBookingLoad. */
     if (_currentBookingContext && typeof _currentBookingContext === "object") {
       requestBody.bookingContext = _currentBookingContext;
+    }
+    // Trip brief as working memory (see streamFromLuna for the rationale).
+    if (tripBrief && Object.keys(tripBrief).length > 0) {
+      requestBody.tripBrief = tripBrief;
     }
     var res = await fetch(C.endpoint, {
       method: "POST",
