@@ -42,6 +42,8 @@ const KNOWN_BLOCK_TYPES = new Set([
   'weather_card',
   'quick_replies',
   'enquiry_card',
+  'options_card',
+  'date_picker',
   'fcdo_card'
 ]);
 
@@ -939,6 +941,127 @@ function renderEnquiryCard(props, ctx) {
   return card;
 }
 
+// ─────────── BLOCK: options_card ───────────
+// A structured question with tappable choices, so the visitor taps instead of
+// typing common answers (board basis, budget band, holiday type, party size).
+// Tapping sends the choice back through the normal message path, so it flows to
+// Luna and updates the trip brief exactly as if the visitor had typed it. No new
+// state — the brief is the single source of truth. All text via textContent.
+
+function renderOptionsCard(props, ctx) {
+  const card = el('div', 'tgx-options-card');
+  const question = (props && typeof props.question === 'string') ? props.question.trim() : '';
+  if (question) card.appendChild(el('div', 'tgx-options-q', question));
+
+  // Options: array of strings, or {label, value}. Cap at 6 to keep the card tidy.
+  let opts = (props && Array.isArray(props.options)) ? props.options : [];
+  opts = opts
+    .map(function (o) {
+      if (o && typeof o === 'object') return { label: String(o.label != null ? o.label : o.value || ''), value: String(o.value != null ? o.value : o.label || '') };
+      return { label: String(o), value: String(o) };
+    })
+    .filter(function (o) { return o.label.trim(); })
+    .slice(0, 6);
+  if (!opts.length) return card; // nothing to offer — render just the question
+
+  const grid = el('div', 'tgx-options-grid');
+  let answered = false;
+  opts.forEach(function (o) {
+    const btn = el('button', 'tgx-option-btn', o.label);
+    btn.type = 'button';
+    btn.addEventListener('click', function () {
+      if (answered) return;
+      answered = true;
+      // Lock the card to the chosen option so the thread reads as a record.
+      Array.prototype.forEach.call(grid.children, function (c) {
+        c.disabled = true;
+        if (c === btn) c.className = 'tgx-option-btn tgx-option-done';
+      });
+      // The value is what Luna needs; send it as if typed. A short, natural
+      // sentence reads better in the transcript than a bare token.
+      const msg = (props && props.field)
+        ? (String(props.field).trim() + ': ' + o.value)
+        : o.value;
+      if (ctx && ctx.dispatch) ctx.dispatch({ type: 'send_message', text: msg });
+    });
+    grid.appendChild(btn);
+  });
+  card.appendChild(grid);
+  return card;
+}
+
+// ─────────── BLOCK: date_picker ───────────
+// A native date field (plus optional nights) so the visitor pins exact dates
+// instead of typing them ambiguously. On confirm it dispatches one natural
+// sentence back to Luna, which the brief then captures. Native <input type=date>
+// gives the OS picker on mobile and is fully accessible. Client-side validation
+// only — the server re-derives dates from the message text as usual.
+
+function renderDatePicker(props, ctx) {
+  const card = el('div', 'tgx-datepick');
+  const question = (props && typeof props.question === 'string' && props.question.trim())
+    ? props.question.trim() : 'When would you like to travel?';
+  card.appendChild(el('div', 'tgx-datepick-q', question));
+
+  const fields = el('div', 'tgx-datepick-fields');
+
+  const depWrap = el('div', 'tgx-datepick-field');
+  const depLabel = el('label', null, 'Departure');
+  const depId = 'tgxDep' + Math.random().toString(36).slice(2, 8);
+  depLabel.setAttribute('for', depId);
+  const depIn = document.createElement('input');
+  depIn.type = 'date'; depIn.id = depId;
+  // No travel in the past — floor at today (local).
+  const today = new Date();
+  const iso = function (d) { return d.toISOString().slice(0, 10); };
+  depIn.min = iso(today);
+  append(depWrap, depLabel, depIn);
+  fields.appendChild(depWrap);
+
+  // Nights is optional — only shown when the card asks for it.
+  let nightsIn = null;
+  if (!props || props.askNights !== false) {
+    const nWrap = el('div', 'tgx-datepick-field');
+    const nLabel = el('label', null, 'Nights');
+    const nId = 'tgxNts' + Math.random().toString(36).slice(2, 8);
+    nLabel.setAttribute('for', nId);
+    nightsIn = document.createElement('input');
+    nightsIn.type = 'number'; nightsIn.id = nId; nightsIn.min = '1'; nightsIn.max = '90';
+    nightsIn.placeholder = '7'; nightsIn.inputMode = 'numeric';
+    append(nWrap, nLabel, nightsIn);
+    fields.appendChild(nWrap);
+  }
+  card.appendChild(fields);
+
+  const err = el('div', 'tgx-datepick-err', '');
+  card.appendChild(err);
+
+  const go = el('button', 'tgx-datepick-go', 'Use these dates');
+  go.type = 'button';
+  go.addEventListener('click', function () {
+    err.textContent = '';
+    const dep = depIn.value;
+    if (!dep) { err.textContent = 'Pick a departure date.'; return; }
+    // Guard against a past date sneaking past the min attribute.
+    if (dep < iso(today)) { err.textContent = 'That date has passed — pick a future one.'; return; }
+    let nights = null;
+    if (nightsIn && nightsIn.value) {
+      const n = parseInt(nightsIn.value, 10);
+      if (isNaN(n) || n < 1 || n > 90) { err.textContent = 'Nights should be between 1 and 90.'; return; }
+      nights = n;
+    }
+    go.disabled = true; go.textContent = 'Dates set';
+    if (depIn) depIn.disabled = true;
+    if (nightsIn) nightsIn.disabled = true;
+    let msg = 'I want to travel on ' + dep;
+    if (nights) msg += ' for ' + nights + ' nights';
+    msg += '.';
+    if (ctx && ctx.dispatch) ctx.dispatch({ type: 'send_message', text: msg });
+  });
+  card.appendChild(go);
+  return card;
+}
+
 // ─────────── FALLBACK: unknown / malformed ───────────
 
 function renderFallback(blockType, props) {
@@ -1380,6 +1503,8 @@ const RENDERERS = {
   weather_card:        renderWeatherCard,
   quick_replies:       renderQuickReplies,
   enquiry_card:        renderEnquiryCard,
+  options_card:        renderOptionsCard,
+  date_picker:         renderDatePicker,
   fcdo_card:           renderFcdoCard
 };
 
@@ -1807,7 +1932,10 @@ function mergeTripBrief(brief) {
     if (typeof v === "string") { v = v.trim(); if (!v) continue; }
     if (tripBrief[k] !== v) { tripBrief[k] = v; changed = true; }
   }
-  if (changed) { try { persistTripBrief(); } catch (e) {} }
+  if (changed) {
+    try { persistTripBrief(); } catch (e) {}
+    try { renderTripBar(); } catch (e) {}
+  }
   return changed;
 }
 /* Persist the accumulated brief onto the visitor profile so it survives reload
@@ -1819,6 +1947,70 @@ function persistTripBrief() {
       if (p) { p.tripBrief = tripBrief; saveVisitorProfile(p); }
     }
   } catch (e) {}
+}
+/* Human labels + value formatting for the visible "Trip so far" chips. Only the
+   fields worth surfacing at a glance are shown; notes/childAges stay internal. */
+var TRIP_BRIEF_CHIP_ORDER = ['destination', 'departureAirport', 'departureDate',
+  'dateFlexibility', 'nights', 'adults', 'children', 'board', 'budget', 'holidayType'];
+var TRIP_BRIEF_LABELS = {
+  destination: 'Where', departureAirport: 'From', departureDate: 'Depart',
+  dateFlexibility: 'When', nights: 'Nights', adults: 'Adults', children: 'Children',
+  board: 'Board', budget: 'Budget', holidayType: 'Type'
+};
+function formatBriefValue(key, v) {
+  if (v == null || v === '') return '';
+  if (key === 'nights') return v + (v == 1 ? ' night' : ' nights');
+  if (key === 'children' && v == 0) return '';
+  return String(v);
+}
+/* Render the trip-so-far bar from tripBrief. Hidden when empty. Each chip has a
+   remove control that clears that one field. Pure DOM, all values via textContent. */
+function renderTripBar() {
+  var bar = document.getElementById('tgxTripBar');
+  if (!bar) return;
+  bar.textContent = '';
+  var shown = 0;
+  var frag = document.createDocumentFragment();
+  var label = document.createElement('span');
+  label.className = 'tgx-trip-bar-label';
+  label.textContent = 'Your trip';
+  frag.appendChild(label);
+  for (var i = 0; i < TRIP_BRIEF_CHIP_ORDER.length; i++) {
+    var k = TRIP_BRIEF_CHIP_ORDER[i];
+    if (!Object.prototype.hasOwnProperty.call(tripBrief, k)) continue;
+    var val = formatBriefValue(k, tripBrief[k]);
+    if (!val) continue;
+    shown++;
+    var chip = document.createElement('span');
+    chip.className = 'tgx-trip-chip';
+    var keyEl = document.createElement('span');
+    keyEl.className = 'tgx-trip-chip-key';
+    keyEl.textContent = (TRIP_BRIEF_LABELS[k] || k) + ' ';
+    var valEl = document.createElement('span');
+    valEl.className = 'tgx-trip-chip-val';
+    valEl.textContent = val;
+    var x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'tgx-trip-chip-x';
+    x.setAttribute('aria-label', 'Remove ' + (TRIP_BRIEF_LABELS[k] || k));
+    x.textContent = '×';
+    (function (field) {
+      x.addEventListener('click', function () { clearTripBriefField(field); });
+    })(k);
+    chip.appendChild(keyEl); chip.appendChild(valEl); chip.appendChild(x);
+    frag.appendChild(chip);
+  }
+  if (shown === 0) { bar.hidden = true; return; }
+  bar.appendChild(frag);
+  bar.hidden = false;
+}
+/* Clear one field from the brief (visitor tapped the chip's ×), persist, redraw. */
+function clearTripBriefField(field) {
+  if (Object.prototype.hasOwnProperty.call(tripBrief, field)) {
+    delete tripBrief[field];
+    try { persistTripBrief(); } catch (e) {}
+    renderTripBar();
+  }
 }
 var convStarted = false;
 var pendingNewConv = false;  // set when a conversation is resolved/cleared; the next send opens a fresh conversation on a fresh connection
@@ -1893,6 +2085,10 @@ function clearConversation() {
   // Keep userName, visitorEmail, marketingConsent, nameCollected — visitor identity persists
   // Wipe the message rendering area
   if ($msgs) $msgs.innerHTML = "";
+  // A new conversation is a fresh trip — reset the brief and its visible bar.
+  tripBrief = {};
+  try { persistTripBrief(); } catch (e) {}
+  try { renderTripBar(); } catch (e) {}
   // Clear pills
   var pillsEl = document.getElementById("tgxPills");
   if (pillsEl) pillsEl.innerHTML = "";
@@ -2380,6 +2576,41 @@ function injectCSS() {
   +'#tgx-cw .tgx-pills{display:flex;flex-wrap:wrap;gap:8px;padding:4px 16px 8px}'
   +'#tgx-cw .tgx-pill{background:#fff;border:1px solid rgba(15,26,61,0.10);color:'+C.brandColor+';font-size:12.5px;font-weight:500;padding:8px 13px;border-radius:999px;cursor:pointer;transition:all .2s cubic-bezier(.22,1,.36,1);line-height:1.3;text-align:left;font-family:inherit}'
   +'#tgx-cw .tgx-pill:hover{border-color:'+C.accentColor+';color:'+C.accentColor+';transform:translateY(-1px)}'
+
+  // Trip-so-far bar — pinned summary of the accumulated trip brief
+  +'#tgx-cw .tgx-trip-bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px 16px;background:'+C.accentColor+'0D;border-bottom:1px solid rgba(15,26,61,0.06);flex-shrink:0}'
+  +'#tgx-cw .tgx-trip-bar[hidden]{display:none}'
+  +'#tgx-cw .tgx-trip-bar-label{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:'+C.brandColor+'99;margin-right:2px}'
+  +'#tgx-cw .tgx-trip-chip{display:inline-flex;align-items:center;gap:5px;background:#fff;border:1px solid rgba(15,26,61,0.10);color:'+C.brandColor+';font-size:12px;font-weight:500;padding:4px 8px;border-radius:8px;line-height:1.3;max-width:100%}'
+  +'#tgx-cw .tgx-trip-chip-key{font-weight:600;color:'+C.brandColor+'99}'
+  +'#tgx-cw .tgx-trip-chip-val{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px}'
+  +'#tgx-cw .tgx-trip-chip-x{border:none;background:transparent;color:'+C.brandColor+'66;cursor:pointer;padding:0;width:14px;height:14px;display:flex;align-items:center;justify-content:center;border-radius:50%;flex-shrink:0;font-size:14px;line-height:1;transition:all .15s}'
+  +'#tgx-cw .tgx-trip-chip-x:hover{background:rgba(15,26,61,0.08);color:'+C.brandColor+'}'
+
+  // Options card — tappable structured choices (tap instead of type)
+  +'#tgx-cw .tgx-options-card{background:#fff;border:1px solid rgba(15,26,61,0.08);border-radius:14px;padding:14px;box-shadow:0 4px 14px rgba(15,26,61,0.05)}'
+  +'#tgx-cw .tgx-options-q{font-size:13.5px;font-weight:600;color:'+C.brandColor+';margin-bottom:10px;line-height:1.4}'
+  +'#tgx-cw .tgx-options-grid{display:flex;flex-wrap:wrap;gap:8px}'
+  +'#tgx-cw .tgx-option-btn{flex:1 1 calc(50% - 8px);min-width:120px;background:#FAFAF6;border:1.5px solid rgba(15,26,61,0.10);color:'+C.brandColor+';font-size:13px;font-weight:500;padding:11px 12px;border-radius:10px;cursor:pointer;transition:all .18s cubic-bezier(.22,1,.36,1);text-align:left;font-family:inherit;line-height:1.3}'
+  +'#tgx-cw .tgx-option-btn:hover{border-color:'+C.accentColor+';background:'+C.accentColor+'0D;transform:translateY(-1px)}'
+  +'#tgx-cw .tgx-option-btn:active{transform:scale(0.98)}'
+  +'#tgx-cw .tgx-option-btn:focus-visible{outline:none;border-color:'+C.accentColor+';box-shadow:0 0 0 3px '+C.accentColor+'33}'
+  +'#tgx-cw .tgx-option-btn.tgx-option-done{border-color:'+C.accentColor+';background:'+C.accentColor+'1A;color:'+C.accentColor+';font-weight:600;cursor:default;transform:none}'
+
+  // Date picker card
+  +'#tgx-cw .tgx-datepick{background:#fff;border:1px solid rgba(15,26,61,0.08);border-radius:14px;padding:14px;box-shadow:0 4px 14px rgba(15,26,61,0.05)}'
+  +'#tgx-cw .tgx-datepick-q{font-size:13.5px;font-weight:600;color:'+C.brandColor+';margin-bottom:10px;line-height:1.4}'
+  +'#tgx-cw .tgx-datepick-fields{display:flex;flex-wrap:wrap;gap:10px}'
+  +'#tgx-cw .tgx-datepick-field{display:flex;flex-direction:column;gap:4px;flex:1 1 130px}'
+  +'#tgx-cw .tgx-datepick-field label{font-size:11px;font-weight:600;color:'+C.brandColor+'99}'
+  +'#tgx-cw .tgx-datepick-field input{border:1.5px solid rgba(15,26,61,0.12);border-radius:9px;padding:9px 10px;font-size:13px;font-family:inherit;color:'+C.brandColor+';background:#FAFAF6;transition:all .18s}'
+  +'#tgx-cw .tgx-datepick-field input:focus{outline:none;border-color:'+C.accentColor+';background:#fff;box-shadow:0 0 0 3px '+C.accentColor+'26}'
+  +'#tgx-cw .tgx-datepick-err{color:#c0392b;font-size:11.5px;margin-top:8px;min-height:14px}'
+  +'#tgx-cw .tgx-datepick-go{margin-top:10px;width:100%;background:'+C.accentColor+';border:none;color:#fff;font-size:13.5px;font-weight:600;padding:11px;border-radius:10px;cursor:pointer;font-family:inherit;transition:all .18s}'
+  +'#tgx-cw .tgx-datepick-go:hover{filter:brightness(1.05);transform:translateY(-1px)}'
+  +'#tgx-cw .tgx-datepick-go:active{transform:scale(0.99)}'
+  +'#tgx-cw .tgx-datepick-go:disabled{opacity:.5;cursor:default;transform:none}'
+  +'@media (prefers-reduced-motion: reduce){#tgx-cw .tgx-option-btn,#tgx-cw .tgx-datepick-go,#tgx-cw .tgx-trip-chip-x{transition:none}}'
 
   // Input bar (used by BOTH home and chat screens)
   +'#tgx-cw .tgx-input-wrap{padding:12px 16px 14px;border-top:1px solid rgba(15,26,61,0.06);background:#fff;flex-shrink:0;display:flex;gap:8px;align-items:flex-end}'
@@ -2930,6 +3161,7 @@ function buildDOM() {
         +'<button class="tgx-hdr-btn" id="tgxChatClose"></button>'
       +'</div>'
       +'<div class="tgx-date" id="tgxDateDiv">Today</div>'
+      +'<div class="tgx-trip-bar" id="tgxTripBar" hidden></div>'
       +'<div class="tgx-msgs" id="tgxMsgs"></div>'
       +'<div class="tgx-typing-row" id="tgxTypingRow"><div id="tgxTypingAvatar"></div><div class="tgx-typing" id="tgxTyping"><span></span><span></span><span></span></div><div class="tgx-typing-status" id="tgxTypingStatus"></div></div>'
       +'<div id="tgxPills" class="tgx-pills"></div>'
@@ -3140,6 +3372,7 @@ function switchToChat() {
   document.getElementById("tgxChatScreen").classList.remove("hidden");
   document.getElementById("tgxHomeScreen").classList.add("hidden");
   if (msgs.length === 0) startChat();
+  try { renderTripBar(); } catch (e) {}   /* show any brief carried in from a prior visit */
   setTimeout(function(){ $input.focus(); }, 100);
   saveSession();
 }

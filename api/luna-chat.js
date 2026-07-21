@@ -1427,6 +1427,21 @@ Rules:
 - This card is NOT for existing-booking questions (that's [BOOKING_LOOKUP:...]) and NOT a replacement for live-agent handoff when the visitor wants to chat to someone now (that's human_handoff_card)
 - Do not emit quick_replies after an enquiry_card — the form is the next step
 
+**options_card** — a small question with tappable choices, so the visitor picks with one tap instead of typing. Use it when the natural next step is to choose from a SHORT, well-known set of options: board basis, budget band, party makeup, holiday type, star rating. Tapping sends the visitor's choice straight back to you, so it flows in and updates the trip brief exactly as if they had typed it.
+[BLOCK]{"type":"options_card","props":{"question":"What board basis suits you?","field":"board","options":["Room only","Bed & breakfast","Half board","All inclusive"]}}[/BLOCK]
+Rules:
+- Use it to GATHER a missing trip fact conversationally, not to list destinations (that is destination_card) and not for open-ended questions.
+- 2 to 6 options, each a short label. The "field" prop is optional and is just a hint for what is being answered (e.g. "board", "budget", "holidayType").
+- Emit at most ONE options_card per reply, after a short prose lead-in. Do not also emit quick_replies in the same reply.
+- Options must be genuine choices, never invented specifics like prices or operator names.
+
+**date_picker** — a proper date field (with optional nights) so the visitor pins exact travel dates instead of typing them vaguely. Use it when you need firm dates to move a trip forward and the visitor has not given them, or has given only a fuzzy period you want to firm up. On confirm it sends their dates back to you in plain words, which updates the trip brief.
+[BLOCK]{"type":"date_picker","props":{"question":"When would you like to travel?","askNights":true}}[/BLOCK]
+Rules:
+- The "question" prop is optional (a sensible default is used). "askNights" defaults to true; set it false when you only need the departure date.
+- Emit at most ONE per reply, after a short prose lead-in. Do not pair it with quick_replies.
+- Prefer this over asking for dates in prose whenever exact dates matter (before an enquiry_card or a live search).
+
 ### When plain prose is correct
 
 - Simple greetings, acknowledgements, follow-up clarifications
