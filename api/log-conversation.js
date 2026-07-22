@@ -158,10 +158,25 @@ module.exports = async function handler(req, res) {
     // Find existing conversation by ID
     var existing = await findConversation(atKey, convId);
 
+    // SECURITY: a conversation is located by ConversationID alone, and convIds
+    // travel in Ably channel names. Do NOT reassign the Client link from request
+    // input — that let anyone who knew a convId move another tenant's
+    // conversation into their own client and overwrite its transcript/email.
+    // If the row already belongs to a different client, refuse.
+    var existingClient = (existing && existing.fields && existing.fields.Client) || [];
+    if (Array.isArray(existingClient) && existingClient.length) {
+      var ownerId = (typeof existingClient[0] === 'object' && existingClient[0]) ? existingClient[0].id : existingClient[0];
+      if (ownerId !== clientRecordId) {
+        return res.status(403).json({ error: 'Conversation belongs to another client' });
+      }
+    }
+
     var now = new Date().toISOString();
     var fields = {};
     fields[F.convId] = convId;
-    if (clientRecordId) fields[F.client] = [clientRecordId];
+    // Only set the owner when the row does not already have one (create, or an
+    // adoptable legacy row) — never reassign an owned row.
+    if (!existingClient.length) fields[F.client] = [clientRecordId];
     if (transcript) fields[F.transcript] = transcript;
     if (visitorName) fields[F.visitorName] = visitorName;
     if (visitorEmail) fields[F.visitorEmail] = visitorEmail;

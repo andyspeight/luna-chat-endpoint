@@ -34,7 +34,8 @@ const F = {
   history:   'fldZ38GYN4XbHGl03', // History (long text)
   email:     'fldZXcvl7k3FS5Gu7', // Email
   visitorId: 'fldHkuGAIZMHYLWoC', // VisitorId (for returning/cross-device recall)
-  rating:    'fldw186Uuq2CP4hIc'  // VisitorRating (CSAT, 1-5)
+  rating:    'fldw186Uuq2CP4hIc', // VisitorRating (CSAT, 1-5)
+  client:    'flde1PCByneD05YyG'  // Client (link) — used to bind a row to its owner
 };
 
 const HANDLERS = ['Bot', 'AI', 'Waiting', 'Agent', 'Closed', 'Resolved'];
@@ -139,7 +140,19 @@ module.exports = async function handler(req, res) {
 
     if (sData.records && sData.records.length > 0) {
       // ── UPDATE existing row ──
-      var recId = sData.records[0].id;
+      // SECURITY: a conversation is found by ConversationID alone, and convIds
+      // travel in Ably channel names. Before overwriting, confirm the row is not
+      // already owned by a DIFFERENT client — otherwise anyone who knows a convId
+      // could hijack another tenant's conversation (rewrite its history, email,
+      // rating). Rows with no owner yet (legacy/partial) are adoptable.
+      var existRec = sData.records[0];
+      var existClient = (existRec.fields && existRec.fields[F.client]) || [];
+      if (Array.isArray(existClient) && existClient.length && existClient.indexOf(crec.id) === -1) {
+        return res.status(403).json({ error: 'Conversation belongs to another client' });
+      }
+      // Bind the owner if it was missing, so the row is protected from here on.
+      if (!Array.isArray(existClient) || !existClient.length) fields[F.client] = [crec.id];
+      var recId = existRec.id;
       var uRes = await fetch(atBase + '/' + recId, {
         method: 'PATCH',
         headers: authHeaders,
@@ -155,6 +168,7 @@ module.exports = async function handler(req, res) {
 
     // ── CREATE new row ── (set ConversationID + StartedAt on first write)
     fields[F.convId] = convId;
+    fields[F.client] = [crec.id]; // bind the owner up front so the row can't be hijacked later
     fields[F.startedAt] = (typeof body.startedAt === 'string' && body.startedAt) ? body.startedAt : now;
     if (!fields[F.handler]) fields[F.handler] = 'Bot';
 

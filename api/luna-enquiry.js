@@ -160,13 +160,26 @@ module.exports = async function handler(req, res) {
       return res.status(404).json({ error: 'Unknown client' });
     }
 
-    // Idempotency: one enquiry per conversation.
-    var conversationId = clip(body.conversationId, 60).replace(/'/g, '');
+    // Idempotency: one enquiry per conversation. Keep the clean value for
+    // storage; escape a separate copy for the formula (backslash BEFORE quote —
+    // a trailing backslash would otherwise escape the closing quote, break the
+    // formula, and silently create duplicate rows).
+    var conversationId = clip(body.conversationId, 60);
+    var convFormula = conversationId.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     var existingId = null;
     if (conversationId) {
       var q = await at(AT_ENQUIRIES + '?maxRecords=1&filterByFormula='
-        + encodeURIComponent("{ConversationID}='" + conversationId + "'"));
-      if (q.records && q.records.length) existingId = q.records[0].id;
+        + encodeURIComponent("{ConversationID}='" + convFormula + "'"));
+      if (q.records && q.records.length) {
+        // SECURITY: only reuse the existing enquiry if it belongs to THIS client.
+        // The lookup is by ConversationID across all clients, so without this a
+        // caller supplying another tenant's convId would reassign and overwrite
+        // that tenant's enquiry. On a cross-client collision, fall through to
+        // creating a fresh row for the correct owner.
+        var erClient = (q.records[0].fields && q.records[0].fields.Client) || [];
+        var erOwner = erClient.length ? ((typeof erClient[0] === 'object' && erClient[0]) ? erClient[0].id : erClient[0]) : null;
+        if (!erOwner || erOwner === clientId) existingId = q.records[0].id;
+      }
     }
 
     var cleanBrief = {
