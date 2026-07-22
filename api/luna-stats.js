@@ -6,11 +6,23 @@
 // only saw conversations this browser personally handled — making the Stats
 // panel mostly show zeros.
 //
-// Auth: X-Client-Name header. tg-auth-gate session handles real auth at the gate.
+// Auth: a valid central session (tg_session cookie) entitled to the requested
+// client is REQUIRED server-side — X-Client-Name alone is not trusted.
+
+const auth = require('../lib/luna-auth');
 
 const AT_BASE = 'app6Ot3eOb3DangkB';
 const CONV_TABLE = 'tblyin27D2J9ejHvf';
 const CLIENTS_TABLE = 'tbl6CZ7aVzq1wHF2v';
+
+// Dashboard origins allowed to make credentialed (cookie-bearing) requests.
+const AGENT_ORIGINS = [
+  'https://luna-chat-endpoint.vercel.app',
+  'https://chat.travelify.io',
+  'https://luna-chat.travelify.io',
+  'http://localhost:3000',
+  'http://localhost:5173'
+];
 
 // Field IDs (verified against the schema today)
 const F = {
@@ -30,7 +42,14 @@ const F = {
 };
 
 function applyCors(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  var origin = req.headers.origin;
+  if (origin && AGENT_ORIGINS.indexOf(origin) !== -1) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Credentials', 'true'); // dashboard sends tg_session
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Client-Name');
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -238,9 +257,17 @@ module.exports = async function handler(req, res) {
   var atKey = process.env.AIRTABLE_KEY;
   if (!atKey) return res.status(500).json({ error: 'Server not configured' });
 
+  // ── AUTH (fail fast) ── Tenant analytics are private business intelligence.
+  // Require a valid central session; client entitlement is checked below.
+  var session = await auth.validateSession(req.headers.cookie || '');
+  if (!session.ok) return res.status(session.status || 401).json({ error: session.error || 'Not signed in' });
+
   try {
     var clientRecordId = await findClient(atKey, clientName);
     if (!clientRecordId) return res.status(404).json({ error: 'Client not found' });
+
+    var entitled = await auth.resolveEntitledClient(atKey, session, clientRecordId);
+    if (!entitled) return res.status(403).json({ error: 'Not entitled to this client' });
 
     var records = await fetchAllConversations(atKey, clientName);
     var metrics = computeMetrics(records);

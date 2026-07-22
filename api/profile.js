@@ -2,6 +2,7 @@
 // Read and write business profile data
 
 const crypto = require('crypto');
+const auth = require('../lib/luna-auth');
 
 const AT_BASE = 'app6Ot3eOb3DangkB';
 const AT_TABLE = 'tbl6CZ7aVzq1wHF2v';
@@ -34,6 +35,10 @@ function applyCors(req, res) {
   if (origin && ALLOWED_ORIGINS.indexOf(origin) !== -1) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
+    // Credentialed so the dashboard's tg_session cookie is sent (fetch must use
+    // credentials:'include'). The spec forbids the '*' wildcard with credentials,
+    // hence the exact-origin echo above.
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Client-Slug, X-Client-Pass, X-Client-Name');
@@ -57,6 +62,13 @@ module.exports = async function handler(req, res) {
   // authenticated at the gate, and the X-Client-Name is set from that session.
   if (!slug && !clientName) return res.status(400).json({ error: 'Missing client identifier' });
 
+  // ── AUTH (fail fast, before any Airtable work) ──
+  // Require a valid central session. Entitlement to the specific client is
+  // checked below once the record is resolved. No cookie => rejected here with
+  // no network call.
+  var session = await auth.validateSession(req.headers.cookie || '');
+  if (!session.ok) return res.status(session.status || 401).json({ error: session.error || 'Not signed in' });
+
   var atHeaders = { 'Authorization': 'Bearer ' + atKey, 'Content-Type': 'application/json' };
 
   // Find client by slug or name and (optionally) verify password
@@ -75,6 +87,13 @@ module.exports = async function handler(req, res) {
 
     var record = sData.records[0];
     var fields = record.fields || {};
+
+    // ── ENTITLEMENT ── The session (validated above) must be entitled to THIS
+    // specific client. This endpoint reads AND writes tenant config: business
+    // description and CustomQA feed Luna's system prompt, and the email-platform
+    // key drives lead routing. Same posture as ably-token.js / whatsapp-send.js.
+    var entitled = await auth.resolveEntitledClient(atKey, session, record.id);
+    if (!entitled) return res.status(403).json({ error: 'Not entitled to this client' });
 
     // If this client has a DashboardPassword configured, it is REQUIRED and must
     // match (timing-safe). Previously the check was skipped whenever no password
