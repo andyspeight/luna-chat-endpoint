@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Luna Live Chat — Dashboard</title>
 <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+<script src="/skills-routing.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -2238,6 +2239,18 @@
     <div class="settings-title">Business Profile</div>
     <div class="settings-sub">Tell Luna about your business. The more she knows, the better she can help your website visitors. Just write naturally — Luna reads everything and uses it to answer questions.</div>
 
+    <div class="settings-section" id="teamSpecialismsSection">
+      <div class="settings-section-title">Team specialisms — skills-based routing</div>
+      <div class="settings-hint">Add each agent by the email they sign in with, plus the areas they specialise in (comma-separated, e.g. "Indian Ocean, Luxury, Honeymoons"). When a live chat is about one of those, it goes to that agent first. If no matching agent is online, it goes to everyone.</div>
+      <div id="teamList" style="margin-top:12px;display:flex;flex-direction:column;gap:8px;"></div>
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center;">
+        <input type="email" id="teamNewEmail" placeholder="agent@youragency.com" autocomplete="off" style="flex:1 1 200px;padding:8px 10px;border:1px solid var(--border,#d8dbe6);border-radius:8px;font-size:13px;">
+        <input type="text" id="teamNewSkills" placeholder="Indian Ocean, Luxury, Honeymoons" autocomplete="off" style="flex:2 1 260px;padding:8px 10px;border:1px solid var(--border,#d8dbe6);border-radius:8px;font-size:13px;">
+        <button class="chat-action-btn takeover" type="button" onclick="window._teamAdd()">Save agent</button>
+      </div>
+      <div id="teamMsg" style="font-size:12px;margin-top:8px;color:var(--text-muted,#667);"></div>
+    </div>
+
     <div class="sp-grid">
     <div class="sp-main">
     <!-- Embed code — top of Settings, first thing the user sees -->
@@ -2727,6 +2740,9 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     ABLY_KEY: '',
     CLIENT_ID: '',
     AGENT_NAME: '',
+    AGENT_EMAIL: '',
+    MY_SPECIALISMS: '',        // this agent's own specialisms (for skills routing)
+    TEAM_SPECIALISMS: {},      // { email: specialisms } for the whole team (owner Team panel)
     AGENT_ID: 'agent-' + Date.now(),
     CHANNEL_PREFIX: 'luna-chat:',
     PRESENCE_CHANNEL: 'luna-agents',
@@ -2934,7 +2950,9 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     CONFIG.CHANNEL_PREFIX = 'luna-chat:' + CONFIG.CLIENT_ID + ':';
     CONFIG.PASSWORD = ''; // no longer used
     CONFIG.AGENT_NAME = (data.account && data.account.fullName) || (data.account && data.account.email) || 'Agent';
+    CONFIG.AGENT_EMAIL = ((data.account && data.account.email) || '').toLowerCase();
     CONFIG.AGENT_ID = 'agent-' + CONFIG.AGENT_NAME.toLowerCase().replace(/[^a-z0-9]/g, '-');
+    try { loadTeamSpecialisms(); } catch (e) { /* non-fatal */ }
 
     // Track the user's auth-platform role so we can show the company
     // switcher button only for staff who actually have multiple clients
@@ -3083,14 +3101,17 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     dashboardChannel = ably.channels.get(CONFIG.DASHBOARD_CHANNEL);
     dashboardChannel.subscribe('new_conversation', msg => handleNewConversation(msg.data));
     dashboardChannel.subscribe('conversation_resolved', msg => handleConversationResolved(msg.data));
+    // Skills routing: the widget re-publishes the trip topic as it takes shape.
+    dashboardChannel.subscribe('conversation_topic', msg => handleConversationTopic(msg.data));
     dashboardChannel.subscribe('enquiry', msg => handleEnquiry(msg.data));
 
     // Agent presence
     presenceChannel = ably.channels.get(CONFIG.PRESENCE_CHANNEL);
-    presenceChannel.presence.enter({ name: CONFIG.AGENT_NAME, status: 'online' }).then(function() {
+    presenceChannel.presence.enter({ name: CONFIG.AGENT_NAME, status: 'online', email: CONFIG.AGENT_EMAIL, specialisms: CONFIG.MY_SPECIALISMS || '' }).then(function() {
       presenceChannel.presence.get().then(function(members) { renderPresence(members); });
     }).catch(function(e) { console.warn('Presence enter failed:', e); });
-    presenceChannel.presence.subscribe(updatePresenceList);
+    // Recompute routing whenever the online roster (or their specialisms) changes.
+    presenceChannel.presence.subscribe(function(){ updatePresenceList(); try { recomputeAllRouting(); } catch(e){} });
   }
 
   // ─── CONNECTION STATUS ───
@@ -3109,6 +3130,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
   }
 
   function renderPresence(members) {
+    _presenceMembers = members || [];   // cache for skills routing
     // Update the in-sidebar list (existing behaviour)
     const el = document.getElementById('presenceList');
     if (el) {
@@ -3166,6 +3188,148 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     if (dd) dd.classList.toggle('open');
   };
 
+  // ─── SKILLS-BASED ROUTING ───
+  // Every dashboard runs the SAME pure matcher (window.SkillsRouting) over the
+  // SAME presence snapshot, so all agents agree on who a chat routes to — no
+  // server round-trip, no race. Matched agents get the chat + alert; others see
+  // it flagged as routed elsewhere, unless the fallback (no specialist online)
+  // opens it to everyone.
+  var _presenceMembers = [];   // latest presence snapshot (cached from renderPresence)
+  var convTopics = {};         // convId -> { destination, holidayType }
+
+  function loadTeamSpecialisms() {
+    if (!CONFIG.CLIENT_NAME) return;
+    fetch('https://luna-chat-endpoint.vercel.app/api/agent-specialisms?client=' + encodeURIComponent(CONFIG.CLIENT_NAME), {
+      credentials: 'include',
+      headers: { 'X-Client-Name': CONFIG.CLIENT_NAME }
+    }).then(function(r){ return r.ok ? r.json() : null; }).then(function(d){
+      if (!d || !d.map) return;
+      CONFIG.TEAM_SPECIALISMS = d.map || {};
+      CONFIG.MY_SPECIALISMS = CONFIG.TEAM_SPECIALISMS[CONFIG.AGENT_EMAIL] || '';
+      // Re-broadcast our specialisms now that we know them.
+      try {
+        if (presenceChannel) presenceChannel.presence.update({ name: CONFIG.AGENT_NAME, status: (window._agentStatus || 'online'), email: CONFIG.AGENT_EMAIL, specialisms: CONFIG.MY_SPECIALISMS });
+      } catch (e) {}
+      try { if (typeof renderTeamPanel === 'function') renderTeamPanel(); } catch (e) {}
+      try { recomputeAllRouting(); } catch (e) {}
+    }).catch(function(){});
+  }
+
+  function saveAgentSpecialisms(email, specialisms) {
+    return fetch('https://luna-chat-endpoint.vercel.app/api/agent-specialisms', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-Client-Name': CONFIG.CLIENT_NAME },
+      body: JSON.stringify({ client: CONFIG.CLIENT_NAME, email: email, specialisms: specialisms })
+    }).then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j }; }); })
+      .then(function(res){
+        if (res.ok && res.j && res.j.map) {
+          CONFIG.TEAM_SPECIALISMS = res.j.map;
+          if ((email || '').toLowerCase() === CONFIG.AGENT_EMAIL) CONFIG.MY_SPECIALISMS = CONFIG.TEAM_SPECIALISMS[CONFIG.AGENT_EMAIL] || '';
+        }
+        return res;
+      });
+  }
+
+  function onlineAgentsForRouting() {
+    var out = [];
+    (_presenceMembers || []).forEach(function(m){
+      var d = (m && m.data) || {};
+      out.push({ name: d.name || m.clientId || 'Agent', email: String(d.email || '').toLowerCase(), specialisms: d.specialisms || '', online: true });
+    });
+    return out;
+  }
+
+  function computeRoutingForConv(conv) {
+    var result = { routedTo: [], matchedSkill: null, fallbackUsed: true, mine: true };
+    try {
+      if (!window.SkillsRouting) return result;
+      var terms = window.SkillsRouting.deriveConversationTerms(conv.topic || convTopics[conv.id] || {});
+      var r = window.SkillsRouting.routeConversation({ agents: onlineAgentsForRouting(), conversationTerms: terms });
+      result.routedTo = r.routedTo.map(function(a){ return String(a.email || '').toLowerCase(); });
+      result.matchedSkill = r.matchedSkill;
+      result.fallbackUsed = r.fallbackUsed;
+      // The chat is "mine" if it fell back to everyone, produced no target, or I'm
+      // one of the matched specialists.
+      result.mine = r.fallbackUsed || !result.routedTo.length || result.routedTo.indexOf(CONFIG.AGENT_EMAIL) !== -1;
+    } catch (e) { result.mine = true; }
+    return result;
+  }
+
+  function recomputeAllRouting() {
+    var changed = false;
+    Object.keys(conversations).forEach(function(id){
+      conversations[id].routing = computeRoutingForConv(conversations[id]);
+      changed = true;
+    });
+    if (changed) { try { renderConvList(); } catch (e) {} }
+  }
+
+  function handleConversationTopic(data) {
+    if (!data || !data.convId) return;
+    convTopics[data.convId] = data.topic || {};
+    var c = conversations[data.convId];
+    if (!c) return;
+    c.topic = data.topic || {};
+    var wasMine = c.routing && c.routing.mine;
+    c.routing = computeRoutingForConv(c);
+    try { renderConvList(); } catch (e) {}
+    // If this chat has just become mine as a matched specialist, alert me now.
+    if (!wasMine && c.routing.mine && c.routing.matchedSkill) {
+      lunaAlertSignal('newchat', c.visitor.name, 'Your specialism: ' + c.routing.matchedSkill);
+    }
+  }
+
+  // Owner Team panel — manage each agent's specialisms. DOM-built (never inject
+  // an email/skill string into innerHTML).
+  function renderTeamPanel() {
+    var host = document.getElementById('teamList');
+    if (!host) return;
+    host.textContent = '';
+    var map = CONFIG.TEAM_SPECIALISMS || {};
+    var emails = Object.keys(map).sort();
+    if (!emails.length) {
+      var empty = document.createElement('div');
+      empty.style.cssText = 'font-size:12px;color:#8890a4;';
+      empty.textContent = 'No agents added yet.';
+      host.appendChild(empty);
+      return;
+    }
+    emails.forEach(function(email){
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;gap:8px;align-items:center;padding:8px 10px;border:1px solid #e2e4ee;border-radius:8px;';
+      var info = document.createElement('div');
+      info.style.cssText = 'flex:1 1 auto;min-width:0;';
+      var em = document.createElement('div'); em.style.cssText = 'font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;'; em.textContent = email;
+      var sk = document.createElement('div'); sk.style.cssText = 'font-size:12px;color:#8890a4;'; sk.textContent = map[email];
+      info.appendChild(em); info.appendChild(sk);
+      var rm = document.createElement('button'); rm.type = 'button'; rm.className = 'chat-action-btn'; rm.textContent = 'Remove'; rm.style.flex = '0 0 auto';
+      rm.addEventListener('click', function(){ window._teamRemove(email); });
+      row.appendChild(info); row.appendChild(rm);
+      host.appendChild(row);
+    });
+  }
+  window._teamAdd = function(){
+    var e = (document.getElementById('teamNewEmail').value || '').trim().toLowerCase();
+    var s = (document.getElementById('teamNewSkills').value || '').trim();
+    var msg = document.getElementById('teamMsg');
+    if (!e || !s) { if (msg) msg.textContent = 'Enter both an email and at least one specialism.'; return; }
+    if (msg) msg.textContent = 'Saving…';
+    saveAgentSpecialisms(e, s).then(function(res){
+      if (res.ok) {
+        document.getElementById('teamNewEmail').value = '';
+        document.getElementById('teamNewSkills').value = '';
+        if (msg) msg.textContent = 'Saved.';
+        renderTeamPanel();
+      } else if (msg) { msg.textContent = (res.j && res.j.error) || 'Could not save.'; }
+    }).catch(function(){ if (msg) msg.textContent = 'Could not save.'; });
+  };
+  window._teamRemove = function(email){
+    var msg = document.getElementById('teamMsg');
+    saveAgentSpecialisms(email, '').then(function(res){
+      if (res.ok) { if (msg) msg.textContent = 'Removed.'; renderTeamPanel(); }
+    }).catch(function(){});
+  };
+
   // ─── CONVERSATIONS ───
   function handleNewConversation(data) {
     const convId = data.convId || 'conv-' + Date.now();
@@ -3205,10 +3369,16 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       });
     }
 
+    conv.topic = data.topic || {};
+    convTopics[convId] = conv.topic;
     conversations[convId] = conv;
+    conv.routing = computeRoutingForConv(conv);
     renderConvList();
-    if (!data._silent) {
-      lunaAlertSignal('newchat', conv.visitor.name, conv.visitor.page || 'New visitor');
+    // Skills routing: only alert me if this chat is routed to me (I match, or it
+    // fell back to everyone). Non-matching agents still see it in the list,
+    // flagged as routed to a specialist, but aren't pulled away by an alert.
+    if (!data._silent && conv.routing.mine) {
+      lunaAlertSignal('newchat', conv.visitor.name, conv.routing.matchedSkill ? ('Your specialism: ' + conv.routing.matchedSkill) : (conv.visitor.page || 'New visitor'));
     }
   }
 
@@ -3367,11 +3537,22 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       const waTag = c.source === 'whatsapp'
         ? ' <span title="WhatsApp" style="display:inline-block;font-size:9px;font-weight:700;letter-spacing:.04em;background:#25D366;color:#062e16;padding:1px 5px;border-radius:6px;vertical-align:middle;">WhatsApp</span>'
         : '';
+      // Skills routing badge: highlight a chat that matches my specialism; dim +
+      // flag one routed to another specialist (unless it fell back to everyone).
+      const rt = c.routing || {};
+      let routeTag = '';
+      let routedAway = false;
+      if (rt.matchedSkill && rt.mine) {
+        routeTag = ' <span title="Matches your specialism" style="display:inline-block;font-size:9px;font-weight:700;letter-spacing:.04em;background:#00B4D8;color:#062e16;padding:1px 5px;border-radius:6px;vertical-align:middle;">★ ' + esc(rt.matchedSkill) + '</span>';
+      } else if (rt.matchedSkill && !rt.mine) {
+        routedAway = true;
+        routeTag = ' <span title="Routed to a specialist for ' + esc(rt.matchedSkill) + '" style="display:inline-block;font-size:9px;font-weight:600;letter-spacing:.04em;background:rgba(15,26,61,0.08);color:#8890a4;padding:1px 5px;border-radius:6px;vertical-align:middle;">→ ' + esc(rt.matchedSkill) + '</span>';
+      }
       return `<div class="conv-item ${c.id === activeConvId ? 'active' : ''} ${c.unread ? 'unread' : ''}"
-                   data-id="${c.id}" onclick="window._selectConv('${c.id}')">
+                   data-id="${c.id}" onclick="window._selectConv('${c.id}')" style="${routedAway ? 'opacity:.55;' : ''}">
         <div class="conv-badge"></div>
         <div class="conv-item-top">
-          <span class="conv-name">${esc(c.visitor.name)}${waTag}</span>
+          <span class="conv-name">${esc(c.visitor.name)}${waTag}${routeTag}</span>
           <span class="conv-time">${time}</span>
         </div>
         <div class="conv-preview">${esc(preview)}</div>

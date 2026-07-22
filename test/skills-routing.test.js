@@ -84,3 +84,29 @@ test('a conversation with no detectable topic falls back to everyone online', ()
   assert.equal(r.fallbackUsed, true);
   assert.deepEqual(r.routedTo.map(a => a.name).sort(), ['Asha', 'Ben']);
 });
+
+// ── source guards: the browser wiring stays in place ──
+const fs = require('node:fs');
+const path = require('node:path');
+const WIDGET = fs.readFileSync(path.join(__dirname, '..', 'public', 'widget-core.js'), 'utf8');
+const DASH = fs.readFileSync(path.join(__dirname, '..', 'public', 'dashboard.html'), 'utf8');
+const UMD = fs.readFileSync(path.join(__dirname, '..', 'public', 'skills-routing.js'), 'utf8');
+
+test('GUARD: matcher is a UMD module (browser window + node require)', () => {
+  assert.match(UMD, /window\.SkillsRouting = api/, 'must expose window.SkillsRouting');
+  assert.match(UMD, /module\.exports = api/, 'must export for node');
+});
+
+test('GUARD: widget sends the trip topic to the dashboard', () => {
+  assert.match(WIDGET, /function buildTopicHint/, 'buildTopicHint must exist');
+  assert.match(WIDGET, /publish\("conversation_topic"/, 'topic updates must be published');
+  assert.match(WIDGET, /topic: buildTopicHint\(\)/, 'new_conversation must carry the topic');
+});
+
+test('GUARD: dashboard loads the matcher and routes incoming chats', () => {
+  assert.match(DASH, /<script src="\/skills-routing\.js">/, 'dashboard must load the shared matcher');
+  assert.match(DASH, /function computeRoutingForConv/, 'routing decision must exist');
+  assert.match(DASH, /conv\.routing\.mine/, 'the alert must be gated by whether the chat is mine');
+  assert.match(DASH, /specialisms: CONFIG\.MY_SPECIALISMS/, 'presence must broadcast this agent\'s specialisms');
+  assert.match(DASH, /window\._teamAdd/, 'the Team panel must be wired');
+});
