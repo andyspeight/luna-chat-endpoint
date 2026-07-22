@@ -10,6 +10,8 @@
 // After upserting, this endpoint kicks off api/conversation-quality scoring
 // asynchronously (fire and forget).
 
+const ratelimit = require('../lib/ratelimit');
+
 const AT_BASE = 'app6Ot3eOb3DangkB';
 const CONV_TABLE = 'tblyin27D2J9ejHvf';
 const CLIENTS_TABLE = 'tbl6CZ7aVzq1wHF2v';
@@ -135,6 +137,18 @@ module.exports = async function handler(req, res) {
 
   if (!convId) return res.status(400).json({ error: 'Missing convId' });
   if (!clientName) return res.status(400).json({ error: 'Missing clientName' });
+
+  // Rate limit — this endpoint is unauthenticated and fans out to ~5 Airtable
+  // ops + an Anthropic quality-scoring call, so without a limit one client can
+  // saturate the shared Airtable base (~5 req/s) and take down every tenant.
+  // Called from the visitor's browser (real per-visitor IP), so IP keying works.
+  try {
+    var rl = await ratelimit.checkIpAndKey(req, {
+      ipKey: 'log-conv', ipMax: 30, ipWindowSecs: 60,
+      keyKey: 'log-conv:conv:' + convId, keyMax: 10, keyWindowSecs: 60
+    });
+    if (!rl.allowed) return res.status(429).json({ error: 'Too many requests' });
+  } catch (e) { /* limiter unavailable — fail open (non-money endpoint) */ }
 
   try {
     // Resolve client record
