@@ -8,6 +8,7 @@
 
 const Anthropic = require('@anthropic-ai/sdk');
 const knowledge = require('../lib/knowledge');
+const ratelimit = require('../lib/ratelimit');
 
 const AT_BASE = 'app6Ot3eOb3DangkB';
 const CONV_TABLE = 'tblyin27D2J9ejHvf';
@@ -134,6 +135,16 @@ module.exports = async function handler(req, res) {
 
   var convId = (body.convId || '').toString().replace(/[\u0000-\u001F\u007F]/g, '').slice(0, 64);
   if (!convId) return res.status(400).json({ error: 'Missing convId' });
+
+  // This endpoint is unauthenticated (CORS *) and each call can trigger an
+  // Anthropic scoring request + Airtable writes. It is normally invoked
+  // server-to-server from log-conversation over HTTP (shared Vercel egress IP),
+  // so limit by convId — the abuse vector is forcing repeated scoring — rather
+  // than by IP, which would throttle legitimate internal calls under load.
+  try {
+    var qrl = await ratelimit.check('rl:conv-quality:' + convId, 5, 600);
+    if (!qrl.allowed) return res.status(429).json({ error: 'Too many requests' });
+  } catch (e) { /* limiter unavailable — the found-check + 1h skip below still bound cost */ }
 
   try {
     var conv = await findConversation(atKey, convId);

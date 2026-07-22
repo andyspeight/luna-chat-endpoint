@@ -1687,6 +1687,23 @@ The widget still understands legacy markers [FQ], [OPT], [BOOKING_LOOKUP:...], a
 const DAILY_CHAT_CAP = parseInt(process.env.LUNA_DAILY_CHAT_CAP || '10000', 10); // global daily hard-cap on chat requests
 const DAILY_CHAT_KEY = 'luna-chat';
 
+// In-process fallback for the daily spend cap. When the Redis limiter is
+// CONFIGURED but unreachable (down or slow past its 2s timeout), incrDaily
+// returns null and the global cap would otherwise be skipped entirely — an
+// unbounded-bill risk exactly when the limiter is failing. We bound each
+// serverless instance to a conservative per-day count so a limiter outage caps
+// spend instead of removing the ceiling. If the limiter is NOT configured at all
+// (local dev), behaviour is unchanged (uncapped) — this only bites in production.
+const LOCAL_FALLBACK_CAP = parseInt(process.env.LUNA_LOCAL_FALLBACK_CAP || '400', 10);
+let _localCapDay = null;
+let _localCapCount = 0;
+function localDailyCapExceeded() {
+  const today = new Date().toISOString().slice(0, 10);
+  if (_localCapDay !== today) { _localCapDay = today; _localCapCount = 0; }
+  _localCapCount += 1;
+  return _localCapCount > LOCAL_FALLBACK_CAP;
+}
+
 // --- INPUT SANITIZATION ---
 // Phase 3.5: server-side intent detection for real-time status events.
 // Returns a short, specific status string based on what the visitor is asking.
@@ -2653,9 +2670,19 @@ module.exports = async function handler(req, res) {
 
   mark('rateLimitDone');
 
-  // Global daily cap on Anthropic spend — prevents runaway bills if every other limit is bypassed
+  // Global daily cap on Anthropic spend — prevents runaway bills if every other limit is bypassed.
+  // SECURITY: this must not fail OPEN. When the limiter is configured but the call
+  // fails (returns null), fall back to a per-instance cap rather than skipping the
+  // ceiling — otherwise a Redis outage becomes an unbounded bill.
   const dailyCount = await ratelimit.incrDaily(DAILY_CHAT_KEY, 1);
-  if (dailyCount !== null && dailyCount > DAILY_CHAT_CAP) {
+  let dailyBlocked = false;
+  if (dailyCount !== null) {
+    dailyBlocked = dailyCount > DAILY_CHAT_CAP;
+  } else if (ratelimit.isConfigured()) {
+    dailyBlocked = localDailyCapExceeded();
+    if (dailyBlocked) console.error('[luna-chat] Daily cap: limiter unreachable, per-instance fallback tripped');
+  }
+  if (dailyBlocked) {
     console.error('[luna-chat] Daily cap exceeded:', dailyCount, 'of', DAILY_CHAT_CAP);
     return res.status(429).json({
       reply: "Our AI assistant is experiencing high demand right now. Please try again shortly or contact us directly.",
@@ -2805,7 +2832,12 @@ module.exports = async function handler(req, res) {
         const profileUrl = 'https://api.airtable.com/v0/app6Ot3eOb3DangkB/tbl6CZ7aVzq1wHF2v'
           + '?filterByFormula=' + encodeURIComponent("{ClientName}='" + sanitizeClientNameForFormula(clientName) + "'")
           + '&maxRecords=1';
-        const pRes = await fetch(profileUrl, { headers: { 'Authorization': 'Bearer ' + profileAtKey } });
+        const pRes = await fetch(profileUrl, {
+          headers: { 'Authorization': 'Bearer ' + profileAtKey },
+          // Per-turn hot path: cap the wait so slow Airtable degrades gracefully
+          // instead of holding the serverless slot open to maxDuration (30s).
+          signal: AbortSignal.timeout(2500)
+        });
         const pData = await pRes.json();
         if (pData.records && pData.records.length > 0) {
           const f = pData.records[0].fields || {};
