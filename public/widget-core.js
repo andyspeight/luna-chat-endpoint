@@ -3927,10 +3927,25 @@ function buildBlockContext() {
           submitEnquiry(event);
           break;
         case "booking_action":
-          if (event.action === "pay_balance") {
-            sendToAI("I'd like to pay my balance for booking " + (event.reference || ""));
-          } else if (event.action === "view_documents") {
-            sendToAI("Can I get my travel documents for booking " + (event.reference || ""));
+          // Post-booking next steps. Each maps to a natural request so it flows
+          // through the normal path and Luna answers with the booking context
+          // she already holds. Unknown actions degrade to a generic ask.
+          var _ref = event.reference ? (" for booking " + event.reference) : "";
+          var BOOKING_ACTION_MSG = {
+            pay_balance:    "I'd like to pay my balance" + _ref + ".",
+            view_documents: "Can I get my travel documents" + _ref + "?",
+            add_extras:     "I'd like to add extras to my booking" + _ref + " (bags, transfers, seats).",
+            add_bags:       "I'd like to add baggage to my booking" + _ref + ".",
+            add_transfers:  "Can I add airport transfers to my booking" + _ref + "?",
+            manage_booking: "I'd like to manage my booking" + _ref + ".",
+            check_in:       "How do I check in for my flights" + _ref + "?",
+            pre_departure:  "What do I need to do before I travel" + _ref + "?",
+            contact_agent:  "Can someone from the team help me with my booking" + _ref + "?"
+          };
+          if (event.action === "contact_agent") {
+            escalateToHuman();
+          } else if (BOOKING_ACTION_MSG[event.action]) {
+            sendToAI(BOOKING_ACTION_MSG[event.action]);
           } else {
             sendToAI(event.action ? "Help me with: " + event.action : "Help me with my booking");
           }
@@ -4608,7 +4623,11 @@ function submitEnquiry(event) {
     visitorId: visitorId || "",
     name: contact.name, email: contact.email || null, phone: contact.phone || null,
     brief: event.brief || {},
-    searchUrl: lastDeepLink || null
+    searchUrl: lastDeepLink || null,
+    // Attribution: where the visitor was, and how they arrived. Lets the agency
+    // see which pages and campaigns actually drive enquiries.
+    landingPage: (function () { try { return window.location.href; } catch (e) { return ""; } })(),
+    referrer: (function () { try { return document.referrer || ""; } catch (e) { return ""; } })()
   };
   fetch(C.endpoint.replace("/api/luna-chat", "/api/luna-enquiry"), {
     method: "POST", headers: { "Content-Type": "application/json" },
