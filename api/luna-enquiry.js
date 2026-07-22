@@ -50,6 +50,8 @@ const F = {
   searchUrl: 'fld9o8JVBQAZMgWWg',
   summary: 'fldQFx0qPfah7ozAM',
   source: 'fldo2ScRfwXr0MyvM',
+  landingPage: 'fldXz6WvVrybt23lC',
+  referrer: 'fldHo8iu3RtQX6NIi',
   createdAt: 'fldqx21yZX2OA9scs',
 };
 
@@ -208,6 +210,12 @@ module.exports = async function handler(req, res) {
     fields[F.tripBriefJson] = JSON.stringify(cleanBrief);
     var searchUrl = clip(body.searchUrl, 1000);
     if (/^https?:\/\//i.test(searchUrl)) fields[F.searchUrl] = searchUrl;
+    // Attribution (best-effort, never required). Only accept http(s) URLs for the
+    // landing page; the referrer can be blank (direct traffic) so it is optional.
+    var landingPage = clip(body.landingPage, 1000);
+    if (/^https?:\/\//i.test(landingPage)) fields[F.landingPage] = landingPage;
+    var referrer = clip(body.referrer, 1000);
+    if (/^https?:\/\//i.test(referrer)) fields[F.referrer] = referrer;
     fields[F.summary] = summary;
     fields[F.source] = 'Luna Chat';
 

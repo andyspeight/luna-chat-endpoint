@@ -98,3 +98,48 @@ test('GUARD: dashboard subscribes to enquiry events and alerts the agent', () =>
   assert.match(DASH, /function handleEnquiry\(/, 'handleEnquiry must exist');
   assert.match(DASH, /lunaAlertSignal\('enquiry'/, 'enquiry must trigger the alert pipeline');
 });
+
+// ── #6 Post-booking flow ──
+const ENQ = fs.readFileSync(path.join(__dirname, '..', 'api', 'luna-enquiry.js'), 'utf8');
+
+test('GUARD: post-booking actions map to natural requests, contact routes to a human', () => {
+  // The widget booking_action handler must cover the post-booking journeys and
+  // route contact_agent to the live-agent escalation, not the AI.
+  ['pay_balance', 'view_documents', 'add_extras', 'check_in', 'manage_booking'].forEach(function (a) {
+    assert.ok(WIDGET.indexOf(a + ':') !== -1 || WIDGET.indexOf(a + ' ') !== -1 || WIDGET.indexOf("'" + a + "'") !== -1 || WIDGET.indexOf('"' + a + '"') !== -1,
+      'booking action ' + a + ' must be handled');
+  });
+  assert.match(WIDGET, /event\.action === "contact_agent"[\s\S]{0,40}escalateToHuman\(\)/,
+    'contact_agent must escalate to a human, not answer with the AI');
+});
+
+test('GUARD: prompt makes Luna a post-booking concierge, not a salesperson', () => {
+  assert.match(CHAT, /Post-booking help/, 'the post-booking guidance block must be present');
+  assert.match(CHAT, /concierge, not a salesperson/i, 'the non-selling stance must be explicit');
+  assert.match(CHAT, /balance is outstanding/i, 'balance-due next step must be guided');
+});
+
+// ── #7 Attribution ──
+
+test('GUARD: widget sends landingPage and referrer on the enquiry', () => {
+  assert.match(WIDGET, /landingPage:/, 'enquiry payload must include the landing page');
+  assert.match(WIDGET, /referrer:/, 'enquiry payload must include the referrer');
+});
+
+test('GUARD: enquiry endpoint writes attribution only for valid http(s) URLs', () => {
+  assert.match(ENQ, /landingPage:\s*'fld[A-Za-z0-9]{14}'/, 'landingPage field id must be mapped');
+  assert.match(ENQ, /referrer:\s*'fld[A-Za-z0-9]{14}'/, 'referrer field id must be mapped');
+  // Both must be gated behind an http(s) check so junk never lands in Airtable.
+  assert.match(ENQ, /\/\^https\?:\\\/\\\/\/i\.test\(landingPage\)/, 'landingPage must be URL-validated');
+  assert.match(ENQ, /\/\^https\?:\\\/\\\/\/i\.test\(referrer\)/, 'referrer must be URL-validated');
+});
+
+test('luna-enquiry still rejects a bad clientId even with attribution present', async () => {
+  process.env.AIRTABLE_KEY = process.env.AIRTABLE_KEY || 'test-key';
+  const res = mockRes();
+  await enquiry(req({
+    clientId: 'nope', name: 'Jo', email: 'jo@x.com',
+    landingPage: 'https://client.example/greece', referrer: 'https://google.com/'
+  }), res);
+  assert.equal(res.statusCode, 400, 'validation order unchanged by the new fields');
+});

@@ -3128,6 +3128,14 @@ No problem, drop your email and departure date in below and I'll find it.
     ctxLines.push("- For child/infant-related advice (travel documents for under-18s, baggage allowance for infants), use the party shape above. If the visitor specifically mentions a name, age or relationship not shown here, treat that as new information.");
     ctxLines.push("- The booking is for an EXISTING trip. Do NOT generate new search links or suggest alternative destinations unless the visitor explicitly asks to look at something else.");
     ctxLines.push("- If a follow-up question requires details NOT in this context (e.g. specific seat numbers, room type, special requests, payment status), say you can see the booking pack has that detail and they can scroll up to check it, or escalate to a human if it's a question only an agent can answer.");
+    ctxLines.push('');
+    ctxLines.push('### Post-booking help (be a concierge, not a salesperson)');
+    ctxLines.push('This visitor has ALREADY booked. Your job now is to help them get ready and feel looked after, never to sell them another trip. After answering their question, offer the ONE or TWO most relevant next steps as a quick_replies block, chosen from what the booking tells you:');
+    ctxLines.push('- If a balance is outstanding, gently offer to help pay it ("Pay my balance").');
+    ctxLines.push('- If departure is close (roughly 14 days or fewer), lean into getting ready: online check-in, baggage, transfers, what to pack, documents ("Check in", "Add baggage", "Pre-departure checklist").');
+    ctxLines.push('- If departure is further off, useful steps are documents, adding extras (bags, seats, transfers), or a question about the resort ("My documents", "Add extras").');
+    ctxLines.push('- Always keep "Speak to the team" within reach for anything you cannot resolve.');
+    ctxLines.push('Offer at most 3 chips, phrase them as short first-person actions, and never invent a next step the booking does not support (e.g. do not promise seat selection if you do not know it is available). If you are unsure, a plain helpful answer with no chips is better than a wrong offer.');
     systemPrompt += ctxLines.join('\n');
   }
 
