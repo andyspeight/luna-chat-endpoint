@@ -911,7 +911,7 @@ function renderEnquiryCard(props, ctx) {
     const phone = phoneIn.value.trim();
     if (!name) { err.textContent = 'Your name, please.'; return; }
     if (!email && !phone) { err.textContent = 'An email or phone number so they can reach you.'; return; }
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { err.textContent = 'That email doesn’t look right.'; return; }
+    if (email && !/^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+$/.test(email)) { err.textContent = 'That email doesn’t look right.'; return; }
 
     const brief = {};
     ENQUIRY_BRIEF_KEYS.forEach(k => { if (props[k] != null && props[k] !== '') brief[k] = props[k]; });
@@ -3778,10 +3778,13 @@ async function uploadFile(file){
 
 function buildAttachmentEl(att){
   var a = document.createElement("a");
-  a.href = att.url; a.target = "_blank"; a.rel = "noopener";
+  // Attachment URLs can arrive off the Ably channel (agent messages); run them
+  // through safeUrl so a hostile scheme (javascript:, data:) can't reach href/src.
+  var attUrl = safeUrl(att.url);
+  a.href = attUrl; a.target = "_blank"; a.rel = "noopener";
   if (att && /^image\//.test(att.contentType || "")) {
     a.className = "tgx-att-img";
-    var img = document.createElement("img"); img.src = att.url; img.alt = att.name || "image"; img.loading = "lazy";
+    var img = document.createElement("img"); img.src = attUrl; img.alt = att.name || "image"; img.loading = "lazy";
     a.appendChild(img);
   } else {
     a.className = "tgx-att-file";
@@ -4139,7 +4142,13 @@ function sendChatTranscript(email) {
     if (result.ok) {
       // Success — show toast then revert after a few seconds
       visitorEmail = email; // remember for next time
-      bar.innerHTML = '<div class="tgx-email-status tgx-email-status-success">\u2713 Sent to ' + email + '. Check your inbox.</div>';
+      // Build with textContent \u2014 never interpolate the (visitor-typed) email
+      // into innerHTML, or a crafted value fires as HTML.
+      bar.textContent = '';
+      var okBox = document.createElement('div');
+      okBox.className = 'tgx-email-status tgx-email-status-success';
+      okBox.textContent = '\u2713 Sent to ' + email + '. Check your inbox.';
+      bar.appendChild(okBox);
       setTimeout(resetEmailBar, 4500);
     } else {
       // Server-side error — show message + copy fallback
@@ -4156,15 +4165,19 @@ function sendChatTranscript(email) {
 function showEmailError(message, email) {
   var bar = $emailBar;
   if (!bar) return;
+  // Static markup only (no interpolation); the message is injected via
+  // textContent below so a server-supplied error string can never be markup.
   bar.innerHTML =
     '<div class="tgx-email-status tgx-email-status-error">' +
-      '<div class="tgx-email-status-text">' + (message || 'Send failed') + '</div>' +
+      '<div class="tgx-email-status-text"></div>' +
       '<div class="tgx-email-status-actions">' +
         '<button class="tgx-email-mini-btn" id="tgxEmailRetry">Try again</button>' +
         '<button class="tgx-email-mini-btn" id="tgxEmailCopy">Copy transcript</button>' +
         '<button class="tgx-email-mini-btn tgx-email-mini-btn-x" id="tgxEmailDismiss">Cancel</button>' +
       '</div>' +
     '</div>';
+  var _txt = bar.querySelector('.tgx-email-status-text');
+  if (_txt) _txt.textContent = message || 'Send failed';
   document.getElementById('tgxEmailRetry').addEventListener('click', function() {
     if (email) sendChatTranscript(email); else handleEmailChat();
   });
@@ -4199,7 +4212,7 @@ function handleEmailChat() {
     inp.focus();
     var submit = function() {
       var em = inp.value.trim();
-      if (em && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) {
+      if (em && /^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+$/.test(em)) {
         sendChatTranscript(em);
       } else {
         inp.style.borderColor = '#EF4444';
@@ -4535,7 +4548,10 @@ function showNameOverlay() {
   var ov = document.createElement("div");
   ov.className = "tgx-overlay";
   ov.id = "tgxNameOv";
-  var html = '<h3>'+C.namePrompt+'</h3><p>This helps us personalise your experience.</p>'
+  // Static markup only. Operator config strings (namePrompt, skipLabel,
+  // privacyUrl) are injected below via textContent / safeUrl so a config value
+  // containing quotes or angle brackets can't break out of the attribute/tag.
+  var html = '<h3 id="tgxNamePrompt"></h3><p>This helps us personalise your experience.</p>'
     +'<input type="text" id="tgxNameIn" placeholder="Your name" autofocus>'
     +'<input type="email" id="tgxEmailIn" placeholder="Email (optional)">'
     +'<input type="text" id="tgxHpIn" class="tgx-hp" tabindex="-1" autocomplete="off">'
@@ -4545,11 +4561,18 @@ function showNameOverlay() {
     +'<span class="tgx-cb-label">I\'d like to receive offers and updates</span>'
     +'</label>'
     +'<button class="tgx-obtn" id="tgxNameGo">Continue</button>'
-    +'<button class="tgx-olink" id="tgxNameSkip">'+C.skipLabel+'</button>';
-  if (C.privacyUrl) {
-    html += '<a class="tgx-privacy" href="'+C.privacyUrl+'" target="_blank" rel="noopener">See our privacy policy</a>';
-  }
+    +'<button class="tgx-olink" id="tgxNameSkip"></button>';
   ov.innerHTML = html;
+  var _npEl = ov.querySelector('#tgxNamePrompt'); if (_npEl) _npEl.textContent = C.namePrompt || '';
+  var _skEl = ov.querySelector('#tgxNameSkip'); if (_skEl) _skEl.textContent = C.skipLabel || '';
+  if (C.privacyUrl) {
+    var _pv = document.createElement('a');
+    _pv.className = 'tgx-privacy';
+    _pv.href = safeUrl(C.privacyUrl);
+    _pv.target = '_blank'; _pv.rel = 'noopener';
+    _pv.textContent = 'See our privacy policy';
+    ov.appendChild(_pv);
+  }
   $panel.appendChild(ov);
   var formOpenedAt = Date.now();
   setTimeout(function(){
@@ -4566,7 +4589,7 @@ function showNameOverlay() {
       marketingConsent = mi.checked;
       nameCollected = true;
       try { var _p = ensureProfile(); if (userName) _p.name = userName; if (visitorEmail) _p.email = visitorEmail; _p.marketingConsent = marketingConsent; saveVisitorProfile(_p); } catch(e){}
-      var emailValid = visitorEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(visitorEmail);
+      var emailValid = visitorEmail && /^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+$/.test(visitorEmail);
       if (emailValid && marketingConsent) {
         fetch(C.endpoint.replace("/api/luna-chat", "/api/subscribe"), {
           method: "POST", headers: {"Content-Type": "application/json"},
@@ -4703,13 +4726,16 @@ function showCobrowseConsent() {
     '<h3>Screen sharing request</h3>'
     + '<p>An agent would like to view this page with you to help. You can stop sharing at any time.</p>'
     + '<div style="display:flex;gap:10px;justify-content:center;margin-top:16px">'
-    +   '<button id="tgxCbAllow" style="padding:10px 20px;border:none;border-radius:10px;cursor:pointer;font-weight:600;font-size:14px;background:' + (C.accentColor || "#00B4D8") + ';color:#fff">Allow</button>'
+    +   '<button id="tgxCbAllow" style="padding:10px 20px;border:none;border-radius:10px;cursor:pointer;font-weight:600;font-size:14px;color:#fff">Allow</button>'
     +   '<button id="tgxCbDecline" class="tgx-olink" style="padding:10px 20px">Decline</button>'
     + '</div>';
   $panel.appendChild(ov);
   setTimeout(function(){
     var allow = document.getElementById("tgxCbAllow");
     var decline = document.getElementById("tgxCbDecline");
+    // Set the accent via CSSOM (not string-interpolated into the style attribute)
+    // so a config value with a quote can't break out and inject markup.
+    if (allow) allow.style.background = C.accentColor || "#00B4D8";
     if (allow) allow.addEventListener("click", function(){
       if (cobrowseChannel) cobrowseChannel.publish("cb-accept", {});
       cobrowseState = "sharing";
@@ -6388,7 +6414,7 @@ async function boot() {
     hero.className = 'tgx-hl-hero';
     if (data.photo && data.photo.url) {
       var img = document.createElement('img');
-      img.src = data.photo.url;
+      img.src = safeUrl(data.photo.url);
       img.alt = (data.heroTitle || '') + (data.photo.photographer ? ' — photo by ' + data.photo.photographer : '');
       img.loading = 'eager';
       hero.appendChild(img);
