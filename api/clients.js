@@ -97,15 +97,16 @@ module.exports = async function handler(req, res) {
     var email = (body.email || '').trim();
     var ably = (body.ablyKey || '').trim();
     var siteId = (body.siteId || '').trim();
-    // Cryptographically secure password generation — 4 random bytes → 8 hex chars
-    var generatedSuffix = crypto.randomBytes(4).toString('hex');
-    var pass = (body.password || slug.replace(/-/g, '') + generatedSuffix).trim();
+    // No DashboardPassword is generated any more. Dashboards authenticate via the
+    // central login (tg-auth-gate), not a per-client password. Minting one left a
+    // dead secret on every new client that the profile API then (wrongly) required,
+    // producing "Save failed: 401". See api/profile.js.
 
     if (!name || !slug || !email) {
       return res.status(400).json({ error: 'Missing required fields: name, slug, email' });
     }
 
-    var dashUrl = 'https://' + VERCEL_HOST + '/dashboard.html?client=' + encodeURIComponent(name) + '&ably=' + encodeURIComponent(ably) + '&pass=' + encodeURIComponent(pass);
+    var dashUrl = 'https://' + VERCEL_HOST + '/dashboard.html?client=' + encodeURIComponent(name);
     var embed = '<script src="https://' + VERCEL_HOST + '/widget-core.js" data-clientName="' + name.replace(/"/g, '&quot;') + '"' + (ably ? ' data-ablyKey="' + ably + '"' : '') + ' async><\/script>';
 
     try {
@@ -117,7 +118,6 @@ module.exports = async function handler(req, res) {
             ClientName: name,
             ClientSlug: slug,
             AblyKey: ably,
-            DashboardPassword: pass,
             ContactEmail: email,
             Status: 'Active',
             WidgetEmbed: embed,
@@ -136,7 +136,7 @@ module.exports = async function handler(req, res) {
 
       return res.status(200).json({
         success: true,
-        client: { name: name, slug: slug, email: email, dashUrl: dashUrl, embed: embed, password: pass }
+        client: { name: name, slug: slug, email: email, dashUrl: dashUrl, embed: embed }
       });
     } catch (e) {
       return res.status(500).json({ error: e.message });
