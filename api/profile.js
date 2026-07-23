@@ -95,16 +95,13 @@ module.exports = async function handler(req, res) {
     var entitled = await auth.resolveEntitledClient(atKey, session, record.id);
     if (!entitled) return res.status(403).json({ error: 'Not entitled to this client' });
 
-    // If this client has a DashboardPassword configured, it is REQUIRED and must
-    // match (timing-safe). Previously the check was skipped whenever no password
-    // header was sent, so anyone who knew a client's public name could read the
-    // profile (including the stored email-platform key) and overwrite its config.
-    // The dashboard always sends X-Client-Pass, so requiring it here is safe.
-    if (fields.DashboardPassword) {
-      if (!safeCompare(pass, fields.DashboardPassword)) {
-        return res.status(401).json({ error: 'Invalid password' });
-      }
-    }
+    // NOTE: the old per-client DashboardPassword check has been REMOVED.
+    // Authentication is now the central session validated above (validateSession
+    // + resolveEntitledClient) — the same login the live agent chat uses. The
+    // legacy shared password is obsolete for login, and requiring it here was
+    // rejecting the central-auth dashboard (which sends no password), causing
+    // "Save failed: 401". Any DashboardPassword still sitting on a record is
+    // simply ignored.
 
     // GET = read profile
     if (req.method === 'GET') {

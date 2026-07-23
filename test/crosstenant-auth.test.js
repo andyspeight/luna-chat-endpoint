@@ -80,3 +80,18 @@ test('the dashboard sends the session cookie to all three endpoints', () => {
   assert.ok(fetches >= 7, 'expected the known dashboard fetches; found ' + fetches);
   assert.ok(creds >= fetches, 'every credentialed endpoint fetch must send the cookie; creds=' + creds + ' fetches=' + fetches);
 });
+
+// ── the profile-save 401 fix (leftover DashboardPassword) ──
+const CLIENTS = read('api/clients.js');
+
+test('profile.js no longer rejects on a leftover DashboardPassword', () => {
+  // The obsolete password gate that produced "Save failed: 401" must be gone;
+  // the central session is the only auth now.
+  assert.doesNotMatch(PROFILE, /Invalid password/, 'the DashboardPassword 401 check must be removed');
+  assert.doesNotMatch(PROFILE, /if \(fields\.DashboardPassword\)/, 'no DashboardPassword enforcement remains');
+});
+
+test('clients.js no longer mints a dead DashboardPassword for new clients', () => {
+  assert.doesNotMatch(CLIENTS, /DashboardPassword:\s*pass/, 'new clients must not be given a password');
+  assert.doesNotMatch(CLIENTS, /&pass=/, 'the dashboard URL must not carry a password');
+});
