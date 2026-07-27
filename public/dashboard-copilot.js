@@ -18,7 +18,7 @@
    To wire it up, add ONE line near the end of dashboard.html, before </body>:
      <script src="/dashboard-copilot.js" defer></script>
    Optional override (e.g. local dev):
-     <script>window.LUNA_COPILOT_ENDPOINT = 'https://luna-chat-endpoint.vercel.app/api/luna-copilot';</script>
+     <script>window.LUNA_COPILOT_ENDPOINT = '/api/luna-copilot';</script>
    ========================================================================== */
 (function () {
   'use strict';
@@ -26,7 +26,7 @@
   window.__lunaCopilotLoaded = true;
 
   var ENDPOINT = window.LUNA_COPILOT_ENDPOINT ||
-    'https://luna-chat-endpoint.vercel.app/api/luna-copilot';
+    '/api/luna-copilot';
 
   // ---- credentials (same source the dashboard authenticates with) ---------
   function param(name) {
