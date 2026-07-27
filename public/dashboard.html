@@ -3587,7 +3587,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
   // ─── TRANSLATION ───
   async function translateForAgent(text) {
     try {
-      var res = await fetch('https://luna-chat-endpoint.vercel.app/api/translate', {
+      var res = await fetch('/api/translate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: text, targetLang: getDashboardLang() })
@@ -3887,7 +3887,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     // Save to localStorage as immediate backup
     try { localStorage.setItem(STORAGE_PREFIX + 'canned', JSON.stringify(list)); } catch(e) {}
     // Save to Airtable via profile API
-    fetch('https://luna-chat-endpoint.vercel.app/api/profile', {
+    fetch('/api/profile', {
       credentials: 'include',
       method: 'POST',
       headers: {
@@ -3902,7 +3902,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
   // Load canned responses from API (called after login)
   async function loadCannedFromAPI() {
     try {
-      const res = await fetch('https://luna-chat-endpoint.vercel.app/api/profile', {
+      const res = await fetch('/api/profile', {
         credentials: 'include',
         headers: { 'X-Client-Name': CONFIG.CLIENT_NAME, 'X-Client-Pass': CONFIG.PASSWORD }
       });
@@ -4467,7 +4467,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
 
   function brainApi(action, opts) {
     opts = opts || {};
-    var url = 'https://luna-chat-endpoint.vercel.app/api/luna-brain?action=' + encodeURIComponent(action);
+    var url = '/api/luna-brain?action=' + encodeURIComponent(action);
     return fetch(url, {
       credentials: 'include',
       method: opts.method || 'GET',
@@ -5211,7 +5211,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
 
   async function loadProfile() {
     try {
-      const res = await fetch('https://luna-chat-endpoint.vercel.app/api/profile', {
+      const res = await fetch('/api/profile', {
         credentials: 'include',
         headers: {
           'X-Client-Name': CONFIG.CLIENT_NAME,
@@ -5335,7 +5335,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     btns.forEach(b => { b.disabled = true; b.textContent = 'Saving...'; });
 
     try {
-      const res = await fetch('https://luna-chat-endpoint.vercel.app/api/profile', {
+      const res = await fetch('/api/profile', {
         credentials: 'include',
         method: 'POST',
         headers: {
@@ -5508,7 +5508,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
   function fetchStatsThen(cb) {
     if (_statsFetching) return; // dedupe concurrent fetches
     _statsFetching = true;
-    fetch('https://luna-chat-endpoint.vercel.app/api/luna-stats', {
+    fetch('/api/luna-stats', {
       credentials: 'include',
       method: 'GET',
       headers: {
@@ -6625,7 +6625,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       status.textContent = 'Scanning page ' + (i + 1) + ' of ' + urls.length + '...';
 
       try {
-        var res = await fetch('https://luna-chat-endpoint.vercel.app/api/scan-page', {
+        var res = await fetch('/api/scan-page', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -6731,7 +6731,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     scannedPages[idx] = { url: url, status: 'scanning', scannedAt: new Date().toISOString() };
     window._renderScannedPages();
     try {
-      var res = await fetch('https://luna-chat-endpoint.vercel.app/api/scan-page', {
+      var res = await fetch('/api/scan-page', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Client-Name': CONFIG.CLIENT_NAME },
         body: JSON.stringify({ url: url })
@@ -6859,7 +6859,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     // Save URLs list and scanned knowledge to profile
     var urlsList = scannedPages.map(function(p) { return p.url; }).join('\n');
     try {
-      await fetch('https://luna-chat-endpoint.vercel.app/api/profile', {
+      await fetch('/api/profile', {
         credentials: 'include',
         method: 'POST',
         headers: {
@@ -6886,7 +6886,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     await _origLoadProfile();
     // Load scanned URLs and results
     try {
-      var res = await fetch('https://luna-chat-endpoint.vercel.app/api/profile', {
+      var res = await fetch('/api/profile', {
         credentials: 'include',
         headers: { 'X-Client-Name': CONFIG.CLIENT_NAME, 'X-Client-Pass': CONFIG.PASSWORD }
       });
@@ -8821,7 +8821,7 @@ setTimeout(function () {
 /* Settings Hero 2 — "Draft it for me" + topic coverage. Self-contained IIFE. */
 (function(){
   function $(id){ return document.getElementById(id); }
-  var ENDPOINT = window.LUNA_COPILOT_ENDPOINT || 'https://luna-chat-endpoint.vercel.app/api/luna-copilot';
+  var ENDPOINT = window.LUNA_COPILOT_ENDPOINT || '/api/luna-copilot';
   var SPARK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 1.9 5.1a2 2 0 0 0 1.1 1.1L20 11l-5 1.8a2 2 0 0 0-1.1 1.1L12 19l-1.9-5.1a2 2 0 0 0-1.1-1.1L4 11l5-1.8a2 2 0 0 0 1.1-1.1z"></path><path d="M19 3v3M20.5 4.5h-3"></path></svg>';
   var SPIN  = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.2-8.6"></path></svg>';
   var TICK  = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';

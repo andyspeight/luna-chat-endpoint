@@ -73,12 +73,34 @@ test('all three endpoints use credentialed CORS (echo origin, not "*", with cred
   });
 });
 
-test('the dashboard sends the session cookie to all three endpoints', () => {
-  // Every profile/luna-brain/luna-stats fetch must carry credentials:'include'.
-  const fetches = (DASH.match(/vercel\.app\/api\/(profile|luna-brain|luna-stats)/g) || []).length;
-  const creds = (DASH.match(/credentials: 'include'/g) || []).length;
-  assert.ok(fetches >= 7, 'expected the known dashboard fetches; found ' + fetches);
-  assert.ok(creds >= fetches, 'every credentialed endpoint fetch must send the cookie; creds=' + creds + ' fetches=' + fetches);
+// REGRESSION GUARD for the live "Save failed: 401" incident.
+//
+// The dashboard is served from chat.travelify.io / lunachat.travelify.io, which are
+// aliases of THIS Vercel project. The central login cookie (tg_session) is scoped to
+// travelify.io, so it is ONLY sent on same-origin requests. Calling a
+// session-authenticated endpoint at the absolute https://luna-chat-endpoint.vercel.app
+// URL is cross-site: the browser withholds the cookie, validateSession sees nothing,
+// and every request 401s (both GET and POST). Session-authenticated endpoints must
+// therefore always be called with a relative, same-origin path.
+test('session-authenticated endpoints are called SAME-ORIGIN, never at an absolute vercel.app URL', () => {
+  const SESSION_ENDPOINTS = ['profile', 'luna-brain', 'luna-stats', 'luna-copilot'];
+  SESSION_ENDPOINTS.forEach(function (ep) {
+    const absolute = new RegExp('https://luna-chat-endpoint\\.vercel\\.app/api/' + ep.replace('-', '\\-'));
+    assert.doesNotMatch(DASH, absolute,
+      '/api/' + ep + ' must be called relative (same-origin) or the session cookie is withheld -> 401');
+  });
+  // ...and they must actually be present as relative calls.
+  assert.match(DASH, /['"]\/api\/profile/, 'profile must be called via a relative path');
+  assert.match(DASH, /['"]\/api\/luna-brain/, 'luna-brain must be called via a relative path');
+  assert.match(DASH, /['"]\/api\/luna-stats/, 'luna-stats must be called via a relative path');
+});
+
+test('the widget keeps ABSOLUTE endpoints (it runs on third-party client sites)', () => {
+  // The opposite invariant: widget-core.js is embedded on client websites, so its
+  // endpoints must stay absolute. It uses visitor-mode tokens, not a session cookie.
+  const WIDGET_SRC = read('public/widget-core.js');
+  assert.match(WIDGET_SRC, /https:\/\/luna-chat-endpoint\.vercel\.app\/api\/luna-chat/,
+    'the widget must keep an absolute endpoint');
 });
 
 // ── the profile-save 401 fix (leftover DashboardPassword) ──
