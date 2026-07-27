@@ -33,7 +33,12 @@ const ALLOWED_ORIGINS = [
   'https://chat.travelify.io'
 ];
 
-const CROSS_TENANT_ROLES = new Set(['owner', 'admin']);
+// SECURITY: cross-tenant listing is TRAVELGENIX STAFF ONLY. The auth platform's
+// `role` is a role within the user's OWN organisation — a client who owns their
+// agency account also has role 'owner'. Gating on role alone showed (and granted)
+// every client every other tenant. Shared with lib/luna-auth.js so the list the
+// user is shown can never drift from what they are actually entitled to.
+const { isCrossTenantUser } = require('../lib/luna-auth');
 
 function applyCors(req, res) {
   const origin = req.headers.origin;
@@ -127,7 +132,8 @@ module.exports = async function handler(req, res) {
       candidates = candidates.concat(byAuth);
     }
 
-    if (CROSS_TENANT_ROLES.has(role)) {
+    // STAFF ONLY. A client must never be shown another tenant's account.
+    if (isCrossTenantUser(role, email)) {
       const allClients = await fetchClients(atKey, "TRUE()", 50);
       candidates = candidates.concat(allClients);
     }
