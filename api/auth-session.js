@@ -38,7 +38,24 @@ const ALLOWED_ORIGINS = [
 // agency account also has role 'owner'. Gating on role alone showed (and granted)
 // every client every other tenant. Shared with lib/luna-auth.js so the list the
 // user is shown can never drift from what they are actually entitled to.
-const { isCrossTenantUser } = require('../lib/luna-auth');
+const { isCrossTenantUser, isStaffEmail } = require('../lib/luna-auth');
+
+// Is this Luna account a CLIENT's account, as opposed to one of our own?
+//
+// Decided from the record's own ContactEmail: a Travelgenix staff domain means
+// it's ours (Travelgenix, Travel Demo), anything else is a client's.
+//
+// Deliberately NOT inferred from the signed-in user's "home" account. The first
+// attempt did that and got it wrong: Andy's auth-platform client id matches no
+// Luna record, so the lookup fell through to a ContactEmail match and picked up
+// the Travel Demo record as his home, which made the real Travelgenix account
+// look like somebody else's.
+//
+// Fails SAFE: a record with no ContactEmail is treated as a client account, so
+// we warn rather than stay quiet.
+function isClientAccount(record) {
+  return !isStaffEmail((record.fields || {}).ContactEmail);
+}
 
 function applyCors(req, res) {
   const origin = req.headers.origin;
@@ -121,7 +138,16 @@ module.exports = async function handler(req, res) {
     const body = req.body || {};
     const requestedClientId = body.clientId ? String(body.clientId) : null;
 
-    let candidates = [];
+    // Two DIFFERENT things, kept apart on purpose:
+    //
+    //   own  — the accounts this user holds in their own right. An agency with
+    //          several websites has more than one. This is what the SWITCH
+    //          control is for, and it is all a client ever sees.
+    //   all  — every Luna account. Staff only. This is what ACT AS is for:
+    //          opening a client's account to support them.
+    //
+    // Conflating the two was wrong. Switch is not a support tool.
+    let own = [];
 
     if (currentAuthClientId) {
       const byAuth = await fetchClients(
@@ -129,25 +155,29 @@ module.exports = async function handler(req, res) {
         "{AuthClientId}='" + escFormula(currentAuthClientId) + "'",
         10
       );
-      candidates = candidates.concat(byAuth);
+      own = own.concat(byAuth);
     }
 
-    // STAFF ONLY. A client must never be shown another tenant's account.
-    if (isCrossTenantUser(role, email)) {
-      const allClients = await fetchClients(atKey, "TRUE()", 50);
-      candidates = candidates.concat(allClients);
-    }
-
-    if (candidates.length === 0) {
+    // Legacy fallback for accounts not yet carrying an AuthClientId.
+    if (own.length === 0) {
       const byEmail = await fetchClients(
         atKey,
         "LOWER({ContactEmail})='" + escFormula(email) + "'",
         10
       );
-      candidates = candidates.concat(byEmail);
+      own = own.concat(byEmail);
+    }
+    own = dedupeRecords(own);
+
+    // STAFF ONLY. A client must never be shown another tenant's account.
+    const staff = isCrossTenantUser(role, email);
+    let all = [];
+    if (staff) {
+      all = await fetchClients(atKey, "TRUE()", 50);
     }
 
-    candidates = dedupeRecords(candidates);
+    // Entitlement is the union — what this user may open by any route.
+    const candidates = dedupeRecords(own.concat(all));
 
     if (candidates.length === 0) {
       return res.status(404).json({
@@ -155,12 +185,18 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    const summary = candidates.map(function (rec) {
+    const brief = function (rec) {
       return {
         id: rec.id,
-        name: (rec.fields && rec.fields.ClientName) || rec.id
+        name: (rec.fields && rec.fields.ClientName) || rec.id,
+        // Lets the picker label client accounts, so opening one is a conscious act.
+        isClient: isClientAccount(rec)
       };
-    });
+    };
+    const summary = candidates.map(brief);
+    const ownSummary = own.map(brief);
+    // Only the accounts that are actually somebody else's are worth "acting as".
+    const clientSummary = all.filter(isClientAccount).map(brief);
 
     let chosen = null;
     if (requestedClientId) {
@@ -172,15 +208,29 @@ module.exports = async function handler(req, res) {
       chosen = candidates[0];
     }
 
+    // ACTING AS — staff working inside a client's account. Staff only, by
+    // definition: a client is never entitled to an account other than their own,
+    // and their own is not a "client account" from their point of view.
+    const actingAs = !!(staff && chosen && isClientAccount(chosen));
+
     console.log('[auth-session] user', email, 'role=' + role,
       'currentAuthClientId=' + (currentAuthClientId || '-'),
+      'staff=' + staff,
+      'own=' + own.length,
       'candidates=' + candidates.length,
-      'chosen=' + (chosen ? chosen.id : '(picker)'));
+      'chosen=' + (chosen ? chosen.id : '(picker)'),
+      actingAs ? 'ACTING-AS' : '');
 
     return res.status(200).json({
       success: true,
       candidates: summary,
+      // Your own accounts — drives Switch (an agency with several websites).
+      accounts: ownSummary,
+      // Client accounts — drives Act as. Empty for everyone except staff.
+      clientAccounts: clientSummary,
       config: chosen ? buildConfig(chosen) : null,
+      isStaff: staff,
+      actingAs: actingAs,
       account: {
         email: meData.user.email,
         fullName: meData.user.fullName || '',

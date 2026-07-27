@@ -62,8 +62,11 @@ test('GUARD: resolveEntitledClient grants any-client access only to staff', () =
   assert.doesNotMatch(SRC, /if \(CROSS_TENANT_ROLES\.has\(session\.role\)\)/, 'the role-only check must be gone');
 });
 
-test('GUARD: the switcher button reflects entitled accounts, not role', () => {
+test('GUARD: the switcher button reflects the user OWN accounts, not role', () => {
   const DASH = read('public/dashboard.html');
-  assert.match(DASH, /entitledCount > 1/, 'switcher must show only with >1 entitled account');
+  // Tightened further: Switch exists for a client who owns several websites, so
+  // it counts data.accounts (own) rather than everything the user may open. A
+  // staff member's ability to support clients is not a reason to offer a switcher.
+  assert.match(DASH, /ownCount > 1/, 'switcher must show only with >1 OWN account');
   assert.doesNotMatch(DASH, /canSwitch = CONFIG\.USER_ROLE === 'owner'/, 'role-based switcher must be gone');
 });
