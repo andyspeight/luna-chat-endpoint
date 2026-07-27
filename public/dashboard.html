@@ -2975,13 +2975,16 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       if (savedTheme !== 'dark' && isCurrentlyDark) window._toggleTheme();
     } catch (e) {}
 
-    // Toggle the company-switcher button. Visible for owners/admins only —
-    // they're the ones with cross-tenant access. Wired up via _switchCompany()
-    // defined later in this file.
+    // Toggle the company-switcher button. Shown ONLY when this user is actually
+    // entitled to more than one account. Gating on role was wrong: the auth
+    // platform's role is per-organisation, so a client who owns their own agency
+    // account also has role 'owner' and was shown a switcher listing other
+    // tenants. The server is now the authority (it returns only the accounts the
+    // user may use); the button simply reflects how many that is.
     var switchBtn = document.getElementById('switchCompanyBtn');
     if (switchBtn) {
-      var canSwitch = CONFIG.USER_ROLE === 'owner' || CONFIG.USER_ROLE === 'admin';
-      switchBtn.style.display = canSwitch ? '' : 'none';
+      var entitledCount = (data && Array.isArray(data.candidates)) ? data.candidates.length : 1;
+      switchBtn.style.display = entitledCount > 1 ? '' : 'none';
     }
 
     // Show dashboard
