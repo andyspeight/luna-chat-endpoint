@@ -9,6 +9,7 @@
 // Auth: X-Client-Name header set by tg-auth-gate session (same pattern as /api/profile).
 
 const freshness = require('../lib/freshness');
+const auth = require('../lib/luna-auth');
 
 const AT_BASE = 'app6Ot3eOb3DangkB';
 const KNOWLEDGE_TABLE = 'tblstATJ3BSqtuTDU';
@@ -66,6 +67,7 @@ function applyCors(req, res) {
   if (origin && ALLOWED_ORIGINS.indexOf(origin) !== -1) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Credentials', 'true'); // dashboard sends tg_session
   } else {
     res.setHeader('Access-Control-Allow-Origin', '*');
   }
@@ -455,9 +457,18 @@ module.exports = async function handler(req, res) {
 
   var action = (req.query.action || '').trim();
 
+  // ── AUTH (fail fast) ── This endpoint reads a tenant's knowledge, flagged
+  // transcripts and analytics, and writes to their knowledge base. Require a
+  // valid central session; entitlement to the client is checked below.
+  var session = await auth.validateSession(req.headers.cookie || '');
+  if (!session.ok) return res.status(session.status || 401).json({ error: session.error || 'Not signed in' });
+
   try {
     var clientRecordId = await findClient(atKey, clientName);
     if (!clientRecordId) return res.status(404).json({ error: 'Client not found' });
+
+    var entitled = await auth.resolveEntitledClient(atKey, session, clientRecordId);
+    if (!entitled) return res.status(403).json({ error: 'Not entitled to this client' });
 
     if (req.method === 'GET' && (action === 'feed' || action === '')) {
       var data = await actionFeed(atKey, clientRecordId, clientName);
