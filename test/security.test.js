@@ -2,8 +2,6 @@
 
 'use strict';
 
-require('./helpers'); // installs the Anthropic SDK stub — api/reverify.js requires the real SDK
-
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
