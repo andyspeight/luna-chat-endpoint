@@ -25,7 +25,7 @@ const fmt = require('../lib/wa-format');
 const convs = require('../lib/wa-conversations');
 const wamsg = require('../lib/wa-messages');
 
-const AGENT_ORIGINS = ['https://chat.travelify.io', 'https://lunachat.travelify.io', 'https://luna-chat.travelify.io', 'https://luna-chat-endpoint.vercel.app'];
+const AGENT_ORIGINS = ['https://chat.travelify.io', 'https://lunachat.travelify.io', 'https://luna-chat-endpoint.vercel.app'];
 
 function isValidRecordId(id) { return typeof id === 'string' && /^rec[A-Za-z0-9]{14}$/.test(id); }
 function isValidConvId(id) { return typeof id === 'string' && /^wa_\d{6,}_\d{4,}$/.test(id) && id.length < 64; }

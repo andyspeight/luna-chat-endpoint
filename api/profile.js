@@ -25,7 +25,7 @@ function isMaskedSecret(v) { return typeof v === 'string' && v.length > 0 && /^[
 const ALLOWED_ORIGINS = [
   'https://luna-chat-endpoint.vercel.app',
   'https://chat.travelify.io',
-  'https://luna-chat.travelify.io',
+  'https://lunachat.travelify.io',
   'http://localhost:3000',
   'http://localhost:5173'
 ];
