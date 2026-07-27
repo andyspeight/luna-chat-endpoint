@@ -8,12 +8,16 @@ const AT_TABLE = 'tbl6CZ7aVzq1wHF2v';
 // No hardcoded fallback. If ADMIN_PASSWORD is not configured, admin auth fails
 // closed (see the handler) rather than accepting a checked-in default.
 const ADMIN_PASS = process.env.ADMIN_PASSWORD || '';
-const VERCEL_HOST = 'luna-chat-endpoint.vercel.app';
+// The dashboard MUST be served from a travelify.io host: the central login cookie
+// (tg_session) is scoped to travelify.io, so on *.vercel.app the dashboard cannot
+// even sign in. Minting .vercel.app links handed every new client an unusable URL.
+const DASHBOARD_HOST = 'chat.travelify.io';
 
 // CORS allowlist — only our own Vercel deploy can call the authenticated routes.
 // Add custom client domains here if/when they start using them.
 const ALLOWED_ORIGINS = [
-  'https://luna-chat-endpoint.vercel.app'
+  'https://luna-chat-endpoint.vercel.app',
+  'https://chat.travelify.io'
 ];
 
 function applyCors(req, res) {
@@ -106,8 +110,8 @@ module.exports = async function handler(req, res) {
       return res.status(400).json({ error: 'Missing required fields: name, slug, email' });
     }
 
-    var dashUrl = 'https://' + VERCEL_HOST + '/dashboard.html?client=' + encodeURIComponent(name);
-    var embed = '<script src="https://' + VERCEL_HOST + '/widget-core.js" data-clientName="' + name.replace(/"/g, '&quot;') + '"' + (ably ? ' data-ablyKey="' + ably + '"' : '') + ' async><\/script>';
+    var dashUrl = 'https://' + DASHBOARD_HOST + '/dashboard.html?client=' + encodeURIComponent(name);
+    var embed = '<script src="https://' + DASHBOARD_HOST + '/widget-core.js" data-clientName="' + name.replace(/"/g, '&quot;') + '"' + (ably ? ' data-ablyKey="' + ably + '"' : '') + ' async><\/script>';
 
     try {
       var atRes = await fetch(atUrl, {

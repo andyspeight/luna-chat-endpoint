@@ -62,7 +62,7 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   var origin = req.headers.origin || '';
-  var AGENT_ORIGINS = ['https://chat.travelify.io', 'https://luna-chat-endpoint.vercel.app'];
+  var AGENT_ORIGINS = ['https://chat.travelify.io', 'https://lunachat.travelify.io', 'https://luna-chat-endpoint.vercel.app'];
   if (AGENT_ORIGINS.indexOf(origin) !== -1) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');

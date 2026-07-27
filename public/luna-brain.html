@@ -635,6 +635,10 @@ a:hover { text-decoration: underline; }
 .toast.success { background: var(--success); }
 .toast.error { background: var(--error); }
 </style>
+<!-- Central auth gate: bounces to id.travelify.io sign-in when there is no
+     session. /api/luna-brain is session-authenticated, so without this the
+     page loads but every request 401s. -->
+<script src="https://id.travelify.io/tg-auth-gate.js" data-product="*"></script>
 </head>
 <body>
 
@@ -730,7 +734,10 @@ a:hover { text-decoration: underline; }
   var API_BASE = (function() {
     // Allow override via window.LUNA_API_BASE for dev/staging
     if (window.LUNA_API_BASE) return window.LUNA_API_BASE;
-    return 'https://luna-chat-endpoint.vercel.app';
+    // Same-origin by default. /api/luna-brain is session-authenticated and the
+    // tg_session cookie is scoped to travelify.io, so an absolute vercel.app URL
+    // would be cross-site and the browser would withhold the cookie -> 401.
+    return '';
   })();
 
   // ── Helpers ──
@@ -795,6 +802,7 @@ a:hover { text-decoration: underline; }
     var url = API_BASE + '/api/luna-brain?action=' + encodeURIComponent(action);
     return fetch(url, {
       method: opts.method || 'GET',
+      credentials: 'include',   // send tg_session; /api/luna-brain requires it
       headers: {
         'Content-Type': 'application/json',
         'X-Client-Name': CLIENT_NAME

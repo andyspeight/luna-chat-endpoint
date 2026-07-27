@@ -19,7 +19,7 @@ const CLIENTS_TABLE = 'tbl6CZ7aVzq1wHF2v';
 const AGENT_ORIGINS = [
   'https://luna-chat-endpoint.vercel.app',
   'https://chat.travelify.io',
-  'https://luna-chat.travelify.io',
+  'https://lunachat.travelify.io',
   'http://localhost:3000',
   'http://localhost:5173'
 ];

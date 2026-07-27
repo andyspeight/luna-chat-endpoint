@@ -82,17 +82,77 @@ test('all three endpoints use credentialed CORS (echo origin, not "*", with cred
 // URL is cross-site: the browser withholds the cookie, validateSession sees nothing,
 // and every request 401s (both GET and POST). Session-authenticated endpoints must
 // therefore always be called with a relative, same-origin path.
-test('session-authenticated endpoints are called SAME-ORIGIN, never at an absolute vercel.app URL', () => {
-  const SESSION_ENDPOINTS = ['profile', 'luna-brain', 'luna-stats', 'luna-copilot'];
-  SESSION_ENDPOINTS.forEach(function (ep) {
-    const absolute = new RegExp('https://luna-chat-endpoint\\.vercel\\.app/api/' + ep.replace('-', '\\-'));
-    assert.doesNotMatch(DASH, absolute,
-      '/api/' + ep + ' must be called relative (same-origin) or the session cookie is withheld -> 401');
+// GENERIC guard: derive the session-authenticated endpoints from the SERVER code,
+// then scan EVERY front-end file. The earlier hand-listed version only checked
+// dashboard.html, so it missed public/luna-brain.html (which 401'd unconditionally)
+// and would miss any new endpoint added later.
+const FRONTEND_EXEMPT = new Set([
+  'widget-core.js'  // embedded on third-party sites; must stay absolute (visitor tokens)
+]);
+
+function sessionAuthedEndpoints() {
+  return fs.readdirSync(path.join(__dirname, '..', 'api'))
+    .filter(f => f.endsWith('.js'))
+    .filter(f => /validateSession/.test(read('api/' + f)))
+    .map(f => f.replace(/\.js$/, ''));
+}
+
+function frontendFiles() {
+  const dir = path.join(__dirname, '..', 'public');
+  return fs.readdirSync(dir)
+    .filter(f => (f.endsWith('.html') || f.endsWith('.js')) && !FRONTEND_EXEMPT.has(f));
+}
+
+test('NO front-end file calls a session-authenticated endpoint at an absolute vercel.app URL', () => {
+  const endpoints = sessionAuthedEndpoints();
+  assert.ok(endpoints.length >= 3, 'expected to detect the session endpoints; got ' + endpoints.join(','));
+  const offenders = [];
+  frontendFiles().forEach(function (file) {
+    const src = read('public/' + file);
+    endpoints.forEach(function (ep) {
+      const abs = new RegExp('https://luna-chat-endpoint\\.vercel\\.app/api/' + ep.replace(/-/g, '\\-'));
+      if (abs.test(src)) offenders.push(file + ' -> /api/' + ep);
+    });
   });
-  // ...and they must actually be present as relative calls.
+  assert.deepEqual(offenders, [],
+    'these call a session-authed endpoint cross-site, so the tg_session cookie is withheld -> 401: ' + offenders.join(', '));
+});
+
+// ably-token is DUAL-MODE: mode:'agent' requires a session, but mode:'visitor'
+// (used by the widget and the demo page) is unauthenticated BY DESIGN and issues a
+// strictly narrower capability. So calling it without credentials is legitimate.
+const DUAL_MODE_ENDPOINTS = new Set(['ably-token']);
+
+test('every front-end caller of a session-ONLY endpoint sends credentials', () => {
+  const endpoints = sessionAuthedEndpoints().filter(ep => !DUAL_MODE_ENDPOINTS.has(ep));
+  const missing = [];
+  frontendFiles().forEach(function (file) {
+    const src = read('public/' + file);
+    const callsSession = endpoints.some(ep => new RegExp('[\'"`]/api/' + ep.replace(/-/g, '\\-')).test(src));
+    if (callsSession && !/credentials:\s*'include'/.test(src)) missing.push(file);
+  });
+  assert.deepEqual(missing, [],
+    'these call a session-authed endpoint without credentials:\'include\' (cookie never sent): ' + missing.join(', '));
+});
+
+test('the dashboard still calls its session endpoints (relative)', () => {
   assert.match(DASH, /['"]\/api\/profile/, 'profile must be called via a relative path');
   assert.match(DASH, /['"]\/api\/luna-brain/, 'luna-brain must be called via a relative path');
   assert.match(DASH, /['"]\/api\/luna-stats/, 'luna-stats must be called via a relative path');
+});
+
+test('client provisioning hands out a dashboard URL on a host where sign-in works', () => {
+  const CLIENTS_SRC = read('api/clients.js');
+  assert.doesNotMatch(CLIENTS_SRC, /dashUrl[^\n]*luna-chat-endpoint\.vercel\.app/,
+    'the dashboard URL must not point at *.vercel.app — the tg_session cookie is scoped to travelify.io, so sign-in is impossible there');
+  assert.match(CLIENTS_SRC, /DASHBOARD_HOST\s*=\s*'chat\.travelify\.io'/, 'provisioning must use a travelify.io host');
+});
+
+test('no dead CORS host: luna-chat.travelify.io is not a real alias', () => {
+  fs.readdirSync(path.join(__dirname, '..', 'api')).filter(f => f.endsWith('.js')).forEach(function (f) {
+    assert.doesNotMatch(read('api/' + f), /luna-chat\.travelify\.io/,
+      f + ' references luna-chat.travelify.io, which does not resolve (the real alias is lunachat.travelify.io)');
+  });
 });
 
 test('the widget keeps ABSOLUTE endpoints (it runs on third-party client sites)', () => {
