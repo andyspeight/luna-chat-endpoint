@@ -121,6 +121,11 @@ module.exports = async function handler(req, res) {
     const body = req.body || {};
     const requestedClientId = body.clientId ? String(body.clientId) : null;
 
+    // `own` = the account(s) this user holds in their OWN right. Tracked
+    // separately from the staff-only cross-tenant list so the dashboard can tell
+    // "my account" apart from "a client account I am supporting", and show the
+    // ACTING AS banner accordingly.
+    let own = [];
     let candidates = [];
 
     if (currentAuthClientId) {
@@ -129,22 +134,25 @@ module.exports = async function handler(req, res) {
         "{AuthClientId}='" + escFormula(currentAuthClientId) + "'",
         10
       );
-      candidates = candidates.concat(byAuth);
+      own = own.concat(byAuth);
     }
 
-    // STAFF ONLY. A client must never be shown another tenant's account.
-    if (isCrossTenantUser(role, email)) {
-      const allClients = await fetchClients(atKey, "TRUE()", 50);
-      candidates = candidates.concat(allClients);
-    }
-
-    if (candidates.length === 0) {
+    if (own.length === 0) {
       const byEmail = await fetchClients(
         atKey,
         "LOWER({ContactEmail})='" + escFormula(email) + "'",
         10
       );
-      candidates = candidates.concat(byEmail);
+      own = own.concat(byEmail);
+    }
+
+    candidates = candidates.concat(own);
+
+    // STAFF ONLY. A client must never be shown another tenant's account.
+    const staff = isCrossTenantUser(role, email);
+    if (staff) {
+      const allClients = await fetchClients(atKey, "TRUE()", 50);
+      candidates = candidates.concat(allClients);
     }
 
     candidates = dedupeRecords(candidates);
@@ -155,10 +163,18 @@ module.exports = async function handler(req, res) {
       });
     }
 
+    // The user's HOME account — the one they hold in their own right. For staff
+    // this is the Travelgenix record; for a client it is their own agency. Any
+    // other chosen client means they are ACTING AS that client, and the dashboard
+    // says so loudly. The incident that prompted this was invisible precisely
+    // because nothing on screen told you whose account you were looking at.
+    const homeClientId = own.length ? own[0].id : null;
+
     const summary = candidates.map(function (rec) {
       return {
         id: rec.id,
-        name: (rec.fields && rec.fields.ClientName) || rec.id
+        name: (rec.fields && rec.fields.ClientName) || rec.id,
+        own: own.some(function (o) { return o.id === rec.id; })
       };
     });
 
@@ -168,19 +184,32 @@ module.exports = async function handler(req, res) {
       if (!chosen) {
         return res.status(403).json({ error: 'Requested client not linked to your account' });
       }
+    } else if (own.length === 1) {
+      // Always land in your OWN account. Staff previously got dropped into a
+      // picker listing every tenant; now supporting a client is a deliberate act.
+      chosen = own[0];
     } else if (candidates.length === 1) {
       chosen = candidates[0];
     }
 
+    const actingAs = !!(chosen && homeClientId && chosen.id !== homeClientId);
+
     console.log('[auth-session] user', email, 'role=' + role,
       'currentAuthClientId=' + (currentAuthClientId || '-'),
+      'staff=' + staff,
+      'own=' + own.length,
       'candidates=' + candidates.length,
-      'chosen=' + (chosen ? chosen.id : '(picker)'));
+      'home=' + (homeClientId || '-'),
+      'chosen=' + (chosen ? chosen.id : '(picker)'),
+      actingAs ? 'ACTING-AS' : '');
 
     return res.status(200).json({
       success: true,
       candidates: summary,
       config: chosen ? buildConfig(chosen) : null,
+      isStaff: staff,
+      homeClientId: homeClientId,
+      actingAs: actingAs,
       account: {
         email: meData.user.email,
         fullName: meData.user.fullName || '',
