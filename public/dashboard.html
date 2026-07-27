@@ -3199,7 +3199,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
 
   function loadTeamSpecialisms() {
     if (!CONFIG.CLIENT_NAME) return;
-    fetch('https://luna-chat-endpoint.vercel.app/api/agent-specialisms?client=' + encodeURIComponent(CONFIG.CLIENT_NAME), {
+    fetch('/api/agent-specialisms?client=' + encodeURIComponent(CONFIG.CLIENT_NAME), {
       credentials: 'include',
       headers: { 'X-Client-Name': CONFIG.CLIENT_NAME }
     }).then(function(r){ return r.ok ? r.json() : null; }).then(function(d){
@@ -3216,7 +3216,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
   }
 
   function saveAgentSpecialisms(email, specialisms) {
-    return fetch('https://luna-chat-endpoint.vercel.app/api/agent-specialisms', {
+    return fetch('/api/agent-specialisms', {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json', 'X-Client-Name': CONFIG.CLIENT_NAME },
       body: JSON.stringify({ client: CONFIG.CLIENT_NAME, email: email, specialisms: specialisms })
