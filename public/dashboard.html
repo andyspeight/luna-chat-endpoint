@@ -3082,6 +3082,27 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       const data = await fetchSessionConfig(clientId);
       if (!data.config) throw new Error('Client config not loaded');
       try { localStorage.setItem(CLIENT_PREF_KEY, clientId); } catch (e) {}
+
+      // RELOAD, never boot in place.
+      //
+      // bootSignedIn() re-points CONFIG and refetches the panels, but it does
+      // NOT clear the live conversation list, the in-memory `conversations`
+      // map, or the previous client's Ably channel subscriptions. Switching
+      // account in place therefore left the PREVIOUS client's chats on screen
+      // under the new client's name — Travelgenix's conversations appeared
+      // inside a client's account and vice versa. Nothing was wrong in the
+      // data; it was purely a stale view, but it is indistinguishable from a
+      // data leak when you are looking at it.
+      //
+      // A full reload is the only way to be certain nothing carries over. The
+      // chosen client is already stored above, so boot picks it straight up.
+      const appEl = document.getElementById('app');
+      if (appEl && appEl.classList.contains('active')) {
+        if (typeof ably !== 'undefined' && ably && ably.close) { try { ably.close(); } catch (e) {} }
+        window.location.reload();
+        return;
+      }
+
       pickerScreen.style.display = 'none';
       bootScreen.style.display = 'none';
       bootSignedIn(data);
@@ -3294,11 +3315,23 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     dashboardChannel.subscribe('conversation_resolved', msg => handleConversationResolved(msg.data));
     dashboardChannel.subscribe('enquiry', msg => handleEnquiry(msg.data));
 
-    // Agent presence
+    // Agent presence.
+    //
+    // When ACTING AS a client we WATCH their agents but never join them. Joining
+    // put "Travelgenix" into the client's own Agents Online list, which is both
+    // confusing and wrong: their widget reads agent presence to decide whether a
+    // human is available, so a support session made their visitors believe one of
+    // their agents was on hand. Supporting an account must not change what that
+    // account's customers are told.
     presenceChannel = ably.channels.get(CONFIG.PRESENCE_CHANNEL);
-    presenceChannel.presence.enter({ name: CONFIG.AGENT_NAME, status: 'online' }).then(function() {
-      presenceChannel.presence.get().then(function(members) { renderPresence(members); });
-    }).catch(function(e) { console.warn('Presence enter failed:', e); });
+    if (CONFIG.ACTING_AS === true) {
+      presenceChannel.presence.get().then(function(members) { renderPresence(members); })
+        .catch(function(e) { console.warn('Presence read failed:', e); });
+    } else {
+      presenceChannel.presence.enter({ name: CONFIG.AGENT_NAME, status: 'online' }).then(function() {
+        presenceChannel.presence.get().then(function(members) { renderPresence(members); });
+      }).catch(function(e) { console.warn('Presence enter failed:', e); });
+    }
     presenceChannel.presence.subscribe(updatePresenceList);
   }
 
