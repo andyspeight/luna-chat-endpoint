@@ -9,6 +9,10 @@
 // Auth: a valid central session (tg_session cookie) entitled to the requested
 // client is REQUIRED server-side — X-Client-Name alone is not trusted.
 
+// Widgets identify themselves by clientName. A renamed client must keep
+// resolving under the name already embedded on their site. Shared helper.
+const { clientNameFormula } = require('../lib/luna-auth');
+
 const auth = require('../lib/luna-auth');
 
 const AT_BASE = 'app6Ot3eOb3DangkB';
@@ -57,7 +61,7 @@ function applyCors(req, res) {
 
 async function findClient(atKey, clientName) {
   var url = 'https://api.airtable.com/v0/' + AT_BASE + '/' + CLIENTS_TABLE
-    + '?filterByFormula=' + encodeURIComponent("{ClientName}='" + clientName.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'")
+    + '?filterByFormula=' + encodeURIComponent(clientNameFormula(clientName))
     + '&maxRecords=1';
   var r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + atKey } });
   if (!r.ok) return null;

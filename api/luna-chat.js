@@ -1,3 +1,7 @@
+// Widgets identify themselves by clientName. A renamed client must keep
+// resolving under the name already embedded on their site. Shared helper.
+const { clientNameFormula } = require('../lib/luna-auth');
+
 const Anthropic = require('@anthropic-ai/sdk');
 const ratelimit = require('../lib/ratelimit');
 const knowledge = require('../lib/knowledge');
@@ -2868,7 +2872,7 @@ module.exports = async function handler(req, res) {
     if (profileAtKey) {
       try {
         const profileUrl = 'https://api.airtable.com/v0/app6Ot3eOb3DangkB/tbl6CZ7aVzq1wHF2v'
-          + '?filterByFormula=' + encodeURIComponent("{ClientName}='" + sanitizeClientNameForFormula(clientName) + "'")
+          + '?filterByFormula=' + encodeURIComponent(clientNameFormula(clientName))
           + '&maxRecords=1';
         const pRes = await fetch(profileUrl, {
           headers: { 'Authorization': 'Bearer ' + profileAtKey },
@@ -2926,6 +2930,31 @@ module.exports = async function handler(req, res) {
 
           // Multilingual is applied globally for every client (see the
           // unconditional block at the top of prompt assembly).
+
+          // WHAT THIS ASSISTANT IS CALLED.
+          //
+          // WidgetBotName only ever reached the widget's own UI label, never the
+          // prompt — so the hardcoded "You are Luna" won every reply. Jamie Wake
+          // Travel named theirs Ava, the bubble said Ava, and she still opened
+          // with "I'm Luna, the chat assistant here at Jamie Wake Travel". The
+          // visitor is looking at both at once, so it reads as broken.
+          //
+          // Only override when the client actually chose something. A blank
+          // field, or the "Luna"/"Luna AI" default, leaves the base prompt alone.
+          var botName = String(f.WidgetBotName || '').trim();
+          if (botName && !/^luna( ai)?$/i.test(botName)) {
+            systemPrompt += `\n\n## Your name — overrides the name used anywhere above
+
+On this website you are called **${botName}**, not Luna. That is the name this
+agency chose and it is on the chat window the visitor is looking at right now.
+
+- Introduce yourself as ${botName}.
+- Refer to yourself as ${botName} whenever you use your own name.
+- If asked your name, it is ${botName}.
+- Never call yourself Luna here, and never mention Luna as a product or explain
+  that you are "powered by" anything. As far as the visitor is concerned you are
+  ${botName}, this agency's own assistant.`;
+          }
 
           // Booking search integration
           const siteId = f.DeepLinkSiteID;

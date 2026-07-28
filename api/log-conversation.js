@@ -10,6 +10,10 @@
 // After upserting, this endpoint kicks off api/conversation-quality scoring
 // asynchronously (fire and forget).
 
+// Widgets identify themselves by clientName. A renamed client must keep
+// resolving under the name already embedded on their site. Shared helper.
+const { clientNameFormula } = require('../lib/luna-auth');
+
 const ratelimit = require('../lib/ratelimit');
 
 const AT_BASE = 'app6Ot3eOb3DangkB';
@@ -67,7 +71,7 @@ function sanitiseStr(s, maxLen) {
 
 async function findClientByName(atKey, clientName) {
   var url = 'https://api.airtable.com/v0/' + AT_BASE + '/' + CLIENTS_TABLE
-    + '?filterByFormula=' + encodeURIComponent("{ClientName}='" + clientName.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'")
+    + '?filterByFormula=' + encodeURIComponent(clientNameFormula(clientName))
     + '&maxRecords=1';
   var r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + atKey } });
   if (!r.ok) return null;
