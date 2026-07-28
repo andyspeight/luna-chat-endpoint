@@ -1,6 +1,10 @@
 // Luna Dashboard Auth API
 // Client logs in with name + password, gets their config back
 
+// Widgets identify themselves by clientName, so a renamed client must keep
+// resolving under the name already embedded on their site. Shared helper.
+const { clientNameFormula } = require('../lib/luna-auth');
+
 const AT_BASE = 'app6Ot3eOb3DangkB';
 const AT_TABLE = 'tbl6CZ7aVzq1wHF2v';
 
@@ -40,7 +44,7 @@ module.exports = async function handler(req, res) {
 
   try {
     var searchUrl = 'https://api.airtable.com/v0/' + AT_BASE + '/' + AT_TABLE
-      + '?filterByFormula=' + encodeURIComponent("LOWER({ClientName})='" + clientName.toLowerCase().replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'")
+      + '?filterByFormula=' + encodeURIComponent(clientNameFormula(clientName))
       + '&maxRecords=1';
     var sRes = await fetch(searchUrl, { headers: { 'Authorization': 'Bearer ' + atKey } });
     var sData = await sRes.json();

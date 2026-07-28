@@ -15,6 +15,10 @@
 
 const ratelimit = require('../lib/ratelimit');
 
+// Widgets identify themselves by clientName, so a renamed client must keep
+// resolving under the name already embedded on their site. Shared helper.
+const { clientNameFormula } = require('../lib/luna-auth');
+
 const AT_BASE = 'app6Ot3eOb3DangkB';
 const AT_CLIENTS = 'tbl6CZ7aVzq1wHF2v';
 const FROM_EMAIL = process.env.LEAD_NOTIFY_FROM || process.env.REVIEW_DIGEST_FROM || 'noreply@travelgenix.io';
@@ -66,7 +70,7 @@ module.exports = async function handler(req, res) {
   try {
     // Resolve the client's notification recipient (ContactEmail) by name.
     var url = 'https://api.airtable.com/v0/' + AT_BASE + '/' + AT_CLIENTS
-      + '?filterByFormula=' + encodeURIComponent("LOWER({ClientName})='" + clientName.toLowerCase().replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'")
+      + '?filterByFormula=' + encodeURIComponent(clientNameFormula(clientName))
       + '&maxRecords=1';
     var r = await fetch(url, { headers: { Authorization: 'Bearer ' + atKey } });
     var d = await r.json();
