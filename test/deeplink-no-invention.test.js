@@ -21,8 +21,8 @@ const path = require('node:path');
 const SRC = fs.readFileSync(path.join(__dirname, '..', 'api', 'luna-chat.js'), 'utf8');
 
 test('a client with NO DeepLinkSiteID gets an explicit no-search instruction', () => {
-  assert.match(SRC, /if \(!siteId\) \{/,
-    'the missing-siteId case must be handled, not left silent');
+  assert.match(SRC, /if \(!searchConfigured\) \{/,
+    'the unconfigured case must be handled, not left silent');
   assert.match(SRC, /Holiday Search — NOT AVAILABLE/);
 });
 
@@ -61,4 +61,28 @@ test('the 404 consequence is spelled out, not just the rule', () => {
   const at = SRC.indexOf('The ONLY permitted link format');
   const block = SRC.slice(at, at + 700);
   assert.match(block, /404/);
+});
+
+// ── a site id ALONE is not enough ──
+//
+// That's My Dream Holiday has DeepLinkSiteID 272 but no SearchTypes, so the
+// search block never emitted for them either — and Luna invented
+// thatsmydreamholiday.co.uk/search?type=citybreak... exactly as she did for a
+// client with no site id at all. Guarding only on the site id missed this.
+
+test('search counts as configured only with BOTH a site id and a search type', () => {
+  assert.match(SRC, /var searchConfigured = false;/);
+  assert.match(SRC, /searchConfigured = true;/,
+    'the flag must be set only inside the branch that actually emits the search rules');
+  const trueAt = SRC.indexOf('searchConfigured = true;');
+  const typesAt = SRC.indexOf('if (allowedTypes.length > 0) {');
+  assert.ok(typesAt !== -1 && typesAt < trueAt,
+    'it must be set inside the allowedTypes check, not just inside the siteId check');
+});
+
+test('the no-search rule fires on the flag, not on the site id alone', () => {
+  assert.match(SRC, /if \(!searchConfigured\) \{/,
+    'guarding on !siteId alone leaves clients with an id but no search types inventing URLs');
+  assert.doesNotMatch(SRC, /if \(!siteId\) \{/,
+    'the narrower guard must be gone');
 });

@@ -2929,6 +2929,13 @@ module.exports = async function handler(req, res) {
 
           // Booking search integration
           const siteId = f.DeepLinkSiteID;
+          // Search is only usable with BOTH a site id and at least one enabled
+          // search type. Tracked explicitly because either one missing has to
+          // produce the same "you cannot search, do not invent a link" rule —
+          // That's My Dream Holiday has a site id but no search types, and Luna
+          // invented URLs on their domain just as she did for a client with no
+          // site id at all.
+          var searchConfigured = false;
           if (siteId) {
             var rawTypes = f.SearchTypes;
             var allowedTypes = [];
@@ -2937,6 +2944,7 @@ module.exports = async function handler(req, res) {
             }
 
             if (allowedTypes.length > 0) {
+            searchConfigured = true;
             var typeNames = { Packages: 'package holidays', Flights: 'flights', Accommodation: 'hotels/accommodation', DynamicPackaging: 'flight + hotel combos' };
             var typeList = allowedTypes.map(function(t) { return t + ' (' + (typeNames[t] || t) + ')'; }).join(', ');
             var defaultType = allowedTypes.length === 1 ? allowedTypes[0] : (allowedTypes.includes('DynamicPackaging') ? 'DynamicPackaging' : (allowedTypes[0] || 'DynamicPackaging'));
@@ -3039,13 +3047,13 @@ If a link is not in the dl.tvllnk.com format above, do not send it.`;
 
           // NO SEARCH CONFIGURED for this client.
           //
-          // Everything above lives inside `if (siteId)`. Without it Luna received
-          // no link instructions at all — and rather than say she could not
-          // search, she invented plausible URLs on the client's own domain
-          // (jamiewaketravel.co.uk/search?destination=...). Every one was a 404,
-          // hit right when the visitor was ready to book. Silence is not a
-          // constraint; the gap has to be closed explicitly.
-          if (!siteId) {
+          // Everything above lives inside `if (siteId)` AND `if (allowedTypes)`.
+          // With either missing, Luna received no link instructions at all — and
+          // rather than say she could not search, she invented plausible URLs on
+          // the client's own domain (jamiewaketravel.co.uk/search?destination=...).
+          // Every one was a 404, hit right when the visitor was ready to book.
+          // Silence is not a constraint; the gap has to be closed explicitly.
+          if (!searchConfigured) {
             systemPrompt += `\n\n## Holiday Search — NOT AVAILABLE
 
 This agency has no live search connected, so you CANNOT run or link to a holiday
