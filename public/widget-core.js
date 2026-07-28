@@ -1935,8 +1935,27 @@ function mergeTripBrief(brief) {
   if (changed) {
     try { persistTripBrief(); } catch (e) {}
     try { renderTripBar(); } catch (e) {}
+    try { publishTopicUpdate(); } catch (e) {}   /* skills-routing: keep agents' topic current */
   }
   return changed;
+}
+/* Skills-based routing: the topic hint the dashboard uses to route this chat to
+   agents whose specialisms match. Derived from the trip brief we already hold. */
+function buildTopicHint() {
+  var t = {};
+  if (tripBrief.destination) t.destination = tripBrief.destination;
+  if (tripBrief.holidayType) t.holidayType = tripBrief.holidayType;
+  return t;
+}
+/* Push the current topic to the dashboard channel so an agent's routing view
+   updates as the visitor's trip takes shape. No-op until a conversation exists. */
+function publishTopicUpdate() {
+  try {
+    if (!dashChannel || !convStarted) return;
+    var topic = buildTopicHint();
+    if (!topic.destination && !topic.holidayType) return;
+    dashChannel.publish("conversation_topic", { convId: convId, topic: topic });
+  } catch (e) {}
 }
 /* Persist the accumulated brief onto the visitor profile so it survives reload
    and returning visits. Best-effort — never throws into the caller. */
@@ -4454,6 +4473,7 @@ function ensureConversationStarted() {
     },
     handler: "ai",
     startedAt: now,
+    topic: buildTopicHint(),  /* skills-routing: may be empty early, refined via conversation_topic */
     messages: msgs.filter(function(m){return m.role !== "widget";}).map(function(m){ return {from: m.role === "user" ? "visitor" : m.role, text: m.content, timestamp: new Date(m.ts).toISOString()}; })
   });
 
