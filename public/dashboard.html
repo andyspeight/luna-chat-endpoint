@@ -7006,6 +7006,8 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
         + actions
         + '</div>';
     }).join('');
+    // Let the readiness ring rescore — scanning is worth 15 points.
+    try { document.dispatchEvent(new CustomEvent('luna-scan-updated')); } catch(e) {}
   };
 
   // Rebuild the per-page Knowledge Sources list from previously-saved profile data,
@@ -7130,6 +7132,12 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     } catch(e) {
       console.warn('Failed to load scan data:', e.message);
     }
+    // The profile has landed and the scan panel is populated. Anything that
+    // scores the setup has to wait for this. It used to guess with fixed
+    // timeouts after the settings panel opened, so a profile that arrived a
+    // moment late left the readiness ring reading empty fields — telling
+    // clients to add pages they had already added and scanned.
+    try { document.dispatchEvent(new CustomEvent('luna-profile-loaded')); } catch(e) {}
   };
 
 
@@ -8878,8 +8886,16 @@ setTimeout(function () {
   function trainUrlCount(){ var t = val('setTrainUrls'); if(!t) return 0; return t.split(/\n+/).map(function(s){return s.trim();}).filter(Boolean).length; }
   function scannedCount(){
     var sec = $('trainResultsSection');
-    if(sec && sec.style.display !== 'none'){ var n = $('trainResults'); if(n && n.children) return n.children.length; }
-    return 0;
+    if(!sec || sec.style.display === 'none') return 0;
+    var n = $('trainResults');
+    if(n && n.children && n.children.length) return n.children.length;
+    // Fall back to the saved summary. The per-page list is rebuilt from stored
+    // knowledge and can legitimately be empty (e.g. pages saved before per-page
+    // content was kept) while the scan itself definitely happened. Counting only
+    // the rebuilt rows made a scanned account look unscanned.
+    var t = $('trainSummaryText');
+    var m = t && t.textContent && t.textContent.match(/^(\d+)\s+page/);
+    return m ? parseInt(m[1], 10) : 0;
   }
   function criteria(){
     var d = val('setDescription');
@@ -9015,7 +9031,12 @@ setTimeout(function () {
     var t = e.target.closest && e.target.closest('#settingsSaveBtn');
     if(t){ setTimeout(function(){ render(); if(previewUsed && lastQ) ask(lastQ); }, 1700); }
   });
-  /* recompute when the settings panel opens (profile loads async, so sample a few times) */
+  /* Recompute the moment the profile actually lands, however long it takes.
+     This is the reliable signal; the timeouts below are only a safety net for
+     the case where the panel is opened long after loading finished. */
+  document.addEventListener('luna-profile-loaded', function(){ render(); });
+  /* Also recompute after a scan finishes, so the ring moves without a reload. */
+  document.addEventListener('luna-scan-updated', function(){ render(); });
   var panel = $('settingsPanel');
   if(panel && 'MutationObserver' in window){
     var mo = new MutationObserver(function(){
