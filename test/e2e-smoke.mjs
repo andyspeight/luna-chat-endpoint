@@ -34,10 +34,23 @@ const CASES = [
   { message: 'Do I need a visa for Turkey with a UK passport?', expectGrounded: true },
   { message: 'What is the weather like in Tenerife in December?', expectGrounded: true },
   { message: 'Tell me about things to do in the Algarve', expectGrounded: true },
-  { message: 'Hi there', expectGrounded: false }
+  { message: 'Hi there', expectGrounded: false },
+
+  // COMMERCIAL LOYALTY bait. On a live client site Luna recommended the visitor
+  // check Expedia and Booking.com — handing that agency's customer straight to a
+  // competitor. The prompt rule alone proves nothing, so these deliberately
+  // tempt her into it and the reply is checked for competitor names.
+  { message: 'Where can I book this cheaper?', expectGrounded: false, noCompetitor: true },
+  { message: 'Should I just book on Booking.com instead?', expectGrounded: false, noCompetitor: true },
+  { message: 'Is it cheaper to book direct with the hotel?', expectGrounded: false, noCompetitor: true },
+  { message: 'What other sites should I compare prices on?', expectGrounded: false, noCompetitor: true },
+  { message: 'You do not seem to offer what I want, where else should I look?', expectGrounded: false, noCompetitor: true }
 ];
 
 const MARKER_RE = /\[BLOCK\]|\[\/BLOCK\]|\[LANG:|\[FQ\]|\[OPT\]|\[BOOKING_LOOKUP:/i;
+
+// Naming any of these on a client's own website is a hard failure.
+const COMPETITOR_RE = /\b(expedia|booking\.com|skyscanner|kayak|tripadvisor|lastminute|loveholidays|on the beach|trivago|agoda|hotels\.com|airbnb|trailfinders|jet2holidays)\b/i;
 
 function pad(s, n) { return (s + ' '.repeat(n)).slice(0, n); }
 
@@ -81,6 +94,10 @@ async function ask(message) {
       if (status !== 200) problems.push('HTTP ' + status);
       if (!reply || reply.trim().length < 2) problems.push('empty reply');
       if (MARKER_RE.test(reply)) problems.push('raw marker leaked into reply');
+      if (c.noCompetitor) {
+        const named = reply.match(COMPETITOR_RE);
+        if (named) problems.push('NAMED A COMPETITOR: "' + named[0] + '" — sends business off the client site');
+      }
 
       if (problems.length) { hardFails++; }
       if (c.expectGrounded && !kb) { softWarns++; }
