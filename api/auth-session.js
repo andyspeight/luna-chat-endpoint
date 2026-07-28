@@ -180,6 +180,16 @@ module.exports = async function handler(req, res) {
     const candidates = dedupeRecords(own.concat(all));
 
     if (candidates.length === 0) {
+      // LOG THE MISS. This path used to return silently, so when a real client
+      // was locked out ("No Luna Chat client linked to your account") there was
+      // nothing in the logs to say which identity had failed to match — the only
+      // way to diagnose it was to ask the client what they typed. These two
+      // values are exactly what has to be put on their record to let them in.
+      console.warn('[auth-session] NO CLIENT MATCHED — user', email,
+        'authClientId=' + (currentAuthClientId || '(none)'),
+        'staff=' + staff,
+        '| fix: set AuthClientId to that value, or ContactEmail to that address,'
+        + ' on their Clients record');
       return res.status(404).json({
         error: 'No Luna Chat client linked to your account. Contact your account manager.'
       });
