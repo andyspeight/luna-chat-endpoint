@@ -12,6 +12,10 @@
 //   accentColor?: string       // optional — for HTML email accent
 // }
 
+// Widgets identify themselves by clientName. A renamed client must keep
+// resolving under the name already embedded on their site. Shared helper.
+const { clientNameFormula } = require('../lib/luna-auth');
+
 const ratelimit = require('../lib/ratelimit');
 const { escapeFormulaString } = require('../lib/atescape');
 
@@ -224,7 +228,7 @@ module.exports = async function handler(req, res) {
   var clientFound = false;
   try {
     var searchUrl = 'https://api.airtable.com/v0/' + AT_BASE + '/' + AT_TABLE
-      + '?filterByFormula=' + encodeURIComponent("{ClientName}='" + escapeFormulaString(clientName) + "'")
+      + '?filterByFormula=' + encodeURIComponent(clientNameFormula(clientName))
       + '&maxRecords=1';
     var sRes = await fetch(searchUrl, { headers: { 'Authorization': 'Bearer ' + atKey } });
     if (sRes.ok) {

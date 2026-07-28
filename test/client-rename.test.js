@@ -99,3 +99,47 @@ test('the visitor path (resolveClientByName) honours the legacy name', () => {
   const SRC = read('lib/luna-auth.js');
   assert.match(SRC, /async function resolveClientByName\(atKey, clientName\) \{\s*\n\s*const recs = await fetchClients\(atKey, clientNameFormula\(clientName\), 1\);/);
 });
+
+// ── GENERIC SWEEP ──
+//
+// The first pass at this only grepped for LOWER({ClientName}) and so missed five
+// lookups written as a bare {ClientName}='...' — including api/luna-chat.js,
+// which loads the client's entire profile (business description, search config,
+// deep link site id), and api/log-conversation.js, which attaches conversations
+// to the client. Renaming Jamie Wake Travel therefore left his live chat
+// resolving (the widget loaded) but with no profile behind it.
+//
+// So scan EVERY endpoint rather than a hand-written list.
+
+// monitor.js looks up the literal 'travelgenix' record for an internal health
+// check. It is not a widget-supplied name and Travelgenix is not going to be
+// renamed, so it is exempt by name rather than by weakening the sweep.
+const SWEEP_EXEMPT = new Set(['monitor.js']);
+
+test('GUARD: no endpoint anywhere builds its own ClientName match', () => {
+  const apiDir = path.join(__dirname, '..', 'api');
+  const offenders = [];
+  fs.readdirSync(apiDir)
+    .filter(f => f.endsWith('.js') && !SWEEP_EXEMPT.has(f))
+    .forEach(function (file) {
+      const src = read('api/' + file);
+      // Any comparison against the ClientName field that is not the shared helper.
+      if (/\{ClientName\}\s*=/.test(src)) offenders.push(file);
+    });
+  assert.deepEqual(offenders, [],
+    'these resolve a client by name themselves, so a rename silently breaks them: ' + offenders.join(', '));
+});
+
+test('GUARD: the endpoints that lost their profile on rename now use the helper', () => {
+  ['luna-chat.js', 'log-conversation.js', 'luna-brain.js', 'luna-stats.js', 'email-chat-transcript.js']
+    .forEach(function (file) {
+      const src = read('api/' + file);
+      assert.match(src, /clientNameFormula\(clientName\)/, file + ' must use the shared helper');
+    });
+});
+
+test('GUARD: the agent Copilot resolves clients through the helper too', () => {
+  const SRC = read('api/luna-copilot.js');
+  assert.match(SRC, /filterByFormula: clientNameFormula\(name\)/,
+    'a renamed client would otherwise silently lose their Copilot');
+});

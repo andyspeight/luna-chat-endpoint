@@ -33,6 +33,7 @@
 
 const crypto = require('crypto');
 const auth = require('../lib/luna-auth');
+const { clientNameFormula } = auth;
 
 // ---- config ---------------------------------------------------------------
 const MODEL        = process.env.LUNA_COPILOT_MODEL || 'claude-haiku-4-5-20251001';
@@ -147,12 +148,12 @@ async function airtable(path, params) {
   return r.json();
 }
 
-// Look up a client by exact name. Name is escaped into a double-quoted
-// formula string so it can never break out into formula injection.
+// Look up a client by name, honouring a previous name so a renamed client does
+// not silently lose their Copilot. The shared helper escapes the name into the
+// formula so it can never break out into formula injection.
 async function getClient(name) {
-  const safe = String(name).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/[\r\n]/g, ' ');
   const data = await airtable(CLIENTS_TBL, {
-    filterByFormula: `{ClientName}="${safe}"`,
+    filterByFormula: clientNameFormula(name),
     maxRecords: 1,
     'returnFieldsByFieldId': 'true'
   });

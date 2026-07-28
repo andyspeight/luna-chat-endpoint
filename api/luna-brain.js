@@ -8,6 +8,10 @@
 //
 // Auth: X-Client-Name header set by tg-auth-gate session (same pattern as /api/profile).
 
+// Widgets identify themselves by clientName. A renamed client must keep
+// resolving under the name already embedded on their site. Shared helper.
+const { clientNameFormula } = require('../lib/luna-auth');
+
 const freshness = require('../lib/freshness');
 const auth = require('../lib/luna-auth');
 
@@ -78,7 +82,7 @@ function applyCors(req, res) {
 
 async function findClient(atKey, clientName) {
   var url = 'https://api.airtable.com/v0/' + AT_BASE + '/' + CLIENTS_TABLE
-    + '?filterByFormula=' + encodeURIComponent("{ClientName}='" + clientName.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'")
+    + '?filterByFormula=' + encodeURIComponent(clientNameFormula(clientName))
     + '&maxRecords=1';
   var r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + atKey } });
   if (!r.ok) return null;
