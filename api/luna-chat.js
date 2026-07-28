@@ -3025,8 +3025,42 @@ This flow is for Bucket Q (READY mode) ONLY — when the visitor has named a des
 - For Flights, do NOT include loc, lat, lng, or rad parameters, just org, dst, dates and travellers.
 - For Accommodation, do NOT include org or dst parameters, just loc, lat, lng, rad, dates and travellers.
 - URL-encode the location name: spaces become +, commas become %2C, apostrophes become %27.
-- Do NOT generate a search link until you have all the required details.`;
+- Do NOT generate a search link until you have all the required details.
+
+### The ONLY permitted link format
+
+Every search link you produce must start with https://dl.tvllnk.com/deeplink/${siteId}.
+NEVER write a search or booking URL on this agency's own website domain, and never
+invent a path such as /search?destination=... on their site. Those pages do not
+exist, so the visitor lands on a 404 at the exact moment they were ready to book.
+If a link is not in the dl.tvllnk.com format above, do not send it.`;
             } // end if allowedTypes.length > 0
+          }
+
+          // NO SEARCH CONFIGURED for this client.
+          //
+          // Everything above lives inside `if (siteId)`. Without it Luna received
+          // no link instructions at all — and rather than say she could not
+          // search, she invented plausible URLs on the client's own domain
+          // (jamiewaketravel.co.uk/search?destination=...). Every one was a 404,
+          // hit right when the visitor was ready to book. Silence is not a
+          // constraint; the gap has to be closed explicitly.
+          if (!siteId) {
+            systemPrompt += `\n\n## Holiday Search — NOT AVAILABLE
+
+This agency has no live search connected, so you CANNOT run or link to a holiday
+search. Never construct, guess, or invent a search, booking or availability URL
+of any kind, including on this agency's own website. Any link you make up is a
+404 and it fails the visitor at the worst possible moment.
+
+Do not say "let me search that for you" or promise results you cannot deliver.
+
+Instead, help with everything you genuinely can — destinations, advice, what the
+agency offers, financial protection, how booking works — and when the visitor is
+ready to look at actual prices or availability, hand over: take their trip
+details and offer to have the team come back to them, or point them to the
+agency's own phone number or contact page if you have it. Only link to pages you
+have actually been given.`;
           }
         }
       } catch (e) {
