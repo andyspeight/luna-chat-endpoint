@@ -13,6 +13,10 @@ const ADMIN_PASS = process.env.ADMIN_PASSWORD || '';
 // even sign in. Minting .vercel.app links handed every new client an unusable URL.
 const DASHBOARD_HOST = 'chat.travelify.io';
 
+// Every search type a client can offer. New clients get all of them — see the
+// note where this is used. Kept as one list so the default cannot drift.
+const DEFAULT_SEARCH_TYPES = ['Packages', 'Flights', 'Accommodation', 'DynamicPackaging'];
+
 // CORS allowlist — only our own Vercel deploy can call the authenticated routes.
 // Add custom client domains here if/when they start using them.
 const ALLOWED_ORIGINS = [
@@ -127,6 +131,18 @@ module.exports = async function handler(req, res) {
             WidgetEmbed: embed,
             DashboardURL: dashUrl,
             DeepLinkSiteID: siteId,
+            // Enable every search type by default.
+            //
+            // This was never set at provisioning, so every new client started
+            // with none — and holiday search silently did nothing until someone
+            // remembered to tick the boxes in Settings. Worse, with no search
+            // rules in her prompt Luna invented plausible search URLs on the
+            // client's own domain, and every one was a 404 (see #67).
+            //
+            // There is no reason to start a travel client with search switched
+            // off. They can narrow it in Settings > Holiday Search Types if they
+            // only sell some of these.
+            SearchTypes: DEFAULT_SEARCH_TYPES,
             CreatedAt: new Date().toISOString()
           }}],
           typecast: true
