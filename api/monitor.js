@@ -88,10 +88,22 @@ async function redisPipeline(commands) {
   }
 }
 
+// Returns the saved state AND whether the store was actually reachable.
+//
+// This distinction is the whole ballgame. The alert only fires on the SECOND
+// consecutive failure, and the counter lives in Redis. With no Redis configured
+// every run read `fails: 0`, incremented to 1, and never reached 2 — so the
+// monitor could fail every fifteen minutes, for days, and never once tell
+// anyone. It did exactly that: 24 consecutive failures with no alert.
+//
+// A watchdog that fails silently is worse than no watchdog, because it also
+// tells you everything is fine.
 async function loadState() {
   var res = await redisPipeline([['GET', STATE_KEY]]);
-  if (!res || res[0] == null) return { fails: 0, down: false };
-  try { return JSON.parse(res[0]); } catch (e) { return { fails: 0, down: false }; }
+  if (res === null) return { state: { fails: 0, down: false }, stored: false };
+  if (res[0] == null) return { state: { fails: 0, down: false }, stored: true };
+  try { return { state: JSON.parse(res[0]), stored: true }; }
+  catch (e) { return { state: { fails: 0, down: false }, stored: true }; }
 }
 
 async function saveState(state) {
@@ -234,11 +246,31 @@ module.exports = async function handler(req, res) {
   var a = checks[0], b = checks[1], c = checks[2];
   var healthy = a.ok && b.ok && c.ok;
 
-  var state = await loadState();
+  var loaded = await loadState();
+  var state = loaded.state;
+  var stateStored = loaded.stored;
   var actions = [];
 
+  // ALWAYS log the outcome. The detail used to exist only in the HTTP response
+  // body, which nothing reads — so a failing monitor was undiagnosable without
+  // the cron secret. The logs now say which check broke and why.
+  if (!healthy) {
+    console.error('[monitor] UNHEALTHY'
+      + ' | visitorToken: ' + (a.ok ? 'ok' : a.detail)
+      + ' | dashboardKey: ' + (b.ok ? 'ok' : b.detail)
+      + ' | aiGeneration: ' + (c.ok ? 'ok' : c.detail)
+      + ' | stateStore=' + (stateStored ? 'ok' : 'UNAVAILABLE'));
+  } else {
+    console.log('[monitor] healthy | stateStore=' + (stateStored ? 'ok' : 'UNAVAILABLE'));
+  }
+  if (!stateStored) {
+    console.error('[monitor] STATE STORE UNAVAILABLE (UPSTASH_REDIS_REST_* not set or unreachable). '
+      + 'Falling back to alerting on the FIRST failure, because the two-in-a-row counter cannot persist. '
+      + 'Expect a repeat alert every 15 minutes until the outage is fixed.');
+  }
+
   if (healthy) {
-    if (state.down) {
+    if (state.down && stateStored) {
       await tgSend('✅ Luna Chat is back up.\n\nRecovered at ' + new Date().toUTCString() + '. The visitor token path, the dashboard connection, and AI replies are all healthy again.');
       actions.push('sent recovery');
     }
@@ -250,21 +282,33 @@ module.exports = async function handler(req, res) {
     if (!b.ok) reasons.push('• Agent dashboard: ' + b.detail);
     if (!c.ok) reasons.push('• AI replies: ' + c.detail);
 
-    if (state.fails >= 2 && !state.down) {
+    // Two-in-a-row suppresses a blip. That is only possible when the counter can
+    // persist; without a state store, holding back the alert means never sending
+    // it at all. A repeated alert is an annoyance, silence is an outage nobody
+    // hears about.
+    var shouldAlert = stateStored ? (state.fails >= 2 && !state.down) : true;
+
+    if (shouldAlert) {
       await tgSend(
         '🚨 Luna Chat appears DOWN.\n\n' +
-        'Failed two checks in a row (about 15 minutes).\n\n' +
+        (stateStored
+          ? 'Failed two checks in a row (about 15 minutes).\n\n'
+          : 'Failing health checks.\n\n') +
         reasons.join('\n') +
+        (stateStored ? '' :
+          '\n\n(No alert state store configured, so this will repeat every 15 minutes '
+          + 'until it is fixed. Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN '
+          + 'to get one alert per outage instead.)') +
         '\n\nDashboard: chat.travelify.io/dashboard.html'
       );
       state.down = true;
-      actions.push('sent down alert');
-    } else if (state.fails < 2) {
+      actions.push(stateStored ? 'sent down alert' : 'sent down alert (no state store — will repeat)');
+    } else {
       actions.push('first failure — holding alert until the next check confirms');
     }
   }
 
-  await saveState(state);
+  if (stateStored) await saveState(state);
 
   // Server-to-server response only; contains no secrets.
   return res.status(healthy ? 200 : 503).json({
@@ -276,6 +320,7 @@ module.exports = async function handler(req, res) {
     },
     consecutiveFailures: state.fails,
     alerting: state.down,
+    stateStore: stateStored ? 'ok' : 'unavailable',
     actions: actions,
     checkedAt: new Date().toISOString()
   });
