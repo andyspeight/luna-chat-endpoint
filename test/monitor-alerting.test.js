@@ -82,3 +82,25 @@ test('the monitor still checks all three paths', () => {
   // had been retired, which is why the AI check exists.
   assert.match(SRC, /checkVisitorToken\(host\), checkDashboardKey\(\), checkAiGeneration\(\)/);
 });
+
+// ── the visitor-token check must say WHAT came back ──
+//
+// The first useful log read: "visitorToken: token endpoint returned 401". But
+// /api/ably-token contains exactly one 401 and it is on the agent branch, which
+// a visitor-shaped request cannot reach. So a 401 there is somebody else
+// answering — and a bare status code cannot tell you who.
+
+test('a failing visitor-token check reports the URL it called', () => {
+  assert.match(SRC, /' from ' \+ baseUrl/,
+    'a self-call to the wrong host is a prime suspect; the log must name it');
+});
+
+test('it reports the response body, not just the status', () => {
+  assert.match(SRC, /var peek = await r\.text\(\)/);
+  assert.match(SRC, /\| body: '/);
+});
+
+test('the body is trimmed and bounded before it reaches the logs', () => {
+  // An interception page is a whole HTML document.
+  assert.match(SRC, /\.replace\(\/\\s\+\/g, ' '\)\.trim\(\)\.slice\(0, 160\)/);
+});
