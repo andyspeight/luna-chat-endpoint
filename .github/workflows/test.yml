@@ -5,10 +5,11 @@
 # dashboard down, plus a test file that had been silently dead for weeks — it
 # threw on load, so its seven tests never ran and nobody noticed.
 #
-# No install step. The suite deliberately has zero dev dependencies and stubs
-# the Anthropic SDK at require time (test/helpers.js), so it runs on a bare
-# checkout in seconds. If a test ever genuinely needs a package, add the install
-# back rather than weakening the tests.
+# The suite deliberately has zero dev dependencies and stubs the Anthropic SDK
+# at require time (test/helpers.js), so it does not need an install to run. The
+# `npm ci` step below is there to prove the LOCKFILE is valid and in sync, not
+# because the tests need it. If a test ever genuinely needs a package, add it as
+# a devDependency rather than weakening the tests.
 name: Tests
 
 on:
@@ -35,6 +36,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+
+      # The lockfile is what makes a build reproducible: without it every deploy
+      # re-resolved the ^ranges, so production could pick up a dependency version
+      # nobody had run the suite against. `npm ci` fails outright if the lock has
+      # drifted out of sync with package.json, which is the state we want caught
+      # here rather than on Vercel.
+      - name: Check the lockfile installs and matches package.json
+        run: npm ci --no-audit --no-fund
 
       - name: Run tests
         run: npm test

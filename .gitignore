@@ -1,0 +1,22 @@
+# Secrets. Every value this project needs lives in Vercel environment
+# variables, never in the repo. A .env file here is a local convenience only and
+# must never be committed: it would hold AIRTABLE_KEY, ANTHROPIC_API_KEY,
+# ABLY_KEY, ADMIN_PASSWORD and the SendGrid key in one file, in public history.
+.env
+.env.*
+!.env.example
+
+# Dependencies. package.json + package-lock.json are the record; the tree is not.
+node_modules/
+
+# Vercel CLI working directory — contains the linked project and org ids.
+.vercel/
+
+# Local noise
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+.idea/
+.vscode/
+coverage/
