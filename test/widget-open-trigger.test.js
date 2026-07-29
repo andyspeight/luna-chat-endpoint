@@ -73,19 +73,50 @@ test('Enter and Space work, without double-firing on real buttons', () => {
 
 // ── the client has to be able to find it ──
 
-test('the dashboard shows a copy-paste snippet', () => {
-  assert.match(DASH, /Add your own "Chat to us" button/);
+// Clients are not developers. "Add data-luna-open to a button" assumes they
+// have a button and can edit HTML. The dashboard hands them a finished one.
+
+test('the dashboard offers a ready-made button, not just an attribute', () => {
+  assert.match(DASH, /Add a "Chat to us" button to a page/);
   assert.match(DASH, /id="triggerSnippet"/);
-  assert.match(DASH, /data-luna-open&gt;Chat to us/);
+  assert.match(DASH, /id="lbtnPreview"/, 'they must be able to see what they are pasting');
 });
 
-test('the expanded variant is offered too', () => {
-  assert.match(DASH, /id="triggerSnippetExpanded"/);
-  assert.match(DASH, /data-luna-open="expanded"/);
+test('the snippet is built from the client OWN brand colour', () => {
+  assert.match(DASH, /window\._clientConfig && window\._clientConfig\.brandColor/);
+  assert.match(DASH, /\/\^#\[0-9A-Fa-f\]\{6\}\$\/\.test\(c\)/,
+    'the colour goes straight into generated markup, so it must be validated');
 });
 
-test('both snippets have a working copy button', () => {
+test('the snippet carries its own styles, so it works on any site', () => {
+  assert.match(DASH, /'<!-- Chat to us button -->\\n<style>\\n' \+ css/);
+});
+
+test('three styles and an expanded option', () => {
+  assert.match(DASH, /_selectLunaButton\('solid'\)/);
+  assert.match(DASH, /_selectLunaButton\('outline'\)/);
+  assert.match(DASH, /_selectLunaButton\('link'\)/);
+  assert.match(DASH, /id="lbtnExpanded"/);
+});
+
+test('the snippet is DISPLAYED as text, never executed', () => {
+  assert.match(DASH, /if \(code\) code\.textContent = snip;/,
+    'using innerHTML here would run the markup instead of showing it');
+});
+
+test('the generated button has no inline event handlers', () => {
+  // Client sites may run a strict CSP; an onclick attribute would be blocked.
+  const at = DASH.indexOf('function lbtnSnippet()');
+  const block = DASH.slice(at, at + 2200);
+  assert.doesNotMatch(block, /on(click|mouseover|mouseout)=/i);
+  assert.match(block, /data-luna-open/, 'it opens via the delegated attribute instead');
+});
+
+test('it repaints when the profile lands, so the colour is not the fallback', () => {
+  assert.match(DASH, /addEventListener\('luna-profile-loaded', function\(\) \{ window\._renderLunaButton\(\); \}\)/);
+});
+
+test('the snippet has a working copy button', () => {
   assert.match(DASH, /window\._copyTriggerSnippet = function\(btn, id\)/);
   assert.match(DASH, /_copyTriggerSnippet\(this,'triggerSnippet'\)/);
-  assert.match(DASH, /_copyTriggerSnippet\(this,'triggerSnippetExpanded'\)/);
 });

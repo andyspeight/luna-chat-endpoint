@@ -2310,6 +2310,12 @@
   .sp3-copy:hover{ background:var(--teal-dark); } .sp3-copy:active{ transform:scale(.96); }
   .sp3-copy:focus-visible{ outline:2px solid var(--teal); outline-offset:2px; }
   .sp3-copy.copied{ background:var(--green); }
+  /* Ready-made "Chat to us" button builder */
+  .lbtn-tabs{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:var(--space-3); }
+  .lbtn-preview{ position:relative; display:flex; align-items:center; justify-content:center; min-height:84px; padding:var(--space-5) var(--space-4) var(--space-4); background:var(--navy-light); border:1px dashed var(--border); border-radius:var(--radius-md); }
+  .lbtn-preview-label{ position:absolute; top:8px; left:12px; font-size:10px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:var(--text-muted); }
+  .lbtn-optrow{ display:flex; align-items:center; gap:8px; margin-top:var(--space-3); font-size:var(--text-sm); color:var(--text-dim); cursor:pointer; }
+  .lbtn-optrow input{ width:16px; height:16px; accent-color:var(--teal); cursor:pointer; }
   .scan-page-actions{ display:flex; gap:6px; flex-shrink:0; align-items:flex-start; }
   .scan-page-rescan{ display:inline-flex; align-items:center; gap:5px; font-family:inherit; font-size:var(--text-xs); font-weight:600; color:var(--text-dim); background:var(--navy-light); border:1px solid var(--border); cursor:pointer; padding:5px 10px; border-radius:var(--radius-sm); transition:color .15s,background .15s,border-color .15s; flex-shrink:0; white-space:nowrap; }
   .scan-page-rescan:hover{ color:var(--teal-dark); background:var(--teal-glow); border-color:var(--teal); }
@@ -2364,21 +2370,36 @@
       </div>
       <div class="settings-hint" style="margin-top:10px">Need to test it first? Add <code style="background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:4px;font-size:11px">?lunaTest=1</code> to any page on your site to verify Luna loads before going live.</div>
 
-      <!-- Open-from-anywhere trigger. The floating bubble is always there; this
-           lets a client put their own button in the page copy as well. -->
+      <!-- Ready-made "Chat to us" button.
+           The floating bubble is always in the corner. This gives the client a
+           complete, already-styled button to drop into a page. Everything is
+           self-contained in the one snippet — no attribute to add to their own
+           markup, no CSS file to edit, nothing to wire up. -->
       <div class="sp3-install" style="margin-top:var(--space-4)">
-        <div class="sp3-install-title">Add your own "Chat to us" button</div>
-        <div class="settings-hint" style="margin-top:-4px;margin-bottom:12px">The chat bubble always sits in the corner. If you also want a button inside your page — on a destination page, next to a phone number, at the end of an article — add <code style="background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:4px;font-size:11px">data-luna-open</code> to any button or link. It can be styled however you like.</div>
-        <div class="sp3-codewrap">
-          <pre class="sp3-code" id="triggerSnippet">&lt;button data-luna-open&gt;Chat to us&lt;/button&gt;</pre>
+        <div class="sp3-install-title">Add a "Chat to us" button to a page</div>
+        <div class="settings-hint" style="margin-top:-4px;margin-bottom:14px">The chat bubble always sits in the corner of every page. This is an extra button you can put <em>inside</em> a page — next to your phone number, at the end of a holiday description, on your contact page. Pick a style, copy it, and paste it into your page wherever you want it. It uses your brand colour automatically.</div>
+
+        <div class="lbtn-tabs" id="lbtnTabs" role="tablist">
+          <button type="button" class="sp3-tab active" role="tab" data-lbtn="solid" onclick="window._selectLunaButton('solid')">Solid</button>
+          <button type="button" class="sp3-tab" role="tab" data-lbtn="outline" onclick="window._selectLunaButton('outline')">Outline</button>
+          <button type="button" class="sp3-tab" role="tab" data-lbtn="link" onclick="window._selectLunaButton('link')">Text link</button>
+        </div>
+
+        <div class="lbtn-preview">
+          <span class="lbtn-preview-label">Preview</span>
+          <div id="lbtnPreview"></div>
+        </div>
+
+        <label class="lbtn-optrow">
+          <input type="checkbox" id="lbtnExpanded" onchange="window._renderLunaButton()">
+          <span>Open the large chat panel and go straight into the conversation</span>
+        </label>
+
+        <div class="sp3-codewrap" style="margin-top:12px">
+          <pre class="sp3-code" id="triggerSnippet"></pre>
           <button type="button" class="sp3-copy" onclick="window._copyTriggerSnippet(this,'triggerSnippet')">Copy</button>
         </div>
-        <div class="settings-hint" style="margin-top:10px">Want it to open the big panel and go straight into the conversation? Use <code style="background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:4px;font-size:11px">data-luna-open="expanded"</code> instead:</div>
-        <div class="sp3-codewrap" style="margin-top:8px">
-          <pre class="sp3-code" id="triggerSnippetExpanded">&lt;a href="#" data-luna-open="expanded"&gt;Plan my holiday&lt;/a&gt;</pre>
-          <button type="button" class="sp3-copy" onclick="window._copyTriggerSnippet(this,'triggerSnippetExpanded')">Copy</button>
-        </div>
-        <div class="settings-hint" style="margin-top:10px">Works on a button, link, image or div, anywhere on the page, and on buttons your site adds later. If you would rather call it from your own script, use <code style="background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:4px;font-size:11px">openLunaChat()</code>.</div>
+        <div class="settings-hint" style="margin-top:10px">Paste this into an HTML or embed block on your page. If your website editor has a "custom code", "embed" or "HTML" block, that is the one. Your web person can also use <code style="background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:4px;font-size:11px">data-luna-open</code> on any existing button.</div>
       </div>
 
       <div class="sp3-install">
@@ -8682,6 +8703,85 @@ setTimeout(function () {
       } catch (e) { done(false); }
     }
   };
+
+  // ─── Ready-made "Chat to us" button ───────────────────────────────────
+  //
+  // Clients are not developers. Telling them to "add data-luna-open to a button"
+  // assumes they have a button and can edit HTML. This hands them a complete,
+  // already-styled button in their own brand colour that they paste into a page.
+  //
+  // Everything is inside the one snippet — the styles travel with it, so it does
+  // not matter what their site's CSS looks like and there is no second step. No
+  // inline event handlers, so it survives a strict Content-Security-Policy.
+  var _lbtnStyle = 'solid';
+
+  function lbtnBrand() {
+    var c = (window._clientConfig && window._clientConfig.brandColor) || '';
+    return /^#[0-9A-Fa-f]{6}$/.test(c) ? c : '#00C3D6';
+  }
+
+  // Darken for the hover state so the snippet needs no colour maths of its own.
+  function lbtnShade(hex, amount) {
+    try {
+      var n = parseInt(hex.slice(1), 16);
+      var r = Math.round(Math.max(0, ((n >> 16) & 255) * amount));
+      var g = Math.round(Math.max(0, ((n >> 8) & 255) * amount));
+      var b = Math.round(Math.max(0, (n & 255) * amount));
+      return '#' + [r, g, b].map(function (v) { return ('0' + v.toString(16)).slice(-2); }).join('');
+    } catch (e) { return hex; }
+  }
+
+  var LBTN_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>';
+
+  function lbtnSnippet() {
+    var brand = lbtnBrand();
+    var hover = lbtnShade(brand, 0.88);
+    var expanded = !!(document.getElementById('lbtnExpanded') || {}).checked;
+    var attr = expanded ? ' data-luna-open="expanded"' : ' data-luna-open';
+    var label = expanded ? 'Plan my holiday' : 'Chat to us';
+    var base = 'display:inline-flex;align-items:center;gap:9px;font-family:inherit;font-size:16px;font-weight:600;line-height:1;cursor:pointer;text-decoration:none;';
+
+    var css, el;
+    if (_lbtnStyle === 'outline') {
+      css = '.luna-chat-button{' + base + 'color:' + brand + ';background:transparent;border:2px solid ' + brand + ';border-radius:999px;padding:12px 22px;transition:background .15s ease,color .15s ease}\n'
+          + '.luna-chat-button:hover{background:' + brand + ';color:#fff}';
+    } else if (_lbtnStyle === 'link') {
+      css = '.luna-chat-button{' + base + 'color:' + brand + ';background:none;border:0;padding:0;text-underline-offset:3px;transition:color .15s ease}\n'
+          + '.luna-chat-button:hover{color:' + hover + ';text-decoration:underline}';
+    } else {
+      css = '.luna-chat-button{' + base + 'color:#fff;background:' + brand + ';border:0;border-radius:999px;padding:14px 24px;transition:background .15s ease}\n'
+          + '.luna-chat-button:hover{background:' + hover + '}';
+    }
+    el = '<button type="button" class="luna-chat-button"' + attr + '>' + LBTN_ICON + label + '</button>';
+
+    return '<!-- Chat to us button -->\n<style>\n' + css + '\n</style>\n' + el;
+  }
+
+  window._renderLunaButton = function() {
+    var snip = lbtnSnippet();
+    var code = document.getElementById('triggerSnippet');
+    if (code) code.textContent = snip;      // textContent, so the markup is shown not run
+    var prev = document.getElementById('lbtnPreview');
+    if (prev) {
+      // Preview only. The snippet is generated here from a fixed template and a
+      // validated hex colour, so there is no visitor-supplied content in it.
+      prev.innerHTML = snip.replace('<!-- Chat to us button -->\n', '');
+    }
+  };
+
+  window._selectLunaButton = function(style) {
+    _lbtnStyle = style;
+    var tabs = document.querySelectorAll('#lbtnTabs .sp3-tab');
+    for (var i = 0; i < tabs.length; i++) {
+      tabs[i].classList.toggle('active', tabs[i].getAttribute('data-lbtn') === style);
+    }
+    window._renderLunaButton();
+  };
+
+  // Repaint once the profile lands, so it picks up the client's real brand colour
+  // rather than the fallback.
+  document.addEventListener('luna-profile-loaded', function() { window._renderLunaButton(); });
+  window._renderLunaButton();
 
   // Copy for the "Chat to us" trigger snippets. Same behaviour as the embed
   // copy above, but takes the element id so one handler serves both snippets.
