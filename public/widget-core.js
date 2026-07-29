@@ -4596,9 +4596,10 @@ function showNameOverlay() {
           body: JSON.stringify({ clientName: C.clientName, name: userName, email: visitorEmail })
         }).catch(function(e){ console.warn("Luna widget: subscribe error:", e); });
       }
-      // Cross-device recall: now that we have an email, see if this person has
-      // chatted with this client before (possibly on another device).
-      if (emailValid) { try { fetchServerMemory(); } catch(e){} }
+      // No recall call here any more. It existed to look this person up by the
+      // email they had just typed, on a device the server had never seen. That
+      // is exactly the lookup that let anyone ask a named agency about any
+      // address, so it is gone. Recall now happens at boot, keyed on visitorId.
       saveSession();
       ov.remove();
       /* Home screen is already visible underneath — no need to switch */
@@ -5709,24 +5710,29 @@ function buildVisitorMemoryContext(p){
     + ". Welcome them back warmly when it reads naturally, and draw on this only when relevant. Do NOT invent past details beyond what is stated here.";
 }
 
-/* Cross-device recall: ask the server whether this email / visitorId has chatted
-   with this client before, and merge that memory in (best-effort, async). */
+/* Returning-visitor recall: ask the server whether THIS BROWSER has chatted with
+   this client before, and merge that memory in (best-effort, async).
+
+   Keyed on visitorId alone. It used to send the visitor's email as well, which
+   let the server find them on a new device — but the server could not tell a
+   real owner of that address from anyone typing it, and clientName is public, so
+   any address could be used to ask a named agency what that person had discussed.
+   Bringing cross-device recall back needs a code emailed to the address, not
+   trust in the address. */
 function fetchServerMemory(){
   try {
-    var email = visitorEmail || (visitorProfile && visitorProfile.email) || "";
-    if (!email && !visitorId) return;
+    if (!visitorId) return;
     var url = C.endpoint.replace("/api/luna-chat", "/api/visitor-history");
     fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clientName: C.clientName, email: email || undefined, visitorId: visitorId || undefined })
+      body: JSON.stringify({ clientName: C.clientName, visitorId: visitorId })
     })
     .then(function(r){ return (r && r.ok) ? r.json() : null; })
     .then(function(dd){
       if (!dd || !dd.found) return;
       var p = ensureProfile();
       if (dd.name && !p.name) p.name = dd.name;
-      if (email && !p.email) p.email = email;
       if (dd.summary) p.serverSummary = String(dd.summary).slice(0, 500);
       saveVisitorProfile(p);
       visitorProfile = p;
@@ -6143,21 +6149,45 @@ async function boot() {
     console.warn("Luna widget: config fetch failed, using defaults:", e.message);
   }
 
-  /* Persistent visitor ID */
+  /* Persistent visitor ID.
+
+     This token is now the ONLY key to a visitor's stored memory, so it has to be
+     genuinely unguessable. Math.random is not: V8's generator is seeded per page
+     and its state can be recovered from a handful of outputs, and the rest of the
+     old id was Date.now(), which an attacker can narrow to a few seconds. Use the
+     crypto RNG, and keep the old shape (v_ + [A-Za-z0-9_-]) so existing ids in
+     visitors' browsers and the server's validator both still work. */
+  function newVisitorId(){
+    try {
+      var b = new Uint8Array(16);
+      crypto.getRandomValues(b);
+      var s = '';
+      for (var i = 0; i < b.length; i++) s += ('0' + b[i].toString(16)).slice(-2);
+      return "v_" + s;
+    } catch(e) {
+      /* No crypto (ancient browser). Weaker, but still better than one source. */
+      return "v_" + Date.now().toString(36)
+        + Math.random().toString(36).slice(2, 11)
+        + Math.random().toString(36).slice(2, 11);
+    }
+  }
   try {
     visitorId = localStorage.getItem("luna_visitor_id");
     if (!visitorId) {
-      visitorId = "v_" + Date.now() + "_" + Math.random().toString(36).substr(2,9);
+      visitorId = newVisitorId();
       localStorage.setItem("luna_visitor_id", visitorId);
     }
   } catch(e) {
-    visitorId = "v_" + Date.now() + "_" + Math.random().toString(36).substr(2,9);
+    visitorId = newVisitorId();
   }
 
   /* Returning-visitor memory — recognise the visitor across days (same browser)
      and recall their prior context so Luna has continuity. */
   try {
     visitorProfile = loadVisitorProfile();
+    /* Capture this NOW. ensureProfile() below assigns visitorProfile whether or
+       not one was stored, so testing it afterwards is always true. */
+    var hadStoredProfile = !!visitorProfile;
     if (visitorProfile) {
       isReturningVisitor = !!((visitorProfile.memory && visitorProfile.memory.length) || visitorProfile.name);
       visitorMemoryContext = buildVisitorMemoryContext(visitorProfile);
@@ -6172,9 +6202,14 @@ async function boot() {
     if (!_vp.firstSeen) _vp.firstSeen = Date.now();
     _vp.lastSeen = Date.now();
     saveVisitorProfile(_vp);
-    // If we already know an email (returning same-device visitor), pull richer
-    // cross-device memory from the server. New devices recall at email capture.
-    if ((visitorProfile && visitorProfile.email) || visitorEmail) fetchServerMemory();
+    // Returning visitor? Pull their richer memory from the server.
+    //
+    // Gated on a profile that already existed before this page load, not on
+    // knowing an email. It used to need an email because the server looked them
+    // up by one; now it looks them up by visitorId, which every browser has. The
+    // gate stays so a first-ever visitor costs no lookup: there is nothing on the
+    // server to find, and this runs on every page view.
+    if (hadStoredProfile) fetchServerMemory();
   } catch(e) {}
 
   /* Country detection */
