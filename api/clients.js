@@ -99,64 +99,142 @@ module.exports = async function handler(req, res) {
   }
 
   if (req.method === 'POST') {
+    // PROVISIONING — called by Client Control when Luna Chat is switched on or
+    // off for a client, and whenever their details change.
+    //
+    // Client Control is where client access is granted, so it has to be able to
+    // do this without a human copying anything across. Every problem we have had
+    // this week came from that copy step: a client live in Client Control with no
+    // Luna record at all, a client with no App ID so Luna invented 404 search
+    // links, and a client locked out of their dashboard because AuthClientId was
+    // never filled in.
+    //
+    // UPSERT, keyed on externalId — the client's id in Client Control, which
+    // never changes. Not on the name:
+    //   - flipping the toggle twice must update one record, not create a second.
+    //     Two records with the same ClientName would make client lookups
+    //     non-deterministic, since they take the first match.
+    //   - a rename must move the existing client, not orphan them and start a
+    //     blank one.
     var body = req.body || {};
+    var externalId = (body.externalId || '').trim();
     var name = (body.name || '').trim();
-    var slug = (body.slug || '').trim();
     var email = (body.email || '').trim();
+    var slug = (body.slug || '').trim();
     var ably = (body.ablyKey || '').trim();
-    var siteId = (body.siteId || '').trim();
-    // No DashboardPassword is generated any more. Dashboards authenticate via the
-    // central login (tg-auth-gate), not a per-client password. Minting one left a
-    // dead secret on every new client that the profile API then (wrongly) required,
-    // producing "Save failed: 401". See api/profile.js.
+    // Client Control calls it the App ID; Luna stores it as DeepLinkSiteID. They
+    // are the same number.
+    var siteId = String(body.appId || body.siteId || '').trim();
+    // The auth-platform client record id. WITHOUT THIS the client cannot sign in
+    // except by an exact ContactEmail match, which is how Jamie Wake Travel ended
+    // up staring at "No Luna Chat client linked to your account".
+    var authClientId = (body.authClientId || '').trim();
+    var active = body.active === undefined ? true : !!body.active;
 
-    if (!name || !slug || !email) {
-      return res.status(400).json({ error: 'Missing required fields: name, slug, email' });
+    if (!name || !email) {
+      return res.status(400).json({ error: 'Missing required fields: name, email' });
+    }
+    // Derive a slug rather than demanding one — Client Control has no concept of it.
+    if (!slug) {
+      slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
     }
 
     var dashUrl = 'https://' + DASHBOARD_HOST + '/dashboard.html?client=' + encodeURIComponent(name);
     var embed = '<script src="https://' + DASHBOARD_HOST + '/widget-core.js" data-clientName="' + name.replace(/"/g, '&quot;') + '"' + (ably ? ' data-ablyKey="' + ably + '"' : '') + ' async><\/script>';
 
     try {
-      var atRes = await fetch(atUrl, {
-        method: 'POST',
-        headers: atHeaders,
-        body: JSON.stringify({
-          records: [{ fields: {
-            ClientName: name,
-            ClientSlug: slug,
-            AblyKey: ably,
-            ContactEmail: email,
-            Status: 'Active',
-            WidgetEmbed: embed,
-            DashboardURL: dashUrl,
-            DeepLinkSiteID: siteId,
-            // Enable every search type by default.
-            //
-            // This was never set at provisioning, so every new client started
-            // with none — and holiday search silently did nothing until someone
-            // remembered to tick the boxes in Settings. Worse, with no search
-            // rules in her prompt Luna invented plausible search URLs on the
-            // client's own domain, and every one was a 404 (see #67).
-            //
-            // There is no reason to start a travel client with search switched
-            // off. They can narrow it in Settings > Holiday Search Types if they
-            // only sell some of these.
-            SearchTypes: DEFAULT_SEARCH_TYPES,
-            CreatedAt: new Date().toISOString()
-          }}],
-          typecast: true
-        })
-      });
-
-      if (!atRes.ok) {
-        var errData = await atRes.json();
-        throw new Error(errData.error?.message || 'Airtable create failed');
+      // Find an existing record for this Client Control client.
+      var existing = null;
+      if (externalId) {
+        var findUrl = atUrl + '?maxRecords=1&filterByFormula='
+          + encodeURIComponent("{ExternalClientId}='" + externalId.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'");
+        var findRes = await fetch(findUrl, { headers: atHeaders });
+        if (!findRes.ok) throw new Error('Airtable lookup failed: ' + findRes.status);
+        var findData = await findRes.json();
+        existing = (findData.records || [])[0] || null;
       }
+
+      var fields = {
+        ClientName: name,
+        ClientSlug: slug,
+        ContactEmail: email,
+        Status: active ? 'Active' : 'Inactive',
+        WidgetEmbed: embed,
+        DashboardURL: dashUrl
+      };
+      if (externalId) fields.ExternalClientId = externalId;
+      // Only overwrite these when Client Control actually sent them, so a partial
+      // update cannot blank out a value someone set by hand in the dashboard.
+      if (siteId) fields.DeepLinkSiteID = siteId;
+      if (authClientId) fields.AuthClientId = authClientId;
+      if (ably) fields.AblyKey = ably;
+
+      var result, action;
+      if (existing) {
+        // A rename from Client Control must not break the widget already embedded
+        // on the client's website — it still identifies itself by the OLD name.
+        // Carry the old name over automatically so their chat keeps working until
+        // the site is re-embedded.
+        var prevName = (existing.fields || {}).ClientName || '';
+        if (prevName && prevName !== name) {
+          fields.LegacyClientName = prevName;
+        }
+        var upRes = await fetch(atUrl, {
+          method: 'PATCH',
+          headers: atHeaders,
+          body: JSON.stringify({ records: [{ id: existing.id, fields: fields }], typecast: true })
+        });
+        if (!upRes.ok) {
+          var upErr = await upRes.json().catch(function () { return {}; });
+          throw new Error((upErr.error && upErr.error.message) || 'Airtable update failed');
+        }
+        result = await upRes.json();
+        action = 'updated';
+      } else {
+        // Enable every search type on a NEW client only. Never reset them on an
+        // update — the client may have deliberately narrowed them in Settings.
+        //
+        // This was never set at provisioning, so every new client started with
+        // none, holiday search silently did nothing, and with no search rules in
+        // her prompt Luna invented search URLs on the client's own domain that
+        // all 404'd (see #67).
+        fields.SearchTypes = DEFAULT_SEARCH_TYPES;
+        fields.AblyKey = ably;
+        fields.CreatedAt = new Date().toISOString();
+        var crRes = await fetch(atUrl, {
+          method: 'POST',
+          headers: atHeaders,
+          body: JSON.stringify({ records: [{ fields: fields }], typecast: true })
+        });
+        if (!crRes.ok) {
+          var crErr = await crRes.json().catch(function () { return {}; });
+          throw new Error((crErr.error && crErr.error.message) || 'Airtable create failed');
+        }
+        result = await crRes.json();
+        action = 'created';
+      }
+
+      var rec = (result.records || [])[0] || {};
+      console.log('[clients] ' + action + ' "' + name + '"'
+        + ' externalId=' + (externalId || '(none)')
+        + ' appId=' + (siteId || '(none)')
+        + ' authClientId=' + (authClientId || '(none)')
+        + ' active=' + active
+        + (fields.LegacyClientName ? ' renamedFrom="' + fields.LegacyClientName + '"' : ''));
 
       return res.status(200).json({
         success: true,
-        client: { name: name, slug: slug, email: email, dashUrl: dashUrl, embed: embed }
+        action: action,
+        client: {
+          id: rec.id || (existing && existing.id) || null,
+          externalId: externalId || null,
+          name: name,
+          slug: slug,
+          email: email,
+          active: active,
+          dashUrl: dashUrl,
+          embed: embed
+        }
       });
     } catch (e) {
       return res.status(500).json({ error: e.message });
