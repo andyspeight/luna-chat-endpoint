@@ -1,0 +1,51 @@
+# Run the test suite on every pull request and every push to main.
+#
+# Until now nothing enforced these. The suite was only ever run because someone
+# remembered to, and in one day that let a change reach production that took the
+# dashboard down, plus a test file that had been silently dead for weeks — it
+# threw on load, so its seven tests never ran and nobody noticed.
+#
+# No install step. The suite deliberately has zero dev dependencies and stubs
+# the Anthropic SDK at require time (test/helpers.js), so it runs on a bare
+# checkout in seconds. If a test ever genuinely needs a package, add the install
+# back rather than weakening the tests.
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A newer push supersedes an in-flight run on the same branch.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: node --test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Run tests
+        run: npm test
+
+      # A suite that silently stops running is worse than no suite. If the count
+      # collapses, something has stopped loading rather than started passing.
+      - name: Check the suite did not silently shrink
+        run: |
+          COUNT=$(npm test 2>&1 | grep -E '^# tests [0-9]+' | grep -oE '[0-9]+' | head -1)
+          echo "Test count: $COUNT"
+          if [ -z "$COUNT" ] || [ "$COUNT" -lt 200 ]; then
+            echo "::error::Expected at least 200 tests, found '${COUNT:-none}'. A test file has probably stopped loading."
+            exit 1
+          fi
