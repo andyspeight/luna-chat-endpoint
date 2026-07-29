@@ -104,3 +104,46 @@ test('the body is trimmed and bounded before it reaches the logs', () => {
   // An interception page is a whole HTML document.
   assert.match(SRC, /\.replace\(\/\\s\+\/g, ' '\)\.trim\(\)\.slice\(0, 160\)/);
 });
+
+// ── the monitor must health-check the PUBLIC host ──
+//
+// It built its URL from req.headers.host. For a Vercel cron that is the
+// immutable per-deployment URL, which sits behind Deployment Protection — so
+// the self-call was answered by Vercel, not by us:
+//
+//   {"error":{"code":"401","message":"Protected deployment"},
+//    "protection":{"vercel_auth_enabled":true,...}}
+//
+// Every run failed, for an address Vercel blocks by design, while real visitors
+// on the public alias were fine.
+//
+// The dangerous part is not the noise. The monitor latches `down` after
+// alerting, so a permanently-false alarm meant a GENUINE outage would have
+// raised nothing — the watchdog had already used up its one bark.
+
+test('the health check targets the public production host', () => {
+  assert.match(SRC, /const PUBLIC_BASE = 'https:\/\/chat\.travelify\.io';/);
+  assert.match(SRC, /var host = \(process\.env\.LUNA_BASE_URL \|\| PUBLIC_BASE\)/);
+});
+
+test('it NEVER derives the host from the incoming request', () => {
+  // Comments are stripped: the note explaining this trap mentions the very
+  // thing the code must not do.
+  const code = SRC.split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
+  assert.doesNotMatch(code, /req\.headers\['host'\]/,
+    'a cron arrives on the per-deployment URL, which Vercel protects');
+  assert.doesNotMatch(code, /req\.headers\.host/);
+});
+
+test('LUNA_BASE_URL can still override it', () => {
+  // Needed to point the check at a staging deploy.
+  assert.match(SRC, /process\.env\.LUNA_BASE_URL \|\| PUBLIC_BASE/);
+});
+
+test('the default host is one a real visitor actually uses', () => {
+  // The old fallback was luna-chat-endpoint.vercel.app. Checking a host no
+  // client is served from proves nothing about whether clients can chat.
+  assert.match(SRC, /PUBLIC_BASE = 'https:\/\/chat\.travelify\.io'/);
+  const at = SRC.indexOf('var host = (process.env.LUNA_BASE_URL');
+  assert.doesNotMatch(SRC.slice(at, at + 200), /vercel\.app/);
+});

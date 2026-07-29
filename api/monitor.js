@@ -35,11 +35,32 @@
 //   ANTHROPIC_API_KEY                      (already set — Check C calls the model)
 //   UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN  (already set — strike state)
 // Optional:
-//   LUNA_BASE_URL  (override the base URL used for Check A; defaults to this host)
+//   LUNA_BASE_URL  (override the base URL used for Check A; defaults to the
+//                  PUBLIC production host — never the per-deployment URL)
 
 const TG_BASE = 'app6Ot3eOb3DangkB';
 const CLIENTS_TABLE = 'tbl6CZ7aVzq1wHF2v';
 const STATE_KEY = 'monitor:luna:state';
+
+// The PUBLIC host to health-check, and never req.headers.host.
+//
+// A Vercel cron invokes the function on its immutable per-deployment URL
+// (luna-chat-endpoint-<hash>-agendasgroup.vercel.app). Those URLs sit behind
+// Vercel Deployment Protection, so a self-call to them is answered by Vercel,
+// not by us:
+//
+//   {"error":{"code":"401","message":"Protected deployment"},
+//    "protection":{"vercel_auth_enabled":true,...}}
+//
+// The visitor-token check therefore failed on every single run — it was testing
+// an address Vercel blocks by design, while real visitors on the public alias
+// were completely fine. Six hours of "Luna Chat appears DOWN" with nothing
+// actually wrong.
+//
+// Worse than the noise: the monitor latches `down` after alerting, so a
+// permanently-false alarm meant a REAL outage would have raised nothing at all.
+// The watchdog was not just crying wolf, it had already used up its one bark.
+const PUBLIC_BASE = 'https://chat.travelify.io';
 
 // ─── small helpers ───────────────────────────────────────────────────────────
 
@@ -253,7 +274,7 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({ test: 'alert', telegramSent: sent });
   }
 
-  var host = (process.env.LUNA_BASE_URL || ('https://' + (req.headers['host'] || 'luna-chat-endpoint.vercel.app'))).replace(/\/$/, '');
+  var host = (process.env.LUNA_BASE_URL || PUBLIC_BASE).replace(/\/$/, '');
 
   // Run the three checks in parallel so the function stays well within its
   // 15s budget even when a check has to wait out its own timeout.
