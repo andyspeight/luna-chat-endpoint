@@ -123,7 +123,22 @@ async function checkVisitorToken(baseUrl) {
       signal: AbortSignal.timeout(8000)
     });
     if (r.status === 429) return { ok: false, detail: 'token endpoint rate-limited (429) — limiter may be stuck' };
-    if (!ok(r.status)) return { ok: false, detail: 'token endpoint returned ' + r.status };
+    if (!ok(r.status)) {
+      // Say WHAT came back, not just the number. /api/ably-token has exactly one
+      // 401 in it and that is on the agent branch, which this visitor-shaped
+      // request cannot reach — so a 401 here is somebody else answering, most
+      // likely Vercel Deployment Protection intercepting a call the function
+      // makes to its own host. The body settles it: our errors are JSON, an
+      // intercept is an HTML challenge page.
+      var peek = await r.text().catch(function () { return '(unreadable)'; });
+      peek = String(peek).replace(/\s+/g, ' ').trim().slice(0, 160);
+      return {
+        ok: false,
+        detail: 'token endpoint returned ' + r.status
+          + ' from ' + baseUrl
+          + ' | body: ' + (peek || '(empty)')
+      };
+    }
     var body = await r.json().catch(function () { return {}; });
     if (!body || !body.token) return { ok: false, detail: 'token endpoint 200 but no token in response' };
     return { ok: true };
