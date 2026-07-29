@@ -20,8 +20,14 @@ const SRC = fs.readFileSync(path.join(__dirname, '..', 'api', 'clients.js'), 'ut
 const CHAT = fs.readFileSync(path.join(__dirname, '..', 'api', 'luna-chat.js'), 'utf8');
 
 test('provisioning sets SearchTypes on the new record', () => {
-  assert.match(SRC, /SearchTypes: DEFAULT_SEARCH_TYPES/,
+  // Behaviour is covered end to end in client-provisioning-upsert.test.js; this
+  // just pins that the default is applied on CREATE and not on update, since
+  // resetting it would undo a client narrowing their own search types.
+  assert.match(SRC, /fields\.SearchTypes = DEFAULT_SEARCH_TYPES;/,
     'a new client must not be created with search switched off');
+  const createBranch = SRC.slice(SRC.indexOf('} else {'), SRC.indexOf("action = 'created'"));
+  assert.match(createBranch, /fields\.SearchTypes = DEFAULT_SEARCH_TYPES;/,
+    'the default belongs in the create branch only');
 });
 
 test('the default is every search type', () => {
@@ -43,5 +49,7 @@ test('the names match the ones luna-chat actually understands', () => {
 
 test('the deep link site id is still set at provisioning too', () => {
   // Both halves are needed; a site id with no types is just as broken.
-  assert.match(SRC, /DeepLinkSiteID: siteId/);
+  assert.match(SRC, /fields\.DeepLinkSiteID = siteId;/);
+  assert.match(SRC, /body\.appId \|\| body\.siteId/,
+    'Client Control calls it the App ID — accept that name');
 });
