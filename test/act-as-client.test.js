@@ -13,11 +13,18 @@
 //      hardcoded `grid-row:2`, so the content row moved to 3 and those panels
 //      rendered on top of the topbar. The banner must live outside the grid.
 //
-//   2. WHOSE ACCOUNT IS THIS. "Acting as" was derived by guessing the user's own
-//      account from a ContactEmail match. Andy's auth-platform client id matches
-//      no Luna record, so it fell through and picked the Travel Demo record as
-//      his home, which made the real Travelgenix account read as somebody else's.
-//      It is now decided from the OPEN RECORD's own contact domain.
+//   2. WHOSE ACCOUNT IS THIS. Guessed twice, wrongly, before landing on the
+//      obvious answer. First by inferring the user's own account from a
+//      ContactEmail match — Andy's auth-platform client id matched no Luna
+//      record, so it picked up Travel Demo and made the real Travelgenix account
+//      read as somebody else's. Then by the OPEN RECORD's contact domain — which
+//      hid Snow Dragon Ski Holidays from the Act as list entirely, because their
+//      named contact is a colleague on a staff domain.
+//
+//      It is now decided by OWNERSHIP: an account is yours if its AuthClientId
+//      matches your auth-platform client, and acting as means opening one that is
+//      not. Client Control sets AuthClientId on every client it provisions, so
+//      there is nothing left to infer.
 //
 // Also pinned: Switch and Act as are different controls. Switch moves a client
 // between the websites they own. It is not a support tool.
@@ -53,28 +60,38 @@ test('NO client can ever reach the acting-as state, whatever their role', () => 
 
 // ── whose account is open ──
 
-test('a client account is identified by ITS OWN contact domain, not by guessing home', () => {
-  assert.match(SESSION, /function isClientAccount\(record\) \{[\s\S]*?isStaffEmail\(\(record\.fields \|\| \{\}\)\.ContactEmail\)/,
-    'must read the open record, not infer the user\'s home account');
+test('an account is classified by OWNERSHIP, not by its contact email domain', () => {
+  // The domain guess broke the moment a client was provisioned with a colleague
+  // as the named contact: Snow Dragon Ski Holidays arrived with
+  // luke.livsey@agendas.group, was read as one of ours, and disappeared from the
+  // Act as list. Who is listed as the contact says nothing about who owns it.
+  assert.match(SESSION, /function isOwnedBy\(record, ownRecords\)/);
+  assert.match(SESSION, /ownRecords\.some\(function \(o\) \{ return o\.id === record\.id; \}\)/);
+  assert.doesNotMatch(SESSION, /function isClientAccount/,
+    'the contact-domain guess must be gone');
   assert.doesNotMatch(SESSION, /homeClientId/,
-    'the home-account guess is what mislabelled Travelgenix — it must not come back');
+    'and so must the earlier home-account guess, which mislabelled Travelgenix');
 });
 
-test('the real Airtable records classify correctly', () => {
-  // Exactly the four live records, so a wrong rule fails here rather than on screen.
-  const staffOwned = ['info@travelgenix.io', 'andy.speight@agendas.group'];       // Travelgenix, Travel Demo
-  const clientOwned = ['director@thatsmydreamholiday.com', 'hello@sunshinetravel.com'];
-  staffOwned.forEach(e => assert.equal(auth.isStaffEmail(e), true, e + ' is one of ours — no banner'));
-  clientOwned.forEach(e => assert.equal(auth.isStaffEmail(e), false, e + ' is a client — banner'));
+test('a staff contact on a client record no longer hides that client', () => {
+  // Snow Dragon Ski Holidays is contactable at luke.livsey@agendas.group. Under
+  // the old rule that made it "ours" and it vanished from Act as. Ownership is
+  // decided by AuthClientId, which Client Control sets, so the contact address is
+  // now irrelevant to this question.
+  assert.doesNotMatch(SESSION, /isStaffEmail/,
+    'auth-session must no longer sniff contact domains at all');
 });
 
-test('a record with no contact email is treated as a client account (fails safe)', () => {
-  assert.equal(auth.isStaffEmail(''), false);
-  assert.equal(auth.isStaffEmail(undefined), false);
+test('isStaffEmail still gates WHO is staff — a different question', () => {
+  // It is right for deciding who may act across tenants, and wrong for deciding
+  // which accounts they may act as. Keep the first use, drop the second.
+  assert.equal(auth.isStaffEmail('andy.speight@agendas.group'), true);
+  assert.equal(auth.isStaffEmail('director@thatsmydreamholiday.com'), false);
+  assert.equal(auth.isCrossTenantUser('owner', 'luke.livsey@agendas.group'), true);
 });
 
-test('actingAs requires staff AND a client account, and is computed server-side', () => {
-  assert.match(SESSION, /const actingAs = !!\(staff && chosen && isClientAccount\(chosen\)\)/);
+test('actingAs requires staff AND an account that is not their own', () => {
+  assert.match(SESSION, /const actingAs = !!\(staff && chosen && !isOwnedBy\(chosen, own\)\)/);
   assert.match(SESSION, /isStaff:\s*staff/);
   assert.doesNotMatch(SESSION, /body\.(isStaff|actingAs)/,
     'neither flag may be taken from the request body');
@@ -90,9 +107,24 @@ test('the server returns own accounts and client accounts separately', () => {
 });
 
 test('clientAccounts is empty for a non-staff user', () => {
-  // `all` only ever populated inside `if (staff)`, and it is filtered to client
-  // accounts, so a client receives nothing to act as.
-  assert.match(SESSION, /const clientSummary = all\.filter\(isClientAccount\)\.map\(brief\)/);
+  // `all` is only ever populated inside `if (staff)`, so a client receives
+  // nothing to act as regardless of how the list is filtered.
+  assert.match(SESSION, /const clientSummary = all\.filter\(function \(rec\) \{ return !isOwnedBy\(rec, own\); \}\)\.map\(brief\)/);
+  assert.match(SESSION, /let all = \[\];\s*\n\s*if \(staff\) \{/);
+});
+
+test('a staff member sees every account except the ones they own', () => {
+  // Andy holds Travelgenix and Travel Demo via AuthClientId recWGiXycDnxd8Zsh, so
+  // those are his own and the rest — Jamie Wake, TMDH, Snow Dragons — are the
+  // ones he can act as. Luke holds neither, so he sees all of them.
+  const own = [{ id: 'recTG' }, { id: 'recDEMO' }];
+  const all = [{ id: 'recTG' }, { id: 'recDEMO' }, { id: 'recJAMIE' }, { id: 'recSNOW' }];
+  const isOwnedBy = (rec, o) => o.some(x => x.id === rec.id);
+  const actable = all.filter(r => !isOwnedBy(r, own)).map(r => r.id);
+  assert.deepEqual(actable, ['recJAMIE', 'recSNOW']);
+  assert.deepEqual(all.filter(r => !isOwnedBy(r, [])).map(r => r.id),
+    ['recTG', 'recDEMO', 'recJAMIE', 'recSNOW'],
+    'a staff member with no account of their own can act as any of them');
 });
 
 test('Switch counts the user OWN accounts, not everything they may open', () => {

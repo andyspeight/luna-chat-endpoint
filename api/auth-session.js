@@ -38,23 +38,23 @@ const ALLOWED_ORIGINS = [
 // agency account also has role 'owner'. Gating on role alone showed (and granted)
 // every client every other tenant. Shared with lib/luna-auth.js so the list the
 // user is shown can never drift from what they are actually entitled to.
-const { isCrossTenantUser, isStaffEmail } = require('../lib/luna-auth');
+const { isCrossTenantUser } = require('../lib/luna-auth');
 
-// Is this Luna account a CLIENT's account, as opposed to one of our own?
+// Is this account one the signed-in user holds in their OWN right?
 //
-// Decided from the record's own ContactEmail: a Travelgenix staff domain means
-// it's ours (Travelgenix, Travel Demo), anything else is a client's.
+// "Acting as" means working inside an account that is not yours. That is the
+// only question that matters, and ownership answers it directly:
+// AuthClientId identifies the account's owner in the auth platform, and Client
+// Control now sets it on every client it provisions.
 //
-// Deliberately NOT inferred from the signed-in user's "home" account. The first
-// attempt did that and got it wrong: Andy's auth-platform client id matches no
-// Luna record, so the lookup fell through to a ContactEmail match and picked up
-// the Travel Demo record as his home, which made the real Travelgenix account
-// look like somebody else's.
-//
-// Fails SAFE: a record with no ContactEmail is treated as a client account, so
-// we warn rather than stay quiet.
-function isClientAccount(record) {
-  return !isStaffEmail((record.fields || {}).ContactEmail);
+// This replaces a guess based on the account's ContactEmail domain — a staff
+// domain meant "ours", anything else meant "a client's". It broke the moment a
+// client was provisioned with a colleague as the named contact: Snow Dragon Ski
+// Holidays came through with luke.livsey@agendas.group, was read as one of ours,
+// and vanished from the Act as list. Who is listed as the contact says nothing
+// about who owns the account.
+function isOwnedBy(record, ownRecords) {
+  return ownRecords.some(function (o) { return o.id === record.id; });
 }
 
 function applyCors(req, res) {
@@ -200,13 +200,14 @@ module.exports = async function handler(req, res) {
         id: rec.id,
         name: (rec.fields && rec.fields.ClientName) || rec.id,
         // Lets the picker label client accounts, so opening one is a conscious act.
-        isClient: isClientAccount(rec)
+        // Somebody else's account, so opening it is "acting as" them.
+        isClient: !isOwnedBy(rec, own)
       };
     };
     const summary = candidates.map(brief);
     const ownSummary = own.map(brief);
     // Only the accounts that are actually somebody else's are worth "acting as".
-    const clientSummary = all.filter(isClientAccount).map(brief);
+    const clientSummary = all.filter(function (rec) { return !isOwnedBy(rec, own); }).map(brief);
 
     let chosen = null;
     if (requestedClientId) {
@@ -221,7 +222,7 @@ module.exports = async function handler(req, res) {
     // ACTING AS — staff working inside a client's account. Staff only, by
     // definition: a client is never entitled to an account other than their own,
     // and their own is not a "client account" from their point of view.
-    const actingAs = !!(staff && chosen && isClientAccount(chosen));
+    const actingAs = !!(staff && chosen && !isOwnedBy(chosen, own));
 
     console.log('[auth-session] user', email, 'role=' + role,
       'currentAuthClientId=' + (currentAuthClientId || '-'),
