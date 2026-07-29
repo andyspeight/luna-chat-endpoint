@@ -2363,6 +2363,24 @@
         <button type="button" class="embed-copy" id="embedCopyBtn" onclick="window._copyEmbedSnippetInline(this)">Copy</button>
       </div>
       <div class="settings-hint" style="margin-top:10px">Need to test it first? Add <code style="background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:4px;font-size:11px">?lunaTest=1</code> to any page on your site to verify Luna loads before going live.</div>
+
+      <!-- Open-from-anywhere trigger. The floating bubble is always there; this
+           lets a client put their own button in the page copy as well. -->
+      <div class="sp3-install" style="margin-top:var(--space-4)">
+        <div class="sp3-install-title">Add your own "Chat to us" button</div>
+        <div class="settings-hint" style="margin-top:-4px;margin-bottom:12px">The chat bubble always sits in the corner. If you also want a button inside your page — on a destination page, next to a phone number, at the end of an article — add <code style="background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:4px;font-size:11px">data-luna-open</code> to any button or link. It can be styled however you like.</div>
+        <div class="sp3-codewrap">
+          <pre class="sp3-code" id="triggerSnippet">&lt;button data-luna-open&gt;Chat to us&lt;/button&gt;</pre>
+          <button type="button" class="sp3-copy" onclick="window._copyTriggerSnippet(this,'triggerSnippet')">Copy</button>
+        </div>
+        <div class="settings-hint" style="margin-top:10px">Want it to open the big panel and go straight into the conversation? Use <code style="background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:4px;font-size:11px">data-luna-open="expanded"</code> instead:</div>
+        <div class="sp3-codewrap" style="margin-top:8px">
+          <pre class="sp3-code" id="triggerSnippetExpanded">&lt;a href="#" data-luna-open="expanded"&gt;Plan my holiday&lt;/a&gt;</pre>
+          <button type="button" class="sp3-copy" onclick="window._copyTriggerSnippet(this,'triggerSnippetExpanded')">Copy</button>
+        </div>
+        <div class="settings-hint" style="margin-top:10px">Works on a button, link, image or div, anywhere on the page, and on buttons your site adds later. If you would rather call it from your own script, use <code style="background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:4px;font-size:11px">openLunaChat()</code>.</div>
+      </div>
+
       <div class="sp3-install">
         <div class="sp3-install-title">How to add it to your site</div>
         <div class="sp3-tabs" id="sp3Tabs" role="tablist">
@@ -8637,6 +8655,38 @@ setTimeout(function () {
   // Copy handler for the inline section
   window._copyEmbedSnippetInline = function(btn) {
     var el = document.getElementById('embedCodeSnippet');
+    var text = el ? el.textContent : '';
+    if (!text) return;
+    var done = function(ok) {
+      if (!ok) { btn.textContent = 'Press Ctrl+C'; return; }
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(function() {
+        btn.classList.remove('copied');
+        btn.textContent = 'Copy';
+      }, 1600);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function(){done(true);}, function(){done(false);});
+    } else {
+      try {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        var ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        done(ok);
+      } catch (e) { done(false); }
+    }
+  };
+
+  // Copy for the "Chat to us" trigger snippets. Same behaviour as the embed
+  // copy above, but takes the element id so one handler serves both snippets.
+  window._copyTriggerSnippet = function(btn, id) {
+    var el = document.getElementById(id);
     var text = el ? el.textContent : '';
     if (!text) return;
     var done = function(ok) {

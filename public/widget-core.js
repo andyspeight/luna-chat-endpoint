@@ -6664,20 +6664,87 @@ async function boot() {
     openChat({ expanded: true });
   };
 
-  // Phase 3 trigger — clicking any element with data-luna-expanded="true"
-  // opens the widget in expanded mode with a contextual opener.
-  document.addEventListener('click', function(e) {
-    var el = e.target;
-    while (el && el !== document.body) {
-      if (el.getAttribute && el.getAttribute('data-luna-expanded') === 'true') {
-        e.preventDefault();
-        e.stopPropagation();
-        window.expandLunaChat();
-        return;
+  // ─── "Chat to us" triggers anywhere on the page ────────────────────────
+  //
+  // A client can put their own button, link or image anywhere on a page and
+  // have it open the chat, instead of relying only on the floating bubble.
+  // They just add an attribute — no JavaScript to write, nothing to wire up:
+  //
+  //   <button data-luna-open>Chat to us</button>
+  //   <a href="#" data-luna-open="expanded">Plan my holiday</a>
+  //
+  //   data-luna-open              opens the normal chat window
+  //   data-luna-open="expanded"   opens the large panel and goes straight into
+  //                               the conversation with a contextual opener
+  //
+  // For anyone who prefers script: window.openLunaChat() and
+  // window.expandLunaChat() are the same thing.
+  //
+  // Delegated from the document, so it also works for buttons a CMS or a
+  // single-page app adds after the widget has loaded. It checks the click
+  // target and its ancestors, so an icon or span inside the button still
+  // triggers it.
+  //
+  // data-luna-expanded="true" is the ORIGINAL form of this and is already
+  // embedded on client sites, so it keeps working exactly as before. Anything
+  // already on a page must not break because we introduced a nicer name.
+  function lunaTriggerFor(el) {
+    while (el && el.nodeType === 1) {
+      if (el.hasAttribute) {
+        if (el.hasAttribute('data-luna-open')) {
+          return (el.getAttribute('data-luna-open') || '').toLowerCase() === 'expanded'
+            ? 'expanded' : 'open';
+        }
+        if (el.getAttribute('data-luna-expanded') === 'true') return 'expanded';
       }
       el = el.parentElement;
     }
+    return null;
+  }
+
+  document.addEventListener('click', function(e) {
+    var mode = lunaTriggerFor(e.target);
+    if (!mode) return;
+    // Stop a link navigating away, or a button submitting the form it sits in.
+    e.preventDefault();
+    e.stopPropagation();
+    if (mode === 'expanded') window.expandLunaChat();
+    else window.openLunaChat();
   });
+
+  // Keyboard: a <div> or <span> used as a trigger is not focusable and gets no
+  // click from Enter/Space, so anyone navigating by keyboard could not open the
+  // chat at all. Real <button> and <a> elements already fire click themselves,
+  // so they are left alone to avoid opening twice.
+  document.addEventListener('keydown', function(e) {
+    if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+    var el = e.target;
+    if (!el || el.nodeType !== 1) return;
+    var tag = (el.tagName || '').toLowerCase();
+    if (tag === 'button' || tag === 'a' || tag === 'input' || tag === 'textarea') return;
+    var mode = lunaTriggerFor(el);
+    if (!mode) return;
+    e.preventDefault();
+    if (mode === 'expanded') window.expandLunaChat();
+    else window.openLunaChat();
+  });
+
+  // A <div> or <span> used as a trigger cannot be focused or announced, so make
+  // it behave like a button. Real buttons and links are left untouched.
+  // Triggers added to the page later should use a real <button> — the click
+  // handler above still catches those, this pass only runs over what is here now.
+  try {
+    document.querySelectorAll('[data-luna-open]').forEach(function (el) {
+      var tag = (el.tagName || '').toLowerCase();
+      if (tag === 'button' || tag === 'a') return;
+      if (!el.hasAttribute('role')) el.setAttribute('role', 'button');
+      if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '0');
+      if (!el.hasAttribute('aria-label') && !(el.textContent || '').trim()) {
+        el.setAttribute('aria-label', 'Open chat');
+      }
+      el.style.cursor = el.style.cursor || 'pointer';
+    });
+  } catch (e) { /* very old browser — clicking still works */ }
 
   // luna=expanded trigger — opens expanded mode on page load.
   // We check BOTH the query string (?luna=expanded) and the hash fragment
