@@ -6907,6 +6907,10 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
 
       try {
         var res = await fetch('/api/scan-page', {
+          // The endpoint now checks the central session, like every other
+          // dashboard call. Same-origin sends the cookie anyway; explicit here
+          // so it keeps working if the dashboard is ever served elsewhere.
+          credentials: 'include',
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -7013,6 +7017,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     window._renderScannedPages();
     try {
       var res = await fetch('/api/scan-page', {
+        credentials: 'include',
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Client-Name': CONFIG.CLIENT_NAME },
         body: JSON.stringify({ url: url })

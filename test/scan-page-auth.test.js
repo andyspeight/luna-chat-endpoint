@@ -227,3 +227,15 @@ test('credentialed CORS is not paired with a wildcard origin', async () => {
     'a wildcard origin with credentials is rejected by browsers and unsafe besides');
   assert.match(SRC, /ALLOWED_ORIGINS\.indexOf\(origin\) !== -1/);
 });
+
+test('the dashboard sends the session cookie on every scan call', async () => {
+  // Both callers: the bulk scan and the single re-scan. Without credentials the
+  // endpoint's new session check turns Train Luna into a 401 for everyone.
+  const DASH = read('public/dashboard.html');
+  const calls = DASH.split("fetch('/api/scan-page'").slice(1);
+  assert.equal(calls.length, 2, 'expected the bulk scan and the re-scan callers');
+  calls.forEach(function (c, i) {
+    assert.match(c.slice(0, 400), /credentials: 'include'/,
+      'scan-page caller ' + (i + 1) + ' must send credentials');
+  });
+});
