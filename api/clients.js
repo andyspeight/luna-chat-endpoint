@@ -5,9 +5,29 @@ const crypto = require('crypto');
 
 const AT_BASE = 'app6Ot3eOb3DangkB';
 const AT_TABLE = 'tbl6CZ7aVzq1wHF2v';
-// No hardcoded fallback. If ADMIN_PASSWORD is not configured, admin auth fails
-// closed (see the handler) rather than accepting a checked-in default.
+
+// TWO credentials open this endpoint, because it has two genuinely different
+// callers, and they should not share a secret:
+//
+//   ADMIN_PASSWORD       a human typing it into /onboard.html
+//   LUNA_PROVISION_PASS  Client Control, machine to machine, holding the same
+//                        value in its own LUNA_CHAT_ADMIN_PASS variable
+//
+// They used to be the same value, which meant the secret stored in a SECOND
+// Vercel project (tg-widgets) also unlocked /api/global-brain — the shared
+// knowledge base that feeds every client. Provisioning a client and editing
+// global knowledge are not the same privilege, so they no longer share a key:
+// global-brain accepts ADMIN_PASSWORD only.
+//
+// Set LUNA_PROVISION_PASS to a NEW random value and put the same value in
+// tg-widgets' LUNA_CHAT_ADMIN_PASS. Until that is done, Client Control keeps
+// working on ADMIN_PASSWORD and nothing breaks — the split just isn't earning
+// anything yet, which is why the handler logs a reminder.
+//
+// No hardcoded fallback. With neither configured, admin auth fails closed
+// (see the handler) rather than accepting a checked-in default.
 const ADMIN_PASS = process.env.ADMIN_PASSWORD || '';
+const PROVISION_PASS = process.env.LUNA_PROVISION_PASS || '';
 // The dashboard MUST be served from a travelify.io host: the central login cookie
 // (tg_session) is scoped to travelify.io, so on *.vercel.app the dashboard cannot
 // even sign in. Minting .vercel.app links handed every new client an unusable URL.
@@ -52,15 +72,27 @@ module.exports = async function handler(req, res) {
 
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  // Fail closed when the admin password is not configured — never accept a
-  // request against an empty/absent secret.
-  if (!ADMIN_PASS) {
-    console.error('[clients] ADMIN_PASSWORD not configured — refusing admin request');
+  // Fail closed when neither secret is configured — never accept a request
+  // against an empty/absent secret. safeCompare already rejects '' on the
+  // length check, but being explicit keeps the 503 distinct from a 401 so a
+  // missing env var is diagnosable rather than looking like a wrong password.
+  if (!ADMIN_PASS && !PROVISION_PASS) {
+    console.error('[clients] neither ADMIN_PASSWORD nor LUNA_PROVISION_PASS configured'
+      + ' — refusing admin request');
     return res.status(503).json({ error: 'Admin access not configured' });
   }
-  var adminPass = req.headers['x-admin-pass'] || '';
-  if (!safeCompare(adminPass, ADMIN_PASS)) {
+  var supplied = req.headers['x-admin-pass'] || '';
+  // Both compared every time, never short-circuited, so which secret was sent
+  // is not observable through response timing.
+  var viaAdmin = !!ADMIN_PASS && safeCompare(supplied, ADMIN_PASS);
+  var viaProvision = !!PROVISION_PASS && safeCompare(supplied, PROVISION_PASS);
+  if (!viaAdmin && !viaProvision) {
     return res.status(401).json({ error: 'Unauthorized' });
+  }
+  if (!PROVISION_PASS) {
+    console.warn('[clients] LUNA_PROVISION_PASS is not set, so Client Control is still'
+      + ' using ADMIN_PASSWORD — the same secret that opens /api/global-brain.'
+      + ' Set it to a new value here and in tg-widgets LUNA_CHAT_ADMIN_PASS.');
   }
 
   var atKey = process.env.AIRTABLE_KEY;
