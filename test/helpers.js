@@ -34,15 +34,32 @@ function textToDeltas(text) {
   return out;
 }
 
+// Per-model failure injection, so a test can make one model unavailable and
+// prove the request still gets answered by another. Empty by default, so this
+// changes nothing for any test that does not opt in.
+let modelFailures = new Map();
+function failFor(model) {
+  const err = modelFailures.get(model);
+  if (!err) return null;
+  const e = new Error(err.message || 'model unavailable');
+  if (err.status) e.status = err.status;
+  if (err.name) e.name = err.name;
+  return e;
+}
+
 class FakeAnthropic {
   constructor() {
     this.messages = {
       create: async (opts) => {
         captured.push(opts);
+        const boom = failFor(opts.model);
+        if (boom) throw boom;
         return { content: [{ type: 'text', text: nextReply }], usage: { input_tokens: 100, output_tokens: 50 } };
       },
       stream: (opts) => {
         captured.push(opts);
+        const boom = failFor(opts.model);
+        if (boom) return Promise.reject(boom);
         const deltas = textToDeltas(nextReply);
         const usage = { input_tokens: 100, output_tokens: 50 };
         async function* iterate() {
@@ -86,6 +103,11 @@ function lastCall() { return captured[captured.length - 1]; }
 function setFetch(fn) { global.fetch = fn; }
 function resetFetch() { global.fetch = defaultFetch(); }
 function setAirtableKey(k) { if (k) process.env.AIRTABLE_KEY = k; else delete process.env.AIRTABLE_KEY; }
+
+// Make a given model id fail. `err` is { status?, name?, message? } — status
+// drives the retryable/not-retryable decision in lib/model-fallback.js.
+function failModel(model, err) { modelFailures.set(model, err || {}); }
+function clearModelFailures() { modelFailures = new Map(); }
 
 // Minimal res double supporting both JSON and SSE paths.
 function makeRes() {
@@ -133,5 +155,6 @@ function parseSse(writes) {
 module.exports = {
   handler, callHandler, makeRes,
   setReply, resetCaptured, getCaptured, lastCall,
-  setFetch, resetFetch, setAirtableKey, parseSse
+  setFetch, resetFetch, setAirtableKey, parseSse,
+  failModel, clearModelFailures
 };

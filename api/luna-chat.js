@@ -1,6 +1,7 @@
 // Widgets identify themselves by clientName. A renamed client must keep
 // resolving under the name already embedded on their site. Shared helper.
 const { clientNameFormula } = require('../lib/luna-auth');
+const modelFallback = require('../lib/model-fallback');
 
 const Anthropic = require('@anthropic-ai/sdk');
 const ratelimit = require('../lib/ratelimit');
@@ -3383,6 +3384,15 @@ No problem, drop your email and departure date in below and I'll find it.
       ? (process.env.LUNA_HAIKU_MODEL || 'claude-haiku-4-5-20251001')
       : (process.env.LUNA_MODEL || 'claude-sonnet-4-6');
 
+    // A model that stops answering must not take the chat down with it.
+    // MODEL_CHAIN is [primary, fallback]; when the primary IS the fallback
+    // (every non-Travelgenix client already runs on Haiku) it has one entry and
+    // nothing below retries. MODEL_TIMEOUT stops a hung model eating the whole
+    // 30s function budget, which is what left visitors watching a typing dot.
+    var MODEL_CHAIN = modelFallback.resolveChain(modelId);
+    var MODEL_FALLBACK = MODEL_CHAIN.length > 1 ? MODEL_CHAIN[1] : null;
+    var MODEL_TIMEOUT = modelFallback.requestTimeoutMs();
+
     // ═══════════════════════════════════════════════════════════
     // STREAMING PATH — SSE response, real-time token delivery
     // ═══════════════════════════════════════════════════════════
@@ -3437,6 +3447,10 @@ No problem, drop your email and departure date in below and I'll find it.
         });
 
         var shortModelId = process.env.LUNA_SHORT_MODEL || 'claude-haiku-4-5-20251001';
+        // The long call carries the real answer, so it gets the fallback chain.
+        // The short call is already non-fatal: its catch below lets the long one
+        // carry the reply on its own, which is the degradation we want there.
+        var longModelId = MODEL_CHAIN[0];
         // Use the FULL system prompt for both calls. An earlier version
         // sliced to 8KB for the short call hoping to save TTFT, but that
         // stripped the knowledge base, destination context, and booking-
@@ -3465,14 +3479,14 @@ No problem, drop your email and departure date in below and I'll find it.
           system: shortSystemPrompt,
           messages: claudeMessages,
           metadata: { user_id: convId || 'unknown' }
-        });
+        }, { timeout: MODEL_TIMEOUT });
         var longStreamPromise = client.messages.stream({
-          model: modelId,
+          model: longModelId,
           max_tokens: 2048,
           system: longSystemPrompt,
           messages: claudeMessages,
           metadata: { user_id: convId || 'unknown' }
-        });
+        }, { timeout: MODEL_TIMEOUT });
 
         // ── Phase A: stream SHORT tokens to the widget ──
         try {
@@ -3514,6 +3528,45 @@ No problem, drop your email and departure date in below and I'll find it.
           longFinal = await longStream.finalMessage();
           mark('longStreamEnd');
         } catch (longErr) {
+          // Retry the long answer on the fallback model, provided none of it
+          // has been streamed yet. longFirstToken is the gate: past it, the
+          // visitor is already reading words and a second attempt would append
+          // a duplicate answer to the one on screen.
+          if (!longFirstToken && MODEL_FALLBACK && modelFallback.isRetryableModelError(longErr)) {
+            console.error('[luna-chat] long stream model', longModelId, 'failed:',
+              modelFallback.describeModelError(longErr),
+              '— retrying on', MODEL_FALLBACK);
+            try {
+              longModelId = MODEL_FALLBACK;
+              var retryStream = await client.messages.stream({
+                model: MODEL_FALLBACK,
+                max_tokens: 2048,
+                system: longSystemPrompt,
+                messages: claudeMessages,
+                metadata: { user_id: convId || 'unknown' }
+              }, { timeout: MODEL_TIMEOUT });
+              for await (var rev of retryStream) {
+                if (rev.type === 'content_block_delta' && rev.delta && rev.delta.type === 'text_delta') {
+                  var rd = rev.delta.text || '';
+                  if (!rd) continue;
+                  if (!longFirstToken) { mark('longFirstToken'); longFirstToken = true; }
+                  longText += rd;
+                  sendEvent('long_text', { delta: rd });
+                }
+              }
+              longFinal = await retryStream.finalMessage();
+              mark('longStreamEnd');
+              console.warn('[luna-chat] MODEL FALLBACK — long answer served by', MODEL_FALLBACK);
+              longErr = null;
+            } catch (retryErr) {
+              console.error('[luna-chat] fallback model', MODEL_FALLBACK, 'also failed:',
+                modelFallback.describeModelError(retryErr));
+              longErr = retryErr;
+            }
+          }
+          // longErr is cleared above when the fallback answered, in which case
+          // we fall straight through to post-processing as if nothing happened.
+          if (longErr) {
           console.error('[luna-chat] long stream failed:', longErr.message || longErr);
           // If short also failed, send full error. If short succeeded, treat
           // the short as the complete answer and proceed to post-processing.
@@ -3525,6 +3578,7 @@ No problem, drop your email and departure date in below and I'll find it.
               fallbackReply: "I'm having a little trouble right now. Let me connect you with one of the team who can help directly."
             });
             return res.end();
+          }
           }
         }
 
@@ -3607,7 +3661,9 @@ No problem, drop your email and departure date in below and I'll find it.
           convId: convId,
           route: 'twopass',
           shortModel: shortModelId,
-          longModel: modelId,
+          // longModelId, not modelId: it is reassigned when the fallback answers.
+          longModel: longModelId,
+          modelFellBack: longModelId !== MODEL_CHAIN[0],
           systemPromptChars: systemPrompt.length,
           shortInputTokens: donePayload2.usage.short_input_tokens,
           shortOutputTokens: donePayload2.usage.short_output_tokens,
@@ -3630,15 +3686,29 @@ No problem, drop your email and departure date in below and I'll find it.
       var detectedLang = null;
       var replyBrief = null;
 
+      // MODEL FALLBACK LOOP. One pass per model in the chain. The body below is
+      // the original single-attempt path, unchanged and deliberately NOT
+      // re-indented so this stays a reviewable diff during an incident.
+      //
+      // A retry is only safe while the visitor has seen nothing: once a text
+      // delta has gone down the wire, starting again would replay it as
+      // duplicate words in the bubble. firstTextChunkSeen is that gate.
+      for (var streamAttempt = 0; streamAttempt < MODEL_CHAIN.length; streamAttempt++) {
+      var streamModelId = MODEL_CHAIN[streamAttempt];
+      accumulated = '';
+      firstTextChunkSeen = false;
+      detectedLang = null;
+      replyBrief = null;
+
       try {
         mark('llmCallStart');
         var stream = await client.messages.stream({
-          model: modelId,
+          model: streamModelId,
           max_tokens: 2048,
           system: systemPrompt,
           messages: claudeMessages,
           metadata: { user_id: convId || 'unknown' }
-        });
+        }, { timeout: MODEL_TIMEOUT });
 
         // The SDK exposes a text-event stream we can iterate.
         // We buffer the start of the response until we can confirm or deny
@@ -3774,7 +3844,12 @@ No problem, drop your email and departure date in below and I'll find it.
         logTimings({
           convId: convId,
           route: 'stream',
-          model: modelId,
+          // The model that ANSWERED, which is not always the one we asked
+          // first. Reporting the primary here would make the logs claim a
+          // dead model served the reply.
+          model: streamModelId,
+          modelRequested: MODEL_CHAIN[0],
+          modelFellBack: streamModelId !== MODEL_CHAIN[0],
           systemPromptChars: systemPrompt.length,
           inputTokens: finalMessage && finalMessage.usage ? finalMessage.usage.input_tokens : null,
           outputTokens: finalMessage && finalMessage.usage ? finalMessage.usage.output_tokens : null,
@@ -3786,6 +3861,18 @@ No problem, drop your email and departure date in below and I'll find it.
         return res.end();
 
       } catch (streamErr) {
+        // Another model may well answer this. Only worth trying if nothing has
+        // reached the visitor yet and the failure is the kind a different model
+        // could fix (a hang, a 404, an overload — never a 400, which is ours).
+        var canRetryStream = !firstTextChunkSeen
+          && streamAttempt < MODEL_CHAIN.length - 1
+          && modelFallback.isRetryableModelError(streamErr);
+        if (canRetryStream) {
+          console.error('[luna-chat] model', streamModelId, 'failed:',
+            modelFallback.describeModelError(streamErr),
+            '— retrying on', MODEL_CHAIN[streamAttempt + 1]);
+          continue;
+        }
         console.error('[luna-chat] streaming error:', streamErr.message || streamErr);
         mark('end');
         logTimings({ convId: convId, route: 'stream-error', error: streamErr.message || String(streamErr) });
@@ -3795,19 +3882,42 @@ No problem, drop your email and departure date in below and I'll find it.
         });
         return res.end();
       }
+      } // end MODEL FALLBACK LOOP — every branch above returns, so reaching
+        // here means the chain was exhausted without a usable reply.
     }
 
     // ═══════════════════════════════════════════════════════════
     // NON-STREAMING PATH — original JSON response (unchanged)
     // ═══════════════════════════════════════════════════════════
     mark('llmCallStart');
-    const response = await client.messages.create({
-      model: modelId,
-      max_tokens: 2048,
-      system: systemPrompt,
-      messages: claudeMessages,
-      metadata: { user_id: convId || 'unknown' }
-    });
+    // Non-streaming: try each model in the chain. Nothing has been sent to
+    // the visitor yet, so a retry here is invisible to them.
+    var response = null;
+    var lastModelErr = null;
+    for (var mi = 0; mi < MODEL_CHAIN.length; mi++) {
+      var attemptModel = MODEL_CHAIN[mi];
+      try {
+        response = await client.messages.create({
+          model: attemptModel,
+          max_tokens: 2048,
+          system: systemPrompt,
+          messages: claudeMessages,
+          metadata: { user_id: convId || 'unknown' }
+        }, { timeout: MODEL_TIMEOUT });
+        try { response.__servedBy = attemptModel; } catch (e) { /* frozen response, log falls back */ }
+        if (mi > 0) {
+          console.warn('[luna-chat] MODEL FALLBACK — answered with', attemptModel,
+            'after', MODEL_CHAIN[0], 'failed:', modelFallback.describeModelError(lastModelErr));
+        }
+        break;
+      } catch (mErr) {
+        lastModelErr = mErr;
+        var isLast = mi === MODEL_CHAIN.length - 1;
+        if (isLast || !modelFallback.isRetryableModelError(mErr)) throw mErr;
+        console.error('[luna-chat] model', attemptModel, 'failed:',
+          modelFallback.describeModelError(mErr), '— retrying on', MODEL_CHAIN[mi + 1]);
+      }
+    }
     mark('llmCallDone');
 
     const replyText = response.content
@@ -3923,7 +4033,9 @@ No problem, drop your email and departure date in below and I'll find it.
     logTimings({
       convId: convId,
       route: 'json',
-      model: modelId,
+      model: (response && response.__servedBy) || MODEL_CHAIN[0],
+      modelRequested: MODEL_CHAIN[0],
+      modelFellBack: !!(response && response.__servedBy && response.__servedBy !== MODEL_CHAIN[0]),
       systemPromptChars: systemPrompt.length,
       inputTokens: response.usage?.input_tokens,
       outputTokens: response.usage?.output_tokens,
