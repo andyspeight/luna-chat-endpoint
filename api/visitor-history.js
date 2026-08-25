@@ -1,17 +1,39 @@
-// Luna Visitor History — server-side lookup for returning/cross-device memory.
+// Luna Visitor History — server-side lookup for a returning visitor's memory.
 //
-// Given a clientName + an email and/or a visitorId, returns a COMPACT memory of
-// that visitor's prior conversations with THIS client so the widget can greet a
-// returning visitor (even on a new device) and give Luna continuity.
+// Given a clientName + the visitor's own visitorId, returns a COMPACT memory of
+// their prior conversations with THIS client, so Luna has continuity rather than
+// asking a returning customer everything again.
 //
-// Deliberately minimal exposure (privacy): returns only the visitor's name,
-// when they were last seen, a conversation count, and a short topics/summary
-// string — never full transcripts, and only ever scoped to the one client.
-// Note: email is not verified (no OTP), so treat the returned memory as a
-// convenience, not proof of identity. Read-only; cannot write or touch other
-// tables; base/table/field ids are hardcoded so a caller cannot redirect it.
+// LOOKUP BY EMAIL WAS REMOVED (29 Jul 2026). It used to accept an email instead
+// of a visitorId, which made this an open lookup on real people:
 //
-// Body (POST): { clientName, email?, visitorId? }  (at least one of email/visitorId)
+//   - clientName is public. It is in the embed snippet on every page of every
+//     client's website.
+//   - the email was never verified. No code, no session, nothing. Sending one
+//     was the whole of the claim to be that person.
+//
+// So anyone could post an address here and learn whether that person had chatted
+// with a named travel agency, their name, when they last spoke, how often, and a
+// 400-character summary of their most recent conversation. For a travel agency
+// that summary is things like who somebody is honeymooning with and what they
+// can afford. Guessing addresses is free, and the topic list came back too.
+//
+// The visitorId does not have that problem: it is an unguessable random token
+// that only the visitor's own browser holds, so presenting it is evidence of
+// being that browser. That is what a memory lookup should require.
+//
+// The cost is real and worth naming: recall no longer follows someone to a new
+// device when they type the same email. Restoring that safely needs a code
+// emailed to the address, which is the proper fix if it is wanted back. It is
+// NOT something to reinstate by trusting the address again.
+//
+// Still deliberately minimal exposure: only the visitor's name, when they were
+// last seen, a conversation count, and a short topics/summary string — never
+// full transcripts, and only ever scoped to the one client. Read-only; cannot
+// write or touch other tables; base/table/field ids are hardcoded so a caller
+// cannot redirect it.
+//
+// Body (POST): { clientName, visitorId }
 // Returns: { found, name?, lastSeen?, count?, summary? }
 // Env: AIRTABLE_KEY (server-held).
 
@@ -32,9 +54,6 @@ const F = {
 
 function isValidClientName(name) {
   return typeof name === 'string' && name.length > 0 && name.length < 100 && /^[A-Za-z0-9 .&'\-]+$/.test(name);
-}
-function isValidEmail(e) {
-  return typeof e === 'string' && e.length <= 200 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 }
 function isValidVisitorId(v) {
   return typeof v === 'string' && /^[A-Za-z0-9_\-]{6,64}$/.test(v);
@@ -58,23 +77,26 @@ module.exports = async function handler(req, res) {
 
   var body = req.body || {};
   var clientName = (body.clientName || '').trim();
-  var email = (body.email || '').trim();
   var visitorId = (body.visitorId || '').trim();
 
   if (!isValidClientName(clientName)) return res.status(400).json({ error: 'Invalid clientName' });
-  var useEmail = isValidEmail(email);
-  var useVid = isValidVisitorId(visitorId);
-  if (!useEmail && !useVid) return res.status(400).json({ error: 'Provide a valid email or visitorId' });
+  // visitorId ONLY. An email in the body is ignored rather than honoured — see
+  // the note at the top. Old widgets still send one; they get the visitorId
+  // answer, or a 400 if that is all they sent.
+  if (!isValidVisitorId(visitorId)) {
+    return res.status(400).json({ error: 'Provide a valid visitorId' });
+  }
 
   try {
     var crec = await auth.resolveClientByName(atKey, clientName);
     if (!crec) return res.status(404).json({ error: 'Unknown client' });
     var clientRecId = crec.id || crec;
 
-    var clauses = [];
-    if (useEmail) clauses.push("{VisitorEmail}='" + email.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'");
-    if (useVid) clauses.push("{VisitorId}='" + visitorId.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'");
-    var formula = clauses.length > 1 ? 'OR(' + clauses.join(',') + ')' : clauses[0];
+    // isValidVisitorId already restricts this to [A-Za-z0-9_-], so there is no
+    // quote or backslash left to escape. Escaped anyway: the guard and the
+    // formula should never depend on each other staying in step.
+    var formula = "{VisitorId}='"
+      + visitorId.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'";
 
     var url = 'https://api.airtable.com/v0/' + BASE + '/' + TABLE
       + '?filterByFormula=' + encodeURIComponent(formula)

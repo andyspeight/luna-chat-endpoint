@@ -12,7 +12,14 @@
 //   approve  POST — {id, question?, consumerAnswer?, category?} promote to Knowledge
 //   dismiss  POST — {id} mark the suggestion Dismissed
 //
-// Auth: X-Admin-Pass header must equal ADMIN_PASSWORD (same gate as api/clients).
+// Auth: X-Admin-Pass header must equal ADMIN_PASSWORD — a human typing it into
+// /global-brain.html.
+//
+// Deliberately NOT the provisioning secret. /api/clients also accepts
+// LUNA_PROVISION_PASS, which Client Control stores in its own Vercel project so
+// it can switch Luna Chat on for a client. Creating a client and rewriting the
+// knowledge base that answers for EVERY client are not the same privilege, so a
+// leak of the machine secret must not reach this endpoint.
 
 'use strict';
 
@@ -21,6 +28,7 @@ const gk = require('../lib/global-knowledge');
 const freshness = require('../lib/freshness');
 
 // No hardcoded fallback. If ADMIN_PASSWORD is unset, admin auth fails closed.
+// LUNA_PROVISION_PASS is intentionally not read here — see the note above.
 const ADMIN_PASS = process.env.ADMIN_PASSWORD || '';
 function safeCompare(a, b) {
   if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
