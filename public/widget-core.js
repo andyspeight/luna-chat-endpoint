@@ -2693,6 +2693,19 @@ function injectCSS() {
   +'#tgx-cw .tgx-overlay .tgx-obtn:hover{transform:translateY(-1px);box-shadow:0 6px 16px '+C.accentColor+'55}'
   +'#tgx-cw .tgx-overlay .tgx-obtn:active{transform:scale(0.98)}'
   +'#tgx-cw .tgx-overlay .tgx-olink{background:none;border:none;color:#5C6470;font-size:12.5px;cursor:pointer;text-decoration:underline;text-underline-offset:2px;font-family:inherit;padding:6px}'
+  /* Cross-device recall card. Sits in the panel, styled from the same tokens
+     as the rest of the widget so it does not read as a bolt-on. */
+  +'#tgx-cw .tgx-recall{position:absolute;left:16px;right:16px;bottom:16px;z-index:6;background:#fff;border:1px solid #E4E7EC;border-radius:14px;padding:16px;box-shadow:0 8px 28px rgba(15,23,42,.14);font-family:inherit}'
+  +'#tgx-cw .tgx-recall-title{font-size:14px;font-weight:600;color:#0F172A;margin-bottom:6px;line-height:1.35}'
+  +'#tgx-cw .tgx-recall-body{font-size:12.5px;color:#5C6470;margin-bottom:12px;line-height:1.5;word-break:break-word}'
+  +'#tgx-cw .tgx-recall-input{width:100%;padding:12px;border-radius:10px;border:1px solid #D8DDE5;font-size:19px;letter-spacing:6px;text-align:center;font-family:inherit;margin-bottom:10px;box-sizing:border-box;color:#0F172A}'
+  +'#tgx-cw .tgx-recall-input:focus{outline:2px solid '+C.accentColor+';outline-offset:1px;border-color:transparent}'
+  +'#tgx-cw .tgx-recall-btn{width:100%;padding:12px;border-radius:10px;background:'+C.accentColor+';color:#fff;font-size:13.5px;font-weight:600;border:none;cursor:pointer;font-family:inherit;margin-bottom:8px}'
+  +'#tgx-cw .tgx-recall-btn:disabled{opacity:.65;cursor:default}'
+  +'#tgx-cw .tgx-recall-btn:focus-visible{outline:2px solid #0F172A;outline-offset:2px}'
+  +'#tgx-cw .tgx-recall-link{display:block;width:100%;background:none;border:none;color:#5C6470;font-size:12.5px;cursor:pointer;text-decoration:underline;text-underline-offset:2px;font-family:inherit;padding:6px}'
+  +'#tgx-cw .tgx-recall-err{color:#B42318;font-size:12px;min-height:16px;margin-bottom:4px;line-height:1.4}'
+  +'@media (prefers-reduced-motion:reduce){#tgx-cw .tgx-recall{transition:none}}'
   +'#tgx-cw .tgx-overlay .tgx-olink:hover{color:'+C.brandColor+'}'
 
   // Checkbox
@@ -4596,10 +4609,16 @@ function showNameOverlay() {
           body: JSON.stringify({ clientName: C.clientName, name: userName, email: visitorEmail })
         }).catch(function(e){ console.warn("Luna widget: subscribe error:", e); });
       }
-      // No recall call here any more. It existed to look this person up by the
-      // email they had just typed, on a device the server had never seen. That
-      // is exactly the lookup that let anyone ask a named agency about any
-      // address, so it is gone. Recall now happens at boot, keyed on visitorId.
+      // Cross-device recall. We do NOT look this person up by the address they
+      // just typed — that was the lookup that let anyone ask a named agency
+      // about any email. Instead we offer to prove the address is theirs, with
+      // a one-time code sent to it.
+      //
+      // Offered, never automatic: a code lands in a real person's inbox, so it
+      // happens when they ask for it. And it is offered blind, to everyone with
+      // a valid address, because only showing it to people we recognise would
+      // put the same "we know you" signal back on the screen.
+      if (emailValid && !isReturningVisitor) { try { offerCrossDeviceRecall(visitorEmail); } catch(e){} }
       saveSession();
       ov.remove();
       /* Home screen is already visible underneath — no need to switch */
@@ -5708,6 +5727,146 @@ function buildVisitorMemoryContext(p){
   if (!parts.length) return "";
   return "This is a RETURNING visitor (not their first conversation). " + parts.join(". ")
     + ". Welcome them back warmly when it reads naturally, and draw on this only when relevant. Do NOT invent past details beyond what is stated here.";
+}
+
+/* ─── CROSS-DEVICE RECALL ─────────────────────────────────────
+   Pick up a conversation started on another device, by proving the email
+   address belongs to you.
+
+   The widget never asks the server "do you know this address" — that question
+   is the whole reason the old email lookup had to go. It asks the server to
+   SEND a code, gets the same answer either way, and shows the code box to
+   everyone. If the address is a stranger to this client, no mail is sent and
+   the code simply never arrives. Nothing on screen reveals which happened. */
+
+function recallEndpoint(action){
+  return C.endpoint.replace("/api/luna-chat", "/api/visitor-recall") + "?action=" + action;
+}
+
+function offerCrossDeviceRecall(email){
+  if (!email || !$panel) return;
+  if (document.getElementById("tgxRecallCard")) return;   /* already offered */
+
+  var card = document.createElement("div");
+  card.id = "tgxRecallCard";
+  card.className = "tgx-recall";
+  card.setAttribute("role", "group");
+  card.setAttribute("aria-label", "Continue a previous conversation");
+
+  var title = document.createElement("div");
+  title.className = "tgx-recall-title";
+  title.textContent = "Chatted with us before on another device?";
+  var body = document.createElement("div");
+  body.className = "tgx-recall-body";
+  body.textContent = "We can send a code to " + email + " and pick up where you left off.";
+  var go = document.createElement("button");
+  go.type = "button";
+  go.className = "tgx-recall-btn";
+  go.textContent = "Send me a code";
+  var dismiss = document.createElement("button");
+  dismiss.type = "button";
+  dismiss.className = "tgx-recall-link";
+  dismiss.textContent = "No thanks";
+
+  card.appendChild(title); card.appendChild(body);
+  card.appendChild(go); card.appendChild(dismiss);
+  $panel.appendChild(card);
+
+  dismiss.addEventListener("click", function(){ card.remove(); });
+  go.addEventListener("click", function(){
+    go.disabled = true;
+    go.textContent = "Sending…";
+    fetch(recallEndpoint("request"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientName: C.clientName, email: email })
+    })
+    .catch(function(){})
+    .then(function(){ showRecallCodeEntry(card, email); });
+  });
+}
+
+function showRecallCodeEntry(card, email){
+  /* Deliberately identical whether or not a code was actually sent. */
+  while (card.firstChild) card.removeChild(card.firstChild);
+
+  var title = document.createElement("div");
+  title.className = "tgx-recall-title";
+  title.textContent = "Check your email";
+  var body = document.createElement("div");
+  body.className = "tgx-recall-body";
+  body.textContent = "If we recognise " + email + ", a 6 digit code is on its way. It expires in 10 minutes.";
+
+  var input = document.createElement("input");
+  input.type = "text";
+  input.className = "tgx-recall-input";
+  input.setAttribute("inputmode", "numeric");
+  input.setAttribute("autocomplete", "one-time-code");
+  input.setAttribute("maxlength", "6");
+  input.setAttribute("aria-label", "6 digit code");
+  input.placeholder = "000000";
+
+  var go = document.createElement("button");
+  go.type = "button";
+  go.className = "tgx-recall-btn";
+  go.textContent = "Continue";
+  var err = document.createElement("div");
+  err.className = "tgx-recall-err";
+  err.setAttribute("role", "alert");
+  var dismiss = document.createElement("button");
+  dismiss.type = "button";
+  dismiss.className = "tgx-recall-link";
+  dismiss.textContent = "Skip";
+
+  card.appendChild(title); card.appendChild(body); card.appendChild(input);
+  card.appendChild(go); card.appendChild(err); card.appendChild(dismiss);
+  input.focus();
+
+  dismiss.addEventListener("click", function(){ card.remove(); });
+  function submit(){
+    var code = (input.value || "").replace(/\D/g, "");
+    if (code.length !== 6) { err.textContent = "Enter the 6 digit code."; return; }
+    go.disabled = true; go.textContent = "Checking…"; err.textContent = "";
+    fetch(recallEndpoint("verify"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientName: C.clientName, email: email, code: code })
+    })
+    .then(function(r){ return r.json().catch(function(){ return {}; }); })
+    .then(function(d){
+      if (d && d.ok && d.found) { applyRecalledMemory(d, email); card.remove(); return; }
+      if (d && d.ok && !d.found) {
+        /* Verified, but there is nothing to bring across. */
+        card.remove();
+        return;
+      }
+      go.disabled = false; go.textContent = "Continue";
+      err.textContent = (d && d.error) || "That code was not recognised.";
+    })
+    .catch(function(){
+      go.disabled = false; go.textContent = "Continue";
+      err.textContent = "Something went wrong. Please try again.";
+    });
+  }
+  go.addEventListener("click", submit);
+  input.addEventListener("keydown", function(e){ if (e.key === "Enter") { e.preventDefault(); submit(); } });
+}
+
+/* Merge a verified recall into the local profile — the same merge the
+   same-device path does, so from here on this device recalls on its own. */
+function applyRecalledMemory(d, email){
+  try {
+    var p = ensureProfile();
+    if (d.name && !p.name) p.name = d.name;
+    if (email && !p.email) p.email = email;
+    if (d.summary) p.serverSummary = String(d.summary).slice(0, 500);
+    saveVisitorProfile(p);
+    visitorProfile = p;
+    isReturningVisitor = true;
+    if (p.name && !userName) { userName = p.name; nameCollected = true; }
+    visitorMemoryContext = buildVisitorMemoryContext(p);
+    maybeRegreet();
+  } catch(e){}
 }
 
 /* Returning-visitor recall: ask the server whether THIS BROWSER has chatted with
