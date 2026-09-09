@@ -48,3 +48,26 @@ not the same privilege, so they no longer share a key:
 
 Do step 2 first and nothing breaks in between: provisioning accepts both until
 step 3 lands. Until step 2 is done, `/api/clients` logs a reminder on every call.
+
+## Search links and the geo table
+
+Every search link Luna builds is corrected server side before the visitor sees
+it, so a Luna search covers the same ground as the same search on the site.
+The site sends Travelify a curated centre point, a per-destination radius and
+Travelify's own airport grouping (GR1 for Crete, AE1 for Dubai). The model
+still names the place; `lib/geo-resolver.js` swaps in the site's `lat`, `lng`,
+`rad` and `dst` whenever the `loc` it wrote matches a row in the table.
+
+- **Radius is in miles.** The deeplink's `rad` takes miles, and so does the
+  table (`City_RadiusOverrideMI`). The prompt says so too.
+- **The table** is `lib/geo/travelify-geo.csv`, the Travelify geo export
+  verbatim, compiled to `lib/geo/travelify-geo.json` by
+  `node scripts/build-geo-table.js`. To refresh it, export again from
+  Travelify, drop the CSV over the old one, run the script and commit both.
+- **Misses are logged**, one line per link: `[geo] loc="..." miss`. Read them
+  in the Vercel logs to see which destinations visitors ask for that the table
+  does not know yet, and add them at source.
+- **Links for unknown places are left exactly as the model built them**, as
+  are Flights links (no place, only airports) and any match whose centre is
+  nowhere near the model's own coordinates (Paris, Texas is not Paris).
+- **Off switch:** `LUNA_GEO_REWRITE=0`. Nothing else about a reply changes.
