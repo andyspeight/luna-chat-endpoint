@@ -2,8 +2,13 @@
 // resolving under the name already embedded on their site. Shared helper.
 const { clientNameFormula } = require('../lib/luna-auth');
 const modelFallback = require('../lib/model-fallback');
+const geo = require('../lib/geo-resolver');
 
 const Anthropic = require('@anthropic-ai/sdk');
+// Deep links the model builds are corrected against the site's own geo table
+// (lib/geo-resolver.js) before the visitor sees them. LUNA_GEO_REWRITE=0 is the
+// off switch; nothing else about the reply changes when it is off.
+const GEO_REWRITE = process.env.LUNA_GEO_REWRITE !== '0';
 const ratelimit = require('../lib/ratelimit');
 const knowledge = require('../lib/knowledge');
 const fcdoLib = require('../lib/fcdo');
@@ -2992,16 +2997,16 @@ Use "${defaultType}" as the default unless the visitor specifically asks for som
 ### Deep Link URL Templates
 
 **Packages (package holidays, flight + hotel + transfers):**
-https://dl.tvllnk.com/deeplink/${siteId}?st=Packages&org={ORIGIN_IATA}&dst={DEST_IATA}&loc={LOCATION_NAME}&lat={LATITUDE}&lng={LONGITUDE}&rad=4&fr={DATE}&dur={NIGHTS}&adt={ADULTS}&chd={CHILDREN}&inf={INFANTS}
+https://dl.tvllnk.com/deeplink/${siteId}?st=Packages&org={ORIGIN_IATA}&dst={DEST_IATA}&loc={LOCATION_NAME}&lat={LATITUDE}&lng={LONGITUDE}&rad={RADIUS}&fr={DATE}&dur={NIGHTS}&adt={ADULTS}&chd={CHILDREN}&inf={INFANTS}
 
 **DynamicPackaging (flight + hotel combos):**
-https://dl.tvllnk.com/deeplink/${siteId}?st=DynamicPackaging&org={ORIGIN_IATA}&dst={DEST_IATA}&loc={LOCATION_NAME}&lat={LATITUDE}&lng={LONGITUDE}&rad=4&fr={DATE}&dur={NIGHTS}&adt={ADULTS}&chd={CHILDREN}&inf={INFANTS}
+https://dl.tvllnk.com/deeplink/${siteId}?st=DynamicPackaging&org={ORIGIN_IATA}&dst={DEST_IATA}&loc={LOCATION_NAME}&lat={LATITUDE}&lng={LONGITUDE}&rad={RADIUS}&fr={DATE}&dur={NIGHTS}&adt={ADULTS}&chd={CHILDREN}&inf={INFANTS}
 
 **Flights (flights only):**
 https://dl.tvllnk.com/deeplink/${siteId}?st=Flights&org={ORIGIN_IATA}&dst={DEST_IATA}&fr={DATE}&dur={NIGHTS}&adt={ADULTS}&chd={CHILDREN}&inf={INFANTS}
 
 **Accommodation (hotels only, no flights):**
-https://dl.tvllnk.com/deeplink/${siteId}?st=Accommodation&loc={LOCATION_NAME}&lat={LATITUDE}&lng={LONGITUDE}&rad=4&fr={DATE}&dur={NIGHTS}&adt={ADULTS}&chd={CHILDREN}&inf={INFANTS}
+https://dl.tvllnk.com/deeplink/${siteId}?st=Accommodation&loc={LOCATION_NAME}&lat={LATITUDE}&lng={LONGITUDE}&rad={RADIUS}&fr={DATE}&dur={NIGHTS}&adt={ADULTS}&chd={CHILDREN}&inf={INFANTS}
 
 ### Parameter Rules
 
@@ -3013,7 +3018,7 @@ If the visitor says "London" use LON. If they name a specific London airport, us
 
 **LOCATION_NAME** — the destination name as the visitor described it, URL-encoded with + for spaces. For resorts and specific areas, use the specific name (e.g. "Playa+del+Carmen" not just "Mexico"). For cities, use the city name (e.g. "New+York", "Paris", "Tokyo").
 
-**LATITUDE / LONGITUDE** — approximate coordinates of the destination. Use your geographical knowledge. These do not need to be pinpoint accurate, the search uses a radius parameter, so being within a fraction of a degree is fine.
+**LATITUDE / LONGITUDE** — approximate coordinates of the CENTRE of the destination as the visitor named it. Use your geographical knowledge. For a region or island use the middle of it, not its airport or main town. These do not need to be pinpoint accurate, the search uses a radius parameter, so being within a fraction of a degree is fine.
 
 **DATE** — format YYYY-MM-DD. Today's date is ${new Date().toISOString().split('T')[0]}. ALL dates MUST be in the future. If the visitor asks for a date that has already passed (e.g. "June 2026" but it's now July 2026), use the same month next year. If the visitor says a month without a specific date, use the 15th of that month. If they say "next summer" suggest dates. NEVER generate a URL with a date in the past — always check against today's date before outputting the link.
 
@@ -3024,7 +3029,15 @@ If the visitor says "London" use LON. If they name a specific London airport, us
 **INFANTS** — number of infants under 2 (default 0).
 If children are included, append &chdage={age} for each child (e.g. &chdage=8&chdage=5 for two children aged 8 and 5). Always ask for children's ages if children > 0.
 
-**rad** — search radius in km. Use 3 when searching near a specific point of interest (a theme park, landmark, stadium or named attraction, e.g. "hotels near Universal Orlando") so results stay genuinely close to it. Use 4 for a city or resort. Use 8-12 ONLY for a deliberately large region (e.g. "somewhere in the Algarve", "the Amalfi Coast"). A named attraction is NOT a large region — keep the radius tight, or the results spread across the whole city.
+**RADIUS** — search radius in MILES (not km). Size it to the kind of place the visitor named, so the search covers the whole of it and no more:
+- a single attraction, landmark, beach or bay (e.g. "hotels near Universal Orlando", "St Paul's Bay"): 1-3
+- a ski resort or a village: 1-3 (St Anton 2, Alpe d'Huez 1)
+- a resort town (Benidorm, Albufeira, Sunny Beach): 4-8
+- a city (Paris 6, Manchester 5, London 13, Dubai 28 for the whole emirate): 5-15
+- a stretch of coast or a medium island (Costa Dorada 30, Mallorca 34, Tenerife 31, Costa del Sol 41): 25-45
+- a large island, whole coast or region (the Algarve 47, Bali 42, Zanzibar 68, Crete 90): 40-90
+- a whole country or island nation (Barbados 14, Cyprus, the Maldives 150): 15-150 depending on its size
+A named attraction is NOT a region — keep it tight, or the results spread across the whole city. A region is NOT a town — if the visitor says "somewhere in the Algarve" search the whole Algarve, not Faro.
 
 ### Optional filters — INCLUDE these when the visitor has already stated them
 
@@ -3516,15 +3529,19 @@ No problem, drop your email and departure date in below and I'll find it.
         // Tokens may already be buffered (call 2 was fired in parallel).
         try {
           var longStream = await longStreamPromise;
+          var geoLong = geo.createStreamRewriter({ enabled: GEO_REWRITE });
           for await (var lev of longStream) {
             if (lev.type === 'content_block_delta' && lev.delta && lev.delta.type === 'text_delta') {
               var ld = lev.delta.text || '';
               if (!ld) continue;
               if (!longFirstToken) { mark('longFirstToken'); longFirstToken = true; }
               longText += ld;
-              sendEvent('long_text', { delta: ld });
+              var ldOut = geoLong.push(ld);
+              if (ldOut) sendEvent('long_text', { delta: ldOut });
             }
           }
+          var ldTail = geoLong.flush();
+          if (ldTail) sendEvent('long_text', { delta: ldTail });
           longFinal = await longStream.finalMessage();
           mark('longStreamEnd');
         } catch (longErr) {
@@ -3545,15 +3562,19 @@ No problem, drop your email and departure date in below and I'll find it.
                 messages: claudeMessages,
                 metadata: { user_id: convId || 'unknown' }
               }, { timeout: MODEL_TIMEOUT });
+              var geoRetry = geo.createStreamRewriter({ enabled: GEO_REWRITE });
               for await (var rev of retryStream) {
                 if (rev.type === 'content_block_delta' && rev.delta && rev.delta.type === 'text_delta') {
                   var rd = rev.delta.text || '';
                   if (!rd) continue;
                   if (!longFirstToken) { mark('longFirstToken'); longFirstToken = true; }
                   longText += rd;
-                  sendEvent('long_text', { delta: rd });
+                  var rdOut = geoRetry.push(rd);
+                  if (rdOut) sendEvent('long_text', { delta: rdOut });
                 }
               }
+              var rdTail = geoRetry.flush();
+              if (rdTail) sendEvent('long_text', { delta: rdTail });
               longFinal = await retryStream.finalMessage();
               mark('longStreamEnd');
               console.warn('[luna-chat] MODEL FALLBACK — long answer served by', MODEL_FALLBACK);
@@ -3628,6 +3649,9 @@ No problem, drop your email and departure date in below and I'll find it.
           combinedClean = outputCheck2.filtered;
         }
         combinedClean = stripInternalTokens(combinedClean);
+        // The stream already corrected (and logged) each link; this keeps the
+        // saved reply and the done payload identical to what was streamed.
+        combinedClean = geo.rewriteDeepLinks(combinedClean, { enabled: GEO_REWRITE, quiet: true });
 
         // Trip brief: strip any [BRIEF] marker (the long call emits it) and capture it.
         var briefSweep2 = extractBriefMarkers(combinedClean);
@@ -3697,6 +3721,13 @@ No problem, drop your email and departure date in below and I'll find it.
       var streamModelId = MODEL_CHAIN[streamAttempt];
       accumulated = '';
       firstTextChunkSeen = false;
+      // Holds back a deep link while it is still arriving, rewrites it against
+      // the site's geo table, then lets it through. Prose is never delayed.
+      var geoStream = geo.createStreamRewriter({ enabled: GEO_REWRITE });
+      var emitText = function (t) {
+        var out = geoStream.push(t);
+        if (out) sendEvent('text', { delta: out });
+      };
       detectedLang = null;
       replyBrief = null;
 
@@ -3738,7 +3769,7 @@ No problem, drop your email and departure date in below and I'll find it.
               // Flush buffered (cleaned) text and switch to streaming mode
               if (meta.cleaned.length > 0) {
                 if (!firstTextChunkSeen) mark('firstToken');
-                sendEvent('text', { delta: meta.cleaned });
+                emitText(meta.cleaned);
                 firstTextChunkSeen = true;
               }
               langBuffer = '';
@@ -3746,9 +3777,9 @@ No problem, drop your email and departure date in below and I'll find it.
               continue;
             }
 
-            // streaming phase — forward delta as-is
+            // streaming phase — forward the delta (via the deep-link rewriter)
             if (!firstTextChunkSeen) mark('firstToken');
-            sendEvent('text', { delta: deltaText });
+            emitText(deltaText);
             firstTextChunkSeen = true;
           }
           // We don't need to handle message_delta, message_stop etc — the
@@ -3761,10 +3792,13 @@ No problem, drop your email and departure date in below and I'll find it.
           if (metaEnd.lang) detectedLang = metaEnd.lang;
           if (metaEnd.brief) replyBrief = metaEnd.brief;
           if (metaEnd.cleaned.length > 0) {
-            sendEvent('text', { delta: metaEnd.cleaned });
+            emitText(metaEnd.cleaned);
             firstTextChunkSeen = true;
           }
         }
+        // Anything the rewriter was still holding (a link at the very end).
+        var geoTail = geoStream.flush();
+        if (geoTail) sendEvent('text', { delta: geoTail });
 
         // Final message from the SDK — includes usage
         var finalMessage = await stream.finalMessage();
@@ -3822,6 +3856,7 @@ No problem, drop your email and departure date in below and I'll find it.
         // Layer 3: Strip any internal/protocol/hallucinated tokens. Final
         // safety net so visitors never see <blank_line>, <break>, [removed].
         cleanReply = stripInternalTokens(cleanReply);
+        cleanReply = geo.rewriteDeepLinks(cleanReply, { enabled: GEO_REWRITE, quiet: true });
 
         var escalate = detectEscalation(cleanReply, message);
 
@@ -3977,6 +4012,9 @@ No problem, drop your email and departure date in below and I'll find it.
     // Layer 3: Strip any internal/protocol/hallucinated tokens. Final safety
     // net so visitors never see <blank_line>, <break>, [removed], etc.
     cleanReply = stripInternalTokens(cleanReply);
+    // Correct every deep link against the site's geo table (WhatsApp and any
+    // other non-streaming caller come through here).
+    cleanReply = geo.rewriteDeepLinks(cleanReply, { enabled: GEO_REWRITE });
 
     var escalate = detectEscalation(cleanReply, message);
 
