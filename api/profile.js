@@ -156,6 +156,11 @@ module.exports = async function handler(req, res) {
           emailPlatformListId: fields.EmailPlatformListId || '',
           multilingualEnabled: !!fields.MultilingualEnabled,
           widgetLanguage: fields.WidgetLanguage ? (typeof fields.WidgetLanguage === 'object' ? fields.WidgetLanguage.name : fields.WidgetLanguage) : '',
+          // The dashboard builds its language picker from this rather than
+          // keeping a second copy of the list. A hardcoded copy is how the
+          // capability-card icon sets drifted apart until half the icons the
+          // editor offered drew nothing at all on the live widget.
+          availableLanguages: languages.names(),
           supportedLanguages: fields.SupportedLanguages || '',
           cannedResponses: fields.CannedResponses || '',
           scannedUrls: fields.scannedUrls || '',

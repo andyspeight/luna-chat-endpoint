@@ -2765,20 +2765,12 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     </div>
 
     <div class="settings-section">
-      <h4>Multilingual Support</h4>
-      <div class="settings-hint" style="margin-bottom:8px">When enabled, Luna automatically detects the visitor's language and responds in kind. Perfect for agents serving international customers.</div>
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-          <input type="checkbox" id="setMultilingualEnabled" style="width:18px;height:18px;accent-color:var(--teal)" onchange="document.getElementById('multilingualFields').style.display=this.checked?'block':'none'">
-          <span style="font-size:13px;font-weight:600">Enable multilingual chat</span>
-        </label>
-      </div>
-      <div id="multilingualFields" style="display:none">
-        <div class="settings-row">
-          <label class="settings-label">Supported Languages (optional)</label>
-          <input class="settings-input" id="setSupportedLanguages" placeholder="e.g. English, French, Spanish, German">
-          <div class="settings-hint">Leave empty to support all languages. Or list the specific languages you want Luna to respond in. If a visitor writes in an unsupported language, Luna will reply in English.</div>
-        </div>
+      <h4>Language</h4>
+      <div class="settings-hint" style="margin-bottom:12px">Luna always replies in whatever language your visitor writes in. That is always on and there is nothing to switch. This setting is for the chat window itself: its labels, buttons and status messages, and the language your search results open in.</div>
+      <div class="settings-row">
+        <label class="settings-label">Chat window language</label>
+        <select class="settings-input" id="setWidgetLanguage"></select>
+        <div class="settings-hint">Leave this as <strong>Not set</strong> to keep the window in English and let your booking platform decide the language of the results page. Choosing a language changes both.</div>
       </div>
     </div>
 
@@ -5243,6 +5235,25 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     }).join('');
   }
 
+
+  /* Build the language picker from the list the API sends. The dashboard keeps
+     no copy of its own, so a language can never appear here that the widget
+     has no strings for. */
+  function renderWidgetLanguage(available, current) {
+    var sel = document.getElementById('setWidgetLanguage');
+    if (!sel) return;
+    sel.innerHTML = '';
+    var none = document.createElement('option');
+    none.value = ''; none.textContent = 'Not set (English, results page unchanged)';
+    sel.appendChild(none);
+    (available || []).forEach(function(name) {
+      var o = document.createElement('option');
+      o.value = name; o.textContent = name;
+      sel.appendChild(o);
+    });
+    sel.value = current || '';
+  }
+
   function renderBrandColorGrid() {
     makeSwatchGrid(BRAND_PRESETS, selectedBrandColor, null, 'brandColorGrid');
     document.getElementById('setBrandColorPicker').value = selectedBrandColor;
@@ -5588,9 +5599,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       selectedEmailPlatform = p.emailPlatform || 'none';
       document.getElementById('setEmailApiKey').value = p.emailPlatformApiKey || '';
       document.getElementById('setEmailListId').value = p.emailPlatformListId || '';
-      document.getElementById('setMultilingualEnabled').checked = !!p.multilingualEnabled;
-      document.getElementById('setSupportedLanguages').value = p.supportedLanguages || '';
-      document.getElementById('multilingualFields').style.display = p.multilingualEnabled ? 'block' : 'none';
+      renderWidgetLanguage(p.availableLanguages, p.widgetLanguage);
 
       renderBrandColorGrid();
       renderAccentColorGrid();
@@ -5647,8 +5656,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
           emailPlatform: selectedEmailPlatform,
           emailPlatformApiKey: document.getElementById('setEmailApiKey').value,
           emailPlatformListId: document.getElementById('setEmailListId').value,
-          multilingualEnabled: document.getElementById('setMultilingualEnabled').checked,
-          supportedLanguages: document.getElementById('setSupportedLanguages').value,
+          widgetLanguage: document.getElementById('setWidgetLanguage').value,
           widgetBotName: document.getElementById('setBotName').value,
           widgetTagline: document.getElementById('setTagline').value,
           widgetWelcome: document.getElementById('setWelcome').value,
