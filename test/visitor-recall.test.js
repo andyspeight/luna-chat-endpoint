@@ -275,7 +275,11 @@ test('the widget builds its card with DOM nodes, not innerHTML', async () => {
   const W = read('public/widget-core.js');
   const card = W.split('function offerCrossDeviceRecall')[1].split('function showRecallCodeEntry')[0];
   assert.doesNotMatch(card, /innerHTML/, 'no innerHTML in the recall card');
-  assert.match(card, /body\.textContent = "We can send a code to " \+ email/);
+  // The copy moved into the interface string table, so the address is now
+  // substituted into a translated sentence. What matters is unchanged: it
+  // reaches the DOM through textContent, so it can never become markup.
+  assert.match(card, /body\.textContent = t\('weCanSendCode', \{ email: email \}\);/);
+  assert.doesNotMatch(card, /body\.innerHTML/);
 });
 
 test('a verified recall lands in the same profile the same-device path uses', async () => {

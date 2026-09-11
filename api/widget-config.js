@@ -4,6 +4,7 @@
 // Widgets identify themselves by clientName, so a renamed client must keep
 // resolving under the name already embedded on their site. Shared helper.
 const { clientNameFormula } = require('../lib/luna-auth');
+const languages = require('../lib/languages');
 
 const AT_BASE = 'app6Ot3eOb3DangkB';
 const AT_TABLE = 'tbl6CZ7aVzq1wHF2v';
@@ -123,6 +124,13 @@ module.exports = async function handler(req, res) {
         config.bubbleIcon = f.BubbleIcon;
       }
     }
+
+    /* ── Interface language ──
+       The language the widget draws ITSELF in: labels, placeholders, status
+       messages. Luna's replies are unaffected — she follows the visitor. An
+       unset or unrecognised value resolves to English rather than leaving the
+       widget with no strings. */
+    config.language = languages.codeFor(f.WidgetLanguage);
 
     /* ── Content ── */
     if (f.WidgetWelcome) config.welcome = f.WidgetWelcome;

@@ -321,6 +321,370 @@ function append(parent, ...children) {
   return parent;
 }
 
+/* ─── INTERFACE LANGUAGE ──────────────────────────────────
+   The widget's own furniture: labels, placeholders, button titles, status
+   lines. NOT what Luna says — she detects the visitor's language and answers
+   in it, in any language, whatever is set here. This is the language of the
+   window she speaks inside, and it belongs to the agency whose site it is.
+
+   C.language arrives from /api/widget-config (WidgetLanguage on the client
+   record) and is a two-letter code. Anything unknown falls back to English,
+   key by key, so a half-finished translation degrades to English words rather
+   than to blank space or a raw key name.
+
+   ADDING A LANGUAGE: copy the `en` block, translate every value, add the row
+   to lib/languages.js and the choice to the WidgetLanguage field. The test
+   suite fails if a language is offered in lib/languages.js without a table
+   here, and fails if a table here is missing a key that `en` has. */
+/* Which string key supplies the default for each client-editable config key. */
+var LOCALISED_DEFAULT_KEYS = {
+  tagline: 'defaultTagline',
+  welcome: 'defaultWelcome',
+  namePrompt: 'namePrompt',
+  skipLabel: 'skip',
+  escalateLabel: 'defaultEscalateLabel',
+  leaveLabel: 'defaultLeaveLabel',
+  footer: 'defaultFooter'
+};
+
+/* The active language code. A file-scope holder rather than a read of C,
+   because the block renderers above run OUTSIDE the widget's IIFE and cannot
+   see C at all — which is exactly how the first attempt at this broke every
+   card on the page with a ReferenceError. rebuildConfig() keeps it in step
+   with the client's configuration. */
+var TGX_LANG = 'en';
+
+var STRINGS = {
+  en: {
+    /* home + chat chrome */
+    onlineNow: 'Online now',
+    online: 'Online',
+    whatICanHelpWith: 'What I can help with',
+    tryAsking: 'Try asking',
+    askMeAnything: 'Ask me anything...',
+    preferAPerson: 'Prefer a person?',
+    today: 'Today',
+    emailThisChat: 'Email this chat',
+    more: 'More',
+    openChat: 'Open chat',
+    /* buttons and titles */
+    voiceInput: 'Voice input',
+    attachAFile: 'Attach a file',
+    startNewConversation: 'Start a new conversation',
+    expandWindow: 'Expand window',
+    scrollSuggestionsLeft: 'Scroll suggestions left',
+    scrollSuggestionsRight: 'Scroll suggestions right',
+    scrollToLatest: 'Scroll to latest',
+    cancel: 'Cancel',
+    remove: 'Remove',
+    send: 'Send',
+    tryAgain: 'Try again',
+    copyTranscript: 'Copy transcript',
+    sending: 'Sending…',
+    checking: 'Checking…',
+    /* name capture — the first thing a visitor sees */
+    namePrompt: "Before we start, what's your name?",
+    nameHelp: 'This helps us personalise your experience.',
+    yourName: 'Your name',
+    emailOptional: 'Email (optional)',
+    marketingOptIn: "I'd like to receive offers and updates",
+    continueLabel: 'Continue',
+    skip: 'Skip',
+    seePrivacyPolicy: 'See our privacy policy',
+    /* cards */
+    seeDeals: 'See deals',
+    book: 'Book',
+    readFull: 'Read full',
+    readFullAdvice: 'Read the full advice',
+    tellMeMoreAbout: 'Tell me more about {name}',
+    clickHereToViewResults: 'Click here to view results',
+    openInGoogleMaps: 'Open in Google Maps',
+    openInAppleMaps: 'Open in Apple Maps',
+    feelsLike: 'Feels like',
+    wind: 'Wind',
+    humidity: 'Humidity',
+    bestMonths: 'Best months: {range}',
+    photo: 'Photo:',
+    /* forms */
+    yourNamePlease: 'Your name, please.',
+    contactPlease: 'An email or phone number so they can reach you.',
+    emailLooksWrong: 'That email doesn’t look right.',
+    sendTo: 'Send to {agency}',
+    couldntSend: 'Couldn’t send just now — please try again.',
+    pickDepartureDate: 'Pick a departure date.',
+    datePassed: 'That date has passed — pick a future one.',
+    nightsRange: 'Nights should be between 1 and 90.',
+    datesSet: 'Dates set',
+    departure: 'Departure',
+    nights: 'Nights',
+    phoneOptional: 'Phone (optional)',
+    email: 'Email',
+    yourEmailAddress: 'Your email address',
+    enterYourEmail: 'Enter your email',
+    yourMessage: 'Your message...',
+    leaveUsAMessage: 'Leave us a message',
+    wellGetBack: "We'll get back to you as soon as possible.",
+    sendMessage: 'Send message',
+    sentTo: 'Sent to {email}. Check your inbox.',
+    /* trip brief chips */
+    yourTrip: 'Your trip',
+    tripWhere: 'Where',
+    tripFrom: 'From',
+    tripDepart: 'Depart',
+    tripWhen: 'When',
+    tripNights: 'Nights',
+    tripAdults: 'Adults',
+    tripChildren: 'Children',
+    tripBoard: 'Board',
+    tripBudget: 'Budget',
+    tripType: 'Type',
+    /* cross-device recall */
+    chattedBefore: 'Chatted with us before on another device?',
+    weCanSendCode: 'We can send a code to {email} and pick up where you left off.',
+    sendMeACode: 'Send me a code',
+    noThanks: 'No thanks',
+    checkYourEmail: 'Check your email',
+    ifWeRecognise: 'If we recognise {email}, a 6 digit code is on its way. It expires in 10 minutes.',
+    enterSixDigitCode: 'Enter the 6 digit code.',
+    sixDigitCode: '6 digit code',
+    continuePreviousConversation: 'Continue a previous conversation',
+    /* errors */
+    somethingWentWrong: 'Something went wrong',
+    somethingWentWrongRetry: 'Something went wrong. Please try again.',
+    pleaseRefresh: 'Please refresh the page and try again.',
+    micPermission: 'Microphone permission needed',
+    loadingBookingLookup: 'Loading booking lookup...',
+    bookingLookupFailed: "Sorry, the booking lookup form couldn't load. You can contact us directly instead.",
+    /* clearing the conversation */
+    clearConfirm: 'Clear this conversation and start fresh?',
+    yesClearIt: 'Yes, clear it',
+    /* screen sharing */
+    screenSharingRequest: 'Screen sharing request',
+    allow: 'Allow',
+    decline: 'Decline',
+    sharingYourScreen: 'Sharing your screen',
+    stop: 'Stop',
+    /* rating */
+    howWasYourExperience: 'How was your experience?',
+    rateYourConversation: 'Rate your conversation',
+    thanksForFeedback: 'Thanks for your feedback!',
+    startNewAnytime: 'You can start a new chat anytime.',
+    /* typing status */
+    thinking: 'Thinking…',
+    stillWorking: 'Still working…',
+    thinkingItThrough: 'Thinking it through…',
+    lookingUpBooking: 'Looking up your booking…',
+    checkingPolicy: 'Checking the policy…',
+    emergencyInfo: 'Pulling up emergency info…',
+    findingDestinations: 'Finding destinations…',
+    checkingAvailable: "Checking what's available…",
+    findingRightPerson: 'Finding the right person…',
+    /* time-aware greeting */
+    goodMorning: 'Good morning',
+    goodAfternoon: 'Good afternoon',
+    goodEvening: 'Good evening',
+    welcomeBack: 'Welcome back!',
+    welcomeBackName: 'Welcome back, {name}!',
+    heyName: 'Hey {name}!',
+    /* defaults, used only when the client has not written their own */
+    defaultTagline: 'AI ASSISTANT',
+    defaultWelcome: 'Hey there! How can we help you today?',
+    defaultEscalateLabel: 'Talk to a human',
+    defaultLeaveLabel: 'Leave a message',
+    defaultFooter: 'Powered by Luna AI',
+    defaultSubHi: "Find a trip, manage your booking, or just ask me anything — I'm here.",
+    connectionTrouble: 'I’m having trouble connecting right now. You can use the "{label}" button below to reach our team directly.'
+  },
+
+  /* Romanian. Translated for Booking Vacante (bookingvacante.ro) and worth a
+     read-through by a native speaker before it is offered to other Romanian
+     clients — the words are ours, the tone should be theirs. Correcting one is
+     a single-line edit here. */
+  ro: {
+    onlineNow: 'Online acum',
+    online: 'Online',
+    whatICanHelpWith: 'Cu ce te pot ajuta',
+    tryAsking: 'Încearcă să întrebi',
+    askMeAnything: 'Întreabă-mă orice...',
+    preferAPerson: 'Preferi să vorbești cu cineva?',
+    today: 'Astăzi',
+    emailThisChat: 'Trimite conversația pe email',
+    more: 'Mai mult',
+    openChat: 'Deschide conversația',
+    voiceInput: 'Mesaj vocal',
+    attachAFile: 'Atașează un fișier',
+    startNewConversation: 'Începe o conversație nouă',
+    expandWindow: 'Extinde fereastra',
+    scrollSuggestionsLeft: 'Derulează sugestiile spre stânga',
+    scrollSuggestionsRight: 'Derulează sugestiile spre dreapta',
+    scrollToLatest: 'Mergi la ultimul mesaj',
+    cancel: 'Anulează',
+    remove: 'Elimină',
+    send: 'Trimite',
+    tryAgain: 'Încearcă din nou',
+    copyTranscript: 'Copiază conversația',
+    sending: 'Se trimite…',
+    checking: 'Se verifică…',
+    namePrompt: 'Înainte să începem, cum te numești?',
+    nameHelp: 'Ne ajută să îți personalizăm experiența.',
+    yourName: 'Numele tău',
+    emailOptional: 'Email (opțional)',
+    marketingOptIn: 'Vreau să primesc oferte și noutăți',
+    continueLabel: 'Continuă',
+    skip: 'Omite',
+    seePrivacyPolicy: 'Vezi politica de confidențialitate',
+    seeDeals: 'Vezi ofertele',
+    book: 'Rezervă',
+    readFull: 'Citește tot',
+    readFullAdvice: 'Citește recomandarea completă',
+    tellMeMoreAbout: 'Spune-mi mai multe despre {name}',
+    clickHereToViewResults: 'Apasă aici pentru a vedea rezultatele',
+    openInGoogleMaps: 'Deschide în Google Maps',
+    openInAppleMaps: 'Deschide în Apple Maps',
+    feelsLike: 'Se simte ca',
+    wind: 'Vânt',
+    humidity: 'Umiditate',
+    bestMonths: 'Cele mai bune luni: {range}',
+    photo: 'Foto:',
+    yourNamePlease: 'Spune-ne numele tău, te rugăm.',
+    contactPlease: 'Un email sau un număr de telefon, ca să te putem contacta.',
+    emailLooksWrong: 'Adresa de email nu pare corectă.',
+    sendTo: 'Trimite către {agency}',
+    couldntSend: 'Nu am putut trimite acum. Te rugăm să încerci din nou.',
+    pickDepartureDate: 'Alege data plecării.',
+    datePassed: 'Data a trecut. Alege una viitoare.',
+    nightsRange: 'Numărul de nopți trebuie să fie între 1 și 90.',
+    datesSet: 'Date alese',
+    departure: 'Plecare',
+    nights: 'Nopți',
+    phoneOptional: 'Telefon (opțional)',
+    email: 'Email',
+    yourEmailAddress: 'Adresa ta de email',
+    enterYourEmail: 'Introdu adresa de email',
+    yourMessage: 'Mesajul tău...',
+    leaveUsAMessage: 'Lasă-ne un mesaj',
+    wellGetBack: 'Revenim cât putem de repede.',
+    sendMessage: 'Trimite mesajul',
+    sentTo: 'Trimis către {email}. Verifică-ți inboxul.',
+    yourTrip: 'Călătoria ta',
+    tripWhere: 'Unde',
+    tripFrom: 'Din',
+    tripDepart: 'Plecare',
+    tripWhen: 'Când',
+    tripNights: 'Nopți',
+    tripAdults: 'Adulți',
+    tripChildren: 'Copii',
+    tripBoard: 'Masă',
+    tripBudget: 'Buget',
+    tripType: 'Tip',
+    chattedBefore: 'Ai mai vorbit cu noi de pe alt dispozitiv?',
+    weCanSendCode: 'Îți putem trimite un cod la {email} ca să continui de unde ai rămas.',
+    sendMeACode: 'Trimite-mi un cod',
+    noThanks: 'Nu, mulțumesc',
+    checkYourEmail: 'Verifică-ți emailul',
+    ifWeRecognise: 'Dacă recunoaștem adresa {email}, un cod din 6 cifre este pe drum. Expiră în 10 minute.',
+    enterSixDigitCode: 'Introdu codul din 6 cifre.',
+    sixDigitCode: 'Cod din 6 cifre',
+    continuePreviousConversation: 'Continuă o conversație anterioară',
+    somethingWentWrong: 'A apărut o problemă',
+    somethingWentWrongRetry: 'A apărut o problemă. Te rugăm să încerci din nou.',
+    pleaseRefresh: 'Te rugăm să reîncarci pagina și să încerci din nou.',
+    micPermission: 'Este nevoie de acces la microfon',
+    loadingBookingLookup: 'Se încarcă formularul de rezervare...',
+    bookingLookupFailed: 'Ne pare rău, formularul nu s-a putut încărca. Ne poți contacta direct.',
+    clearConfirm: 'Ștergi această conversație și începi una nouă?',
+    yesClearIt: 'Da, șterge',
+    screenSharingRequest: 'Cerere de partajare a ecranului',
+    allow: 'Permite',
+    decline: 'Refuză',
+    sharingYourScreen: 'Îți partajezi ecranul',
+    stop: 'Oprește',
+    howWasYourExperience: 'Cum ți s-a părut?',
+    rateYourConversation: 'Evaluează conversația',
+    thanksForFeedback: 'Îți mulțumim pentru feedback!',
+    startNewAnytime: 'Poți începe oricând o conversație nouă.',
+    thinking: 'Mă gândesc…',
+    stillWorking: 'Încă lucrez…',
+    thinkingItThrough: 'Analizez…',
+    lookingUpBooking: 'Caut rezervarea ta…',
+    checkingPolicy: 'Verific politica…',
+    emergencyInfo: 'Caut informații de urgență…',
+    findingDestinations: 'Caut destinații…',
+    checkingAvailable: 'Verific ce este disponibil…',
+    findingRightPerson: 'Caut persoana potrivită…',
+    goodMorning: 'Bună dimineața',
+    goodAfternoon: 'Bună ziua',
+    goodEvening: 'Bună seara',
+    welcomeBack: 'Bine ai revenit!',
+    welcomeBackName: 'Bine ai revenit, {name}!',
+    heyName: 'Salut, {name}!',
+    defaultTagline: 'ASISTENT AI',
+    defaultWelcome: 'Salut! Cu ce te putem ajuta astăzi?',
+    defaultEscalateLabel: 'Vorbește cu un coleg',
+    defaultLeaveLabel: 'Lasă un mesaj',
+    defaultFooter: 'Susținut de Luna AI',
+    defaultSubHi: 'Caută o vacanță, verifică-ți rezervarea sau întreabă-mă orice. Sunt aici.',
+    connectionTrouble: 'Am o problemă de conexiune chiar acum. Poți folosi butonul "{label}" de mai jos ca să vorbești direct cu echipa noastră.'
+  }
+};
+
+/* Escape a string for use inside HTML or an attribute value.
+   The interface strings are our own constants rather than visitor or config
+   input, so this is belt and braces — but a translation is still text going
+   through innerHTML, and the rule in this widget is that text going through
+   innerHTML is escaped. No exceptions worth remembering later. */
+function esc(v) {
+  return String(v == null ? '' : v)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+/* Is this a name the visitor actually gave us?
+   When someone chats without giving one, the conversation is persisted as
+   "Anonymous" so the agent's list has something to show. That is a label for
+   staff, not a name — but it goes into the same field a real name does and
+   comes back out of it the same way, which is how a returning visitor was
+   greeted as "Welcome back, Anonymous!".
+   Kept in step with lib/visitor-name.js by a test; the widget cannot require it. */
+var NAME_PLACEHOLDERS = ['anonymous', 'anon', 'unknown', 'guest', 'visitor', 'n/a', 'na', 'none',
+  'no name', 'noname', 'test', 'null', 'undefined', '-', '--'];
+function realName(value) {
+  if (value === null || value === undefined) return '';
+  var v = Array.isArray(value) ? value[0] : value;
+  if (v && typeof v === 'object') v = v.name;
+  var str = String(v == null ? '' : v).trim();
+  if (!str) return '';
+  if (!/[a-zA-Z\u00C0-\u024F\u0370-\u03FF\u0400-\u04FF]/.test(str)) return '';
+  return NAME_PLACEHOLDERS.indexOf(str.toLowerCase()) === -1 ? str : '';
+}
+
+/* The returning-visitor greeting, with or without a name.
+   Takes the name as an argument rather than reading userName: this lives at
+   file scope, alongside the block renderers, and userName is declared inside
+   the widget's IIFE. Reading it from here is a ReferenceError that throws
+   mid-greeting and leaves the visitor with no opening message at all. */
+function welcomeBackGreeting(name) {
+  var n = realName(name);
+  return n ? t('welcomeBackName', { name: n }) : t('welcomeBack');
+}
+
+/* Look up one interface string.
+   Falls back key by key to English, then to the key itself, so a missing
+   translation shows English words rather than a blank or "askMeAnything".
+   {placeholders} are substituted from `vars`. */
+function t(key, vars) {
+  var table = STRINGS[TGX_LANG] || STRINGS.en;
+  var s = table[key];
+  if (s === undefined) s = STRINGS.en[key];
+  if (s === undefined) return key;
+  if (vars) {
+    Object.keys(vars).forEach(function (k) {
+      s = s.split('{' + k + '}').join(vars[k] == null ? '' : String(vars[k]));
+    });
+  }
+  return s;
+}
+
 // ─────────── ICONS ───────────
 // Inline SVG templates. Static strings — never interpolated with untrusted data.
 // Returned as DOM nodes via DOMParser.
@@ -423,7 +787,7 @@ function renderDestinationCard(props, ctx) {
   const tellMe = el('button', 'luna-btn', 'Tell me more');
   tellMe.type = 'button';
   tellMe.addEventListener('click', () => {
-    if (ctx && ctx.dispatch) ctx.dispatch({ type: 'send_message', text: `Tell me more about ${props.name}` });
+    if (ctx && ctx.dispatch) ctx.dispatch({ type: 'send_message', text: t('tellMeMoreAbout', { name: props.name }) });
   });
   actions.appendChild(tellMe);
 
@@ -435,7 +799,7 @@ function renderDestinationCard(props, ctx) {
     const link = document.createElement('button');
     link.className = 'luna-btn luna-btn-primary';
     link.type = 'button';
-    link.textContent = 'See deals';
+    link.textContent = t('seeDeals');
     link.appendChild(iconNode('arrow-right'));
     link.addEventListener('click', () => {
       if (safeDeepLink && safeDeepLink !== '#') {
@@ -516,7 +880,7 @@ function renderOfferCard(props, ctx) {
     const book = document.createElement('button');
     book.className = 'luna-btn luna-btn-primary';
     book.type = 'button';
-    book.textContent = 'Book';
+    book.textContent = t('book');
     book.appendChild(iconNode('arrow-right'));
     book.addEventListener('click', () => {
       if (safeBookUrl && safeBookUrl !== '#') {
@@ -586,7 +950,7 @@ function renderFaqPolicyCard(props, ctx) {
       link.href = safeUrl(props.sourceUrl);
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
-      link.textContent = 'Read full';
+      link.textContent = t('readFull');
       link.appendChild(iconNode('external-link'));
       foot.appendChild(link);
     }
@@ -638,7 +1002,7 @@ function renderFcdoCard(props, ctx) {
     link.href = safeUrl(props.url);
     link.target = '_blank';
     link.rel = 'noopener noreferrer';
-    link.textContent = 'Read the full advice';
+    link.textContent = t('readFullAdvice');
     link.appendChild(iconNode('external-link'));
     foot.appendChild(link);
   }
@@ -894,12 +1258,12 @@ function renderEnquiryCard(props, ctx) {
   nameIn.type = 'text'; nameIn.placeholder = 'Your name'; nameIn.autocomplete = 'name';
   nameIn.value = visitor.name || '';
   const emailIn = document.createElement('input');
-  emailIn.type = 'email'; emailIn.placeholder = 'Email'; emailIn.autocomplete = 'email';
+  emailIn.type = 'email'; emailIn.placeholder = t('email'); emailIn.autocomplete = 'email';
   emailIn.value = visitor.email || '';
   const phoneIn = document.createElement('input');
-  phoneIn.type = 'tel'; phoneIn.placeholder = 'Phone (optional)'; phoneIn.autocomplete = 'tel';
+  phoneIn.type = 'tel'; phoneIn.placeholder = t('phoneOptional'); phoneIn.autocomplete = 'tel';
   const err = el('div', 'luna-enquiry-err', '');
-  const send = el('button', 'luna-enquiry-send', 'Send to ' + agency);
+  const send = el('button', 'luna-enquiry-send', t('sendTo', { agency: agency }));
   send.type = 'button';
   append(form, nameIn, emailIn, phoneIn, err, send);
   card.appendChild(form);
@@ -909,15 +1273,15 @@ function renderEnquiryCard(props, ctx) {
     const name = nameIn.value.trim();
     const email = emailIn.value.trim();
     const phone = phoneIn.value.trim();
-    if (!name) { err.textContent = 'Your name, please.'; return; }
-    if (!email && !phone) { err.textContent = 'An email or phone number so they can reach you.'; return; }
-    if (email && !/^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+$/.test(email)) { err.textContent = 'That email doesn’t look right.'; return; }
+    if (!name) { err.textContent = t('yourNamePlease'); return; }
+    if (!email && !phone) { err.textContent = t('contactPlease'); return; }
+    if (email && !/^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+$/.test(email)) { err.textContent = t('emailLooksWrong'); return; }
 
     const brief = {};
     ENQUIRY_BRIEF_KEYS.forEach(k => { if (props[k] != null && props[k] !== '') brief[k] = props[k]; });
 
     send.disabled = true;
-    send.textContent = 'Sending…';
+    send.textContent = t('sending');
     if (ctx && ctx.dispatch) {
       ctx.dispatch({
         type: 'enquiry_submit',
@@ -931,8 +1295,8 @@ function renderEnquiryCard(props, ctx) {
         },
         onFail: function () {
           send.disabled = false;
-          send.textContent = 'Send to ' + agency;
-          err.textContent = 'Couldn’t send just now — please try again.';
+          send.textContent = t('sendTo', { agency: agency });
+          err.textContent = t('couldntSend');
         }
       });
     }
@@ -1006,7 +1370,7 @@ function renderDatePicker(props, ctx) {
   const fields = el('div', 'tgx-datepick-fields');
 
   const depWrap = el('div', 'tgx-datepick-field');
-  const depLabel = el('label', null, 'Departure');
+  const depLabel = el('label', null, t('departure'));
   const depId = 'tgxDep' + Math.random().toString(36).slice(2, 8);
   depLabel.setAttribute('for', depId);
   const depIn = document.createElement('input');
@@ -1022,7 +1386,7 @@ function renderDatePicker(props, ctx) {
   let nightsIn = null;
   if (!props || props.askNights !== false) {
     const nWrap = el('div', 'tgx-datepick-field');
-    const nLabel = el('label', null, 'Nights');
+    const nLabel = el('label', null, t('nights'));
     const nId = 'tgxNts' + Math.random().toString(36).slice(2, 8);
     nLabel.setAttribute('for', nId);
     nightsIn = document.createElement('input');
@@ -1041,16 +1405,16 @@ function renderDatePicker(props, ctx) {
   go.addEventListener('click', function () {
     err.textContent = '';
     const dep = depIn.value;
-    if (!dep) { err.textContent = 'Pick a departure date.'; return; }
+    if (!dep) { err.textContent = t('pickDepartureDate'); return; }
     // Guard against a past date sneaking past the min attribute.
-    if (dep < iso(today)) { err.textContent = 'That date has passed — pick a future one.'; return; }
+    if (dep < iso(today)) { err.textContent = t('datePassed'); return; }
     let nights = null;
     if (nightsIn && nightsIn.value) {
       const n = parseInt(nightsIn.value, 10);
-      if (isNaN(n) || n < 1 || n > 90) { err.textContent = 'Nights should be between 1 and 90.'; return; }
+      if (isNaN(n) || n < 1 || n > 90) { err.textContent = t('nightsRange'); return; }
       nights = n;
     }
-    go.disabled = true; go.textContent = 'Dates set';
+    go.disabled = true; go.textContent = t('datesSet');
     if (depIn) depIn.disabled = true;
     if (nightsIn) nightsIn.disabled = true;
     let msg = 'I want to travel on ' + dep;
@@ -1195,7 +1559,7 @@ function renderLocationCard(props, ctx) {
     googleBtn.href = safeUrl(googleUrl);
     googleBtn.target = '_blank';
     googleBtn.rel = 'noopener noreferrer';
-    googleBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg><span>Open in Google Maps</span>';
+    googleBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg><span>' + esc(t('openInGoogleMaps')) + '</span>';
     ctas.appendChild(googleBtn);
 
     var appleBtn = document.createElement('a');
@@ -1203,7 +1567,7 @@ function renderLocationCard(props, ctx) {
     appleBtn.href = safeUrl(appleUrl);
     appleBtn.target = '_blank';
     appleBtn.rel = 'noopener noreferrer';
-    appleBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg><span>Open in Apple Maps</span>';
+    appleBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg><span>' + esc(t('openInAppleMaps')) + '</span>';
     ctas.appendChild(appleBtn);
 
     card.appendChild(ctas);
@@ -1343,17 +1707,17 @@ function renderWeatherCard(props, ctx) {
     var stats = el('div', 'luna-weather-stats');
     if (typeof props.feelsLikeC === 'number') {
       var s1 = el('div', 'luna-weather-stat');
-      s1.innerHTML = '<span class="luna-weather-stat-label">Feels like</span><span class="luna-weather-stat-value">' + Math.round(props.feelsLikeC) + '°</span>';
+      s1.innerHTML = '<span class="luna-weather-stat-label">' + esc(t('feelsLike')) + '</span><span class="luna-weather-stat-value">' + Math.round(props.feelsLikeC) + '°</span>';
       stats.appendChild(s1);
     }
     if (typeof props.windKmh === 'number') {
       var s2 = el('div', 'luna-weather-stat');
-      s2.innerHTML = '<span class="luna-weather-stat-label">Wind</span><span class="luna-weather-stat-value">' + Math.round(props.windKmh) + ' km/h</span>';
+      s2.innerHTML = '<span class="luna-weather-stat-label">' + esc(t('wind')) + '</span><span class="luna-weather-stat-value">' + Math.round(props.windKmh) + ' km/h</span>';
       stats.appendChild(s2);
     }
     if (typeof props.humidity === 'number') {
       var s3 = el('div', 'luna-weather-stat');
-      s3.innerHTML = '<span class="luna-weather-stat-label">Humidity</span><span class="luna-weather-stat-value">' + props.humidity + '%</span>';
+      s3.innerHTML = '<span class="luna-weather-stat-label">' + esc(t('humidity')) + '</span><span class="luna-weather-stat-value">' + props.humidity + '%</span>';
       stats.appendChild(s3);
     }
     heroLeft.appendChild(stats);
@@ -1451,7 +1815,7 @@ function renderWeatherCard(props, ctx) {
     var bestRange = computeBestMonthsRange(seasons);
     if (bestRange) {
       var bestPill = el('div', 'luna-weather-best-pill');
-      bestPill.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15 8.5 22 9.3 17 14 18.2 21 12 17.8 5.8 21 7 14 2 9.3 9 8.5 12 2" fill="currentColor" fill-opacity="0.15"/></svg><span>Best months: ' + bestRange + '</span>';
+      bestPill.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15 8.5 22 9.3 17 14 18.2 21 12 17.8 5.8 21 7 14 2 9.3 9 8.5 12 2" fill="currentColor" fill-opacity="0.15"/></svg><span>' + esc(t('bestMonths', { range: bestRange })) + '</span>';
       body.appendChild(bestPill);
     }
 
@@ -1610,6 +1974,11 @@ var D = {
   airtableBase: "",
   convTable: "",
 
+  /* Interface language: a two-letter code from lib/languages.js. Set from
+     WidgetLanguage on the client record via /api/widget-config. Governs the
+     widget's own labels only — Luna always answers in the visitor's language. */
+  language: "en",
+
   /* Theme: "light" (default) or "dark" */
   theme: "light",
 
@@ -1641,6 +2010,7 @@ var D = {
 /* Merge phase 1: window config > data-attrs > defaults */
 var W = (typeof window.__LUNA_CONFIG === "object") ? window.__LUNA_CONFIG : {};
 var C = {};
+
 function rebuildConfig(apiConfig) {
   var A = apiConfig || {};
   Object.keys(D).forEach(function(k) {
@@ -1650,6 +2020,23 @@ function rebuildConfig(apiConfig) {
      persistence is server-side via /api/conversation. Scrub these even if a
      stale config source still supplies them, so no token can linger client-side. */
   C.airtableKey = ""; C.airtableBase = ""; C.convTable = "";
+
+  /* Publish the language to file scope so the block renderers, which live
+     outside this IIFE, resolve their strings in the same language. */
+  TGX_LANG = (C.language && STRINGS[C.language]) ? C.language : 'en';
+
+  /* Language-aware defaults. These keys are client-editable, and D holds the
+     ENGLISH default for each. Where a client has written nothing, the value is
+     still identical to D, so swap in the same default in their own language.
+     Anything the client actually wrote is left alone — it is their copy, in
+     whatever language they chose to write it. */
+  ['tagline', 'welcome', 'namePrompt', 'skipLabel', 'escalateLabel', 'leaveLabel', 'footer']
+    .forEach(function (k) {
+      if (C[k] === D[k]) {
+        var localised = t(LOCALISED_DEFAULT_KEYS[k]);
+        if (localised) C[k] = localised;
+      }
+    });
   /* Map API theme fields (backwards compat with old colour-by-colour config) */
   if (A.theme && typeof A.theme === "object") {
     if (A.theme.brandColor) C.brandColor = A.theme.brandColor;
@@ -1952,10 +2339,12 @@ function persistTripBrief() {
    fields worth surfacing at a glance are shown; notes/childAges stay internal. */
 var TRIP_BRIEF_CHIP_ORDER = ['destination', 'departureAirport', 'departureDate',
   'dateFlexibility', 'nights', 'adults', 'children', 'board', 'budget', 'holidayType'];
+/* Field name -> interface string KEY (not the label itself): the chips are
+   drawn in the widget's language, so the label is resolved at draw time. */
 var TRIP_BRIEF_LABELS = {
-  destination: 'Where', departureAirport: 'From', departureDate: 'Depart',
-  dateFlexibility: 'When', nights: 'Nights', adults: 'Adults', children: 'Children',
-  board: 'Board', budget: 'Budget', holidayType: 'Type'
+  destination: 'tripWhere', departureAirport: 'tripFrom', departureDate: 'tripDepart',
+  dateFlexibility: 'tripWhen', nights: 'tripNights', adults: 'tripAdults', children: 'tripChildren',
+  board: 'tripBoard', budget: 'tripBudget', holidayType: 'tripType'
 };
 function formatBriefValue(key, v) {
   if (v == null || v === '') return '';
@@ -1973,7 +2362,7 @@ function renderTripBar() {
   var frag = document.createDocumentFragment();
   var label = document.createElement('span');
   label.className = 'tgx-trip-bar-label';
-  label.textContent = 'Your trip';
+  label.textContent = t('yourTrip');
   frag.appendChild(label);
   for (var i = 0; i < TRIP_BRIEF_CHIP_ORDER.length; i++) {
     var k = TRIP_BRIEF_CHIP_ORDER[i];
@@ -1985,14 +2374,15 @@ function renderTripBar() {
     chip.className = 'tgx-trip-chip';
     var keyEl = document.createElement('span');
     keyEl.className = 'tgx-trip-chip-key';
-    keyEl.textContent = (TRIP_BRIEF_LABELS[k] || k) + ' ';
+    var chipLabel = TRIP_BRIEF_LABELS[k] ? t(TRIP_BRIEF_LABELS[k]) : k;
+    keyEl.textContent = chipLabel + ' ';
     var valEl = document.createElement('span');
     valEl.className = 'tgx-trip-chip-val';
     valEl.textContent = val;
     var x = document.createElement('button');
     x.type = 'button';
     x.className = 'tgx-trip-chip-x';
-    x.setAttribute('aria-label', 'Remove ' + (TRIP_BRIEF_LABELS[k] || k));
+    x.setAttribute('aria-label', t('remove') + ' ' + chipLabel);
     x.textContent = '×';
     (function (field) {
       x.addEventListener('click', function () { clearTripBriefField(field); });
@@ -2055,10 +2445,10 @@ function showClearConfirm() {
   }
   bar.innerHTML =
     '<div class="tgx-clear-confirm">' +
-      '<span class="tgx-clear-confirm-text">Clear this conversation and start fresh?</span>' +
+      '<span class="tgx-clear-confirm-text">' + esc(t('clearConfirm')) + '</span>' +
       '<div class="tgx-clear-confirm-actions">' +
-        '<button class="tgx-clear-confirm-btn tgx-clear-confirm-yes" id="tgxClearYes">Yes, clear it</button>' +
-        '<button class="tgx-clear-confirm-btn tgx-clear-confirm-no" id="tgxClearNo">Cancel</button>' +
+        '<button class="tgx-clear-confirm-btn tgx-clear-confirm-yes" id="tgxClearYes">' + esc(t('yesClearIt')) + '</button>' +
+        '<button class="tgx-clear-confirm-btn tgx-clear-confirm-no" id="tgxClearNo">' + esc(t('cancel')) + '</button>' +
       '</div>' +
     '</div>';
   bar.style.display = "block";
@@ -2067,7 +2457,7 @@ function showClearConfirm() {
   });
   document.getElementById("tgxClearNo").addEventListener("click", function() {
     // Restore email link
-    bar.innerHTML = '<span class="tgx-email-link" id="tgxEmailLink">&#128231; Email this chat</span>';
+    bar.innerHTML = '<span class="tgx-email-link" id="tgxEmailLink">&#128231; ' + esc(t('emailThisChat')) + '</span>';
     var link = document.getElementById("tgxEmailLink");
     if (link) link.addEventListener("click", handleEmailChat);
   });
@@ -2098,7 +2488,7 @@ function clearConversation() {
   // Reset email bar to default
   var bar = document.getElementById("tgxEmailBar");
   if (bar) {
-    bar.innerHTML = '<span class="tgx-email-link" id="tgxEmailLink">&#128231; Email this chat</span>';
+    bar.innerHTML = '<span class="tgx-email-link" id="tgxEmailLink">&#128231; ' + esc(t('emailThisChat')) + '</span>';
     var link = document.getElementById("tgxEmailLink");
     if (link) link.addEventListener("click", handleEmailChat);
   }
@@ -3085,7 +3475,7 @@ function renderSafeMarkdown(parent, text) {
         a2.target = "_self";
         a2.rel = "noopener noreferrer";
         a2.className = "tgx-search-link";
-        a2.textContent = "Click here to view results";
+        a2.textContent = t('clickHereToViewResults');
         parent.appendChild(a2);
       } else {
         parent.appendChild(document.createTextNode(m.full));
@@ -3121,9 +3511,9 @@ function renderSafeMarkdown(parent, text) {
    function caused a ReferenceError chain when startChat() was called. */
 function getTimeGreeting() {
   var h = new Date().getHours();
-  if (h < 12) return 'Good morning';
-  if (h < 18) return 'Good afternoon';
-  return 'Good evening';
+  if (h < 12) return t('goodMorning');
+  if (h < 18) return t('goodAfternoon');
+  return t('goodEvening');
 }
 function applyTimeAwareGreeting(welcome) {
   if (!welcome || typeof welcome !== 'string') return welcome;
@@ -3152,7 +3542,7 @@ function buildDOM() {
       +'<div class="tgx-hdr-full">'
         +'<div class="tgx-hdr-row">'
           +'<div id="tgxHomeAvatar"></div>'
-          +'<div style="flex:1;min-width:0"><div class="tgx-hdr-name" id="tgxHomeName"></div><div class="tgx-hdr-sub"><div class="tgx-status"></div>Online now</div></div>'
+          +'<div style="flex:1;min-width:0"><div class="tgx-hdr-name" id="tgxHomeName"></div><div class="tgx-hdr-sub"><div class="tgx-status"></div>'+t('onlineNow')+'</div></div>'
           +'<button class="tgx-hdr-btn" id="tgxHomeClose"></button>'
         +'</div>'
       +'</div>'
@@ -3162,21 +3552,21 @@ function buildDOM() {
           +'<div class="tgx-sub-hi" id="tgxSubHi"></div>'
         +'</div>'
         +'<div>'
-          +'<div class="tgx-section-label">What I can help with</div>'
+          +'<div class="tgx-section-label">'+t('whatICanHelpWith')+'</div>'
           +'<div id="tgxCapCards"></div>'
         +'</div>'
         +'<div>'
           +'<div class="tgx-starters-head">'
-            +'<div class="tgx-section-label" style="margin-bottom:0">Try asking</div>'
+            +'<div class="tgx-section-label" style="margin-bottom:0">'+t('tryAsking')+'</div>'
             +'<div class="tgx-starters-nav" id="tgxStartersNav" hidden>'
-              +'<button class="tgx-starters-arrow" id="tgxStartersPrev" type="button" aria-label="Scroll suggestions left" disabled><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>'
-              +'<button class="tgx-starters-arrow" id="tgxStartersNext" type="button" aria-label="Scroll suggestions right"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>'
+              +'<button class="tgx-starters-arrow" id="tgxStartersPrev" type="button" aria-label="'+t('scrollSuggestionsLeft')+'" disabled><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>'
+              +'<button class="tgx-starters-arrow" id="tgxStartersNext" type="button" aria-label="'+t('scrollSuggestionsRight')+'"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>'
             +'</div>'
           +'</div>'
           +'<div id="tgxStarters"></div>'
         +'</div>'
         +'<div class="tgx-demoted">'
-          +'<span>Prefer a person?</span>'
+          +'<span>'+t('preferAPerson')+'</span>'
           +'<button id="tgxDemotedHuman"></button>'
           +'<span>·</span>'
           +'<button id="tgxDemotedLeave"></button>'
@@ -3184,8 +3574,8 @@ function buildDOM() {
       +'</div>'
       +'<div class="tgx-input-wrap" id="tgxHomeInputWrap">'
         +'<div class="tgx-input-inner">'
-          +'<input class="tgx-input" id="tgxHomeInput" placeholder="Ask me anything..." autocomplete="off">'
-          +'<button class="tgx-mic" id="tgxHomeMic" type="button" aria-label="Voice input" title="Voice input"></button>'
+          +'<input class="tgx-input" id="tgxHomeInput" placeholder="'+t('askMeAnything')+'" autocomplete="off">'
+          +'<button class="tgx-mic" id="tgxHomeMic" type="button" aria-label="'+t('voiceInput')+'" title="'+t('voiceInput')+'"></button>'
         +'</div>'
         +'<button class="tgx-send" id="tgxHomeSend"></button>'
       +'</div>'
@@ -3196,18 +3586,18 @@ function buildDOM() {
       +'<div class="tgx-hdr-compact">'
         +'<button class="tgx-hdr-btn" id="tgxBackHome"></button>'
         +'<div id="tgxChatAvatar"></div>'
-        +'<div style="flex:1;min-width:0"><div class="tgx-hdr-name" id="tgxChatName" style="font-size:14px"></div><div class="tgx-hdr-sub"><div class="tgx-status"></div>Online</div></div>'
-        +'<button class="tgx-hdr-btn" id="tgxClearChat" title="Start a new conversation" aria-label="Start a new conversation"></button>'
-        +'<button class="tgx-expand-btn tgx-hdr-btn" id="tgxExpandBtn" title="Expand window" aria-label="Expand window"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>'
+        +'<div style="flex:1;min-width:0"><div class="tgx-hdr-name" id="tgxChatName" style="font-size:14px"></div><div class="tgx-hdr-sub"><div class="tgx-status"></div>'+t('online')+'</div></div>'
+        +'<button class="tgx-hdr-btn" id="tgxClearChat" title="'+t('startNewConversation')+'" aria-label="'+t('startNewConversation')+'"></button>'
+        +'<button class="tgx-expand-btn tgx-hdr-btn" id="tgxExpandBtn" title="'+t('expandWindow')+'" aria-label="'+t('expandWindow')+'"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>'
         +'<button class="tgx-hdr-btn" id="tgxChatClose"></button>'
       +'</div>'
-      +'<div class="tgx-date" id="tgxDateDiv">Today</div>'
+      +'<div class="tgx-date" id="tgxDateDiv">'+t('today')+'</div>'
       +'<div class="tgx-trip-bar" id="tgxTripBar" hidden></div>'
       +'<div class="tgx-msgs" id="tgxMsgs"></div>'
       +'<div class="tgx-typing-row" id="tgxTypingRow"><div id="tgxTypingAvatar"></div><div class="tgx-typing" id="tgxTyping"><span></span><span></span><span></span></div><div class="tgx-typing-status" id="tgxTypingStatus"></div></div>'
       +'<div id="tgxPills" class="tgx-pills"></div>'
-      +'<div class="tgx-email-bar" id="tgxEmailBar"><span class="tgx-email-link" id="tgxEmailLink">&#128231; Email this chat</span></div>'
-      +'<div class="tgx-input-wrap"><div class="tgx-input-inner"><input class="tgx-input" id="tgxInput" placeholder="Ask me anything..." autocomplete="off"><button class="tgx-attach" id="tgxAttach" type="button" aria-label="Attach a file" title="Attach a file"></button><button class="tgx-mic" id="tgxChatMic" type="button" aria-label="Voice input" title="Voice input"></button></div><button class="tgx-send" id="tgxSend"></button></div><input type="file" id="tgxFileInput" accept="'+ATT_ACCEPT+'" style="display:none">'
+      +'<div class="tgx-email-bar" id="tgxEmailBar"><span class="tgx-email-link" id="tgxEmailLink">&#128231; '+esc(t('emailThisChat'))+'</span></div>'
+      +'<div class="tgx-input-wrap"><div class="tgx-input-inner"><input class="tgx-input" id="tgxInput" placeholder="'+t('askMeAnything')+'" autocomplete="off"><button class="tgx-attach" id="tgxAttach" type="button" aria-label="'+t('attachAFile')+'" title="'+t('attachAFile')+'"></button><button class="tgx-mic" id="tgxChatMic" type="button" aria-label="'+t('voiceInput')+'" title="'+t('voiceInput')+'"></button></div><button class="tgx-send" id="tgxSend"></button></div><input type="file" id="tgxFileInput" accept="'+ATT_ACCEPT+'" style="display:none">'
       +'<div class="tgx-esc-bar" id="tgxEscBar"><button class="tgx-esc-btn human" id="tgxHuman"></button><button class="tgx-esc-btn leave" id="tgxLeave"></button></div>'
       +'<div class="tgx-footer" id="tgxFooterChat"></div>'
     +'</div>'
@@ -3269,7 +3659,7 @@ function buildDOM() {
     });
   }
   var subHi = document.getElementById("tgxSubHi");
-  if (subHi) subHi.textContent = C.tagline || "Find a trip, manage your booking, or just ask me anything — I'm here.";
+  if (subHi) subHi.textContent = C.tagline || t('defaultSubHi');
   setText("tgxWelcome", C.welcome);
   setText("tgxFooterHome", C.footer);
   setText("tgxFooterChat", C.footer);
@@ -3434,8 +3824,8 @@ function ensureMoreBelowIndicator() {
   var el = document.createElement("button");
   el.className = "tgx-more-below";
   el.type = "button";
-  el.setAttribute("aria-label", "Scroll to latest");
-  el.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg><span>More</span>';
+  el.setAttribute("aria-label", t('scrollToLatest'));
+  el.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg><span>' + esc(t('more')) + '</span>';
   el.addEventListener("click", function () {
     $msgs.scrollTo({ top: $msgs.scrollHeight, behavior: "smooth" });
     el.classList.remove("active");
@@ -3522,7 +3912,7 @@ function renderBookingWidgetMessage(descriptor, pendingPills) {
 
   var placeholder = document.createElement("div");
   placeholder.className = "tgx-booking-loading";
-  placeholder.textContent = "Loading booking lookup...";
+  placeholder.textContent = t('loadingBookingLookup');
   mount.appendChild(placeholder);
 
   row.appendChild(bubble);
@@ -3633,7 +4023,7 @@ function renderBookingWidgetMessage(descriptor, pendingPills) {
   .then(function(results) {
     var config = results[1];
     if (!config) {
-      placeholder.textContent = "Sorry, the booking lookup form couldn't load. You can contact us directly instead.";
+      placeholder.textContent = t('bookingLookupFailed');
       return;
     }
     if (placeholder.parentNode) placeholder.parentNode.removeChild(placeholder);
@@ -3644,13 +4034,13 @@ function renderBookingWidgetMessage(descriptor, pendingPills) {
       console.error("Luna widget: failed to init booking widget:", err);
       var errEl = document.createElement("div");
       errEl.className = "tgx-booking-loading";
-      errEl.textContent = "Sorry, the booking lookup form couldn't load. You can contact us directly instead.";
+      errEl.textContent = t('bookingLookupFailed');
       mount.appendChild(errEl);
     }
   })
   .catch(function(err) {
     console.error("Luna widget: booking widget script failed:", err);
-    placeholder.textContent = "Sorry, the booking lookup form couldn't load. You can contact us directly instead.";
+    placeholder.textContent = t('bookingLookupFailed');
   });
 }
 
@@ -4122,7 +4512,7 @@ function emailTranscriptEndpoint() {
 function resetEmailBar() {
   var bar = $emailBar;
   if (!bar) return;
-  bar.innerHTML = '<span class="tgx-email-link" id="tgxEmailLink">&#128231; Email this chat</span>';
+  bar.innerHTML = '<span class="tgx-email-link" id="tgxEmailLink">&#128231; ' + esc(t('emailThisChat')) + '</span>';
   var link = document.getElementById('tgxEmailLink');
   if (link) link.addEventListener('click', handleEmailChat);
 }
@@ -4188,12 +4578,12 @@ function sendChatTranscript(email) {
       bar.textContent = '';
       var okBox = document.createElement('div');
       okBox.className = 'tgx-email-status tgx-email-status-success';
-      okBox.textContent = '\u2713 Sent to ' + email + '. Check your inbox.';
+      okBox.textContent = '\u2713 ' + t('sentTo', { email: email });
       bar.appendChild(okBox);
       setTimeout(resetEmailBar, 4500);
     } else {
       // Server-side error — show message + copy fallback
-      var msg = (result.data && result.data.error) || 'Something went wrong';
+      var msg = (result.data && result.data.error) || t('somethingWentWrong');
       showEmailError(msg, email);
     }
   }).catch(function(err) {
@@ -4212,9 +4602,9 @@ function showEmailError(message, email) {
     '<div class="tgx-email-status tgx-email-status-error">' +
       '<div class="tgx-email-status-text"></div>' +
       '<div class="tgx-email-status-actions">' +
-        '<button class="tgx-email-mini-btn" id="tgxEmailRetry">Try again</button>' +
-        '<button class="tgx-email-mini-btn" id="tgxEmailCopy">Copy transcript</button>' +
-        '<button class="tgx-email-mini-btn tgx-email-mini-btn-x" id="tgxEmailDismiss">Cancel</button>' +
+        '<button class="tgx-email-mini-btn" id="tgxEmailRetry">' + esc(t('tryAgain')) + '</button>' +
+        '<button class="tgx-email-mini-btn" id="tgxEmailCopy">' + esc(t('copyTranscript')) + '</button>' +
+        '<button class="tgx-email-mini-btn tgx-email-mini-btn-x" id="tgxEmailDismiss">' + esc(t('cancel')) + '</button>' +
       '</div>' +
     '</div>';
   var _txt = bar.querySelector('.tgx-email-status-text');
@@ -4242,9 +4632,9 @@ function handleEmailChat() {
   var wrap = document.createElement("div");
   wrap.className = "tgx-email-inline";
   wrap.innerHTML =
-    '<input type="email" id="tgxInlineEmail" placeholder="Enter your email" autocomplete="email">' +
-    '<button id="tgxInlineEmailGo">Send</button>' +
-    '<button class="tgx-email-cancel" id="tgxInlineEmailX" aria-label="Cancel">\u00d7</button>';
+    '<input type="email" id="tgxInlineEmail" placeholder="' + esc(t('enterYourEmail')) + '" autocomplete="email">' +
+    '<button id="tgxInlineEmailGo">' + esc(t('send')) + '</button>' +
+    '<button class="tgx-email-cancel" id="tgxInlineEmailX" aria-label="' + esc(t('cancel')) + '">\u00d7</button>';
   bar.appendChild(wrap);
   bar.style.display = "block";
   setTimeout(function(){
@@ -4592,16 +4982,16 @@ function showNameOverlay() {
   // Static markup only. Operator config strings (namePrompt, skipLabel,
   // privacyUrl) are injected below via textContent / safeUrl so a config value
   // containing quotes or angle brackets can't break out of the attribute/tag.
-  var html = '<h3 id="tgxNamePrompt"></h3><p>This helps us personalise your experience.</p>'
-    +'<input type="text" id="tgxNameIn" placeholder="Your name" autofocus>'
-    +'<input type="email" id="tgxEmailIn" placeholder="Email (optional)">'
+  var html = '<h3 id="tgxNamePrompt"></h3><p>' + esc(t('nameHelp')) + '</p>'
+    +'<input type="text" id="tgxNameIn" placeholder="' + esc(t('yourName')) + '" autofocus>'
+    +'<input type="email" id="tgxEmailIn" placeholder="' + esc(t('emailOptional')) + '">'
     +'<input type="text" id="tgxHpIn" class="tgx-hp" tabindex="-1" autocomplete="off">'
     +'<label class="tgx-check" id="tgxMarketingLabel">'
     +'<input type="checkbox" id="tgxMarketingIn">'
     +'<span class="tgx-cb"><svg viewBox="0 0 14 14" fill="none"><path d="M2.5 7.5L5.5 10.5L11.5 3.5" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>'
-    +'<span class="tgx-cb-label">I\'d like to receive offers and updates</span>'
+    +'<span class="tgx-cb-label">' + esc(t('marketingOptIn')) + '</span>'
     +'</label>'
-    +'<button class="tgx-obtn" id="tgxNameGo">Continue</button>'
+    +'<button class="tgx-obtn" id="tgxNameGo">' + esc(t('continueLabel')) + '</button>'
     +'<button class="tgx-olink" id="tgxNameSkip"></button>';
   ov.innerHTML = html;
   var _npEl = ov.querySelector('#tgxNamePrompt'); if (_npEl) _npEl.textContent = C.namePrompt || '';
@@ -4611,7 +5001,7 @@ function showNameOverlay() {
     _pv.className = 'tgx-privacy';
     _pv.href = safeUrl(C.privacyUrl);
     _pv.target = '_blank'; _pv.rel = 'noopener';
-    _pv.textContent = 'See our privacy policy';
+    _pv.textContent = t('seePrivacyPolicy');
     ov.appendChild(_pv);
   }
   $panel.appendChild(ov);
@@ -4623,8 +5013,8 @@ function showNameOverlay() {
     var hp = document.getElementById("tgxHpIn");
     ni.focus();
     function doSubmit() {
-      if (hp && hp.value) { ov.innerHTML = '<h3>Something went wrong</h3><p>Please refresh the page and try again.</p>'; return; }
-      if (Date.now() - formOpenedAt < 2000) { ov.innerHTML = '<h3>Something went wrong</h3><p>Please refresh the page and try again.</p>'; return; }
+      if (hp && hp.value) { ov.innerHTML = '<h3>' + esc(t('somethingWentWrong')) + '</h3><p>' + esc(t('pleaseRefresh')) + '</p>'; return; }
+      if (Date.now() - formOpenedAt < 2000) { ov.innerHTML = '<h3>' + esc(t('somethingWentWrong')) + '</h3><p>' + esc(t('pleaseRefresh')) + '</p>'; return; }
       userName = ni.value.trim();
       visitorEmail = ei.value.trim();
       marketingConsent = mi.checked;
@@ -4668,11 +5058,11 @@ function showLeaveOverlay() {
   var ov = document.createElement("div");
   ov.className = "tgx-overlay";
   ov.id = "tgxLeaveOv";
-  ov.innerHTML = '<h3>Leave us a message</h3><p>We\'ll get back to you as soon as possible.</p>'
-    +'<input type="text" id="tgxLeaveEmail" placeholder="Your email address">'
-    +'<textarea id="tgxLeaveMsg" placeholder="Your message..."></textarea>'
-    +'<button class="tgx-obtn" id="tgxLeaveGo">Send message</button>'
-    +'<button class="tgx-olink" id="tgxLeaveCancel">Cancel</button>';
+  ov.innerHTML = '<h3>' + esc(t('leaveUsAMessage')) + '</h3><p>' + esc(t('wellGetBack')) + '</p>'
+    +'<input type="text" id="tgxLeaveEmail" placeholder="' + esc(t('yourEmailAddress')) + '">'
+    +'<textarea id="tgxLeaveMsg" placeholder="' + esc(t('yourMessage')) + '"></textarea>'
+    +'<button class="tgx-obtn" id="tgxLeaveGo">' + esc(t('sendMessage')) + '</button>'
+    +'<button class="tgx-olink" id="tgxLeaveCancel">' + esc(t('cancel')) + '</button>';
   $panel.appendChild(ov);
   setTimeout(function(){
     document.getElementById("tgxLeaveEmail").focus();
@@ -4771,11 +5161,11 @@ function showCobrowseConsent() {
   ov.className = "tgx-overlay";
   ov.id = "tgxCobrowseOv";
   ov.innerHTML =
-    '<h3>Screen sharing request</h3>'
+    '<h3>' + esc(t('screenSharingRequest')) + '</h3>'
     + '<p>An agent would like to view this page with you to help. You can stop sharing at any time.</p>'
     + '<div style="display:flex;gap:10px;justify-content:center;margin-top:16px">'
-    +   '<button id="tgxCbAllow" style="padding:10px 20px;border:none;border-radius:10px;cursor:pointer;font-weight:600;font-size:14px;color:#fff">Allow</button>'
-    +   '<button id="tgxCbDecline" class="tgx-olink" style="padding:10px 20px">Decline</button>'
+    +   '<button id="tgxCbAllow" style="padding:10px 20px;border:none;border-radius:10px;cursor:pointer;font-weight:600;font-size:14px;color:#fff">' + esc(t('allow')) + '</button>'
+    +   '<button id="tgxCbDecline" class="tgx-olink" style="padding:10px 20px">' + esc(t('decline')) + '</button>'
     + '</div>';
   $panel.appendChild(ov);
   setTimeout(function(){
@@ -4816,8 +5206,8 @@ function startCobrowseSharing() {
     + "box-shadow:0 8px 24px rgba(15,26,61,0.35)";
   pill.innerHTML =
     '<span style="width:9px;height:9px;border-radius:50%;background:#EF4444;display:inline-block;animation:tgxCbPulse 1.5s infinite"></span>'
-    + '<span>Sharing your screen</span>'
-    + '<button id="tgxCbStop" style="margin-left:4px;background:rgba(255,255,255,0.18);color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-weight:600;font-size:12px">Stop</button>';
+    + '<span>' + esc(t('sharingYourScreen')) + '</span>'
+    + '<button id="tgxCbStop" style="margin-left:4px;background:rgba(255,255,255,0.18);color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-weight:600;font-size:12px">' + esc(t('stop')) + '</button>';
   host.appendChild(pill);
   var stop = document.getElementById("tgxCbStop");
   if (stop) stop.addEventListener("click", function(){ stopCobrowse("visitor"); });
@@ -4937,7 +5327,7 @@ function showRatingOverlay(ratingChannel) {
   var ov = document.createElement("div");
   ov.className = "tgx-overlay";
   ov.id = "tgxRatingOv";
-  ov.innerHTML = '<h3>How was your experience?</h3><p>Rate your conversation</p>'
+  ov.innerHTML = '<h3>' + esc(t('howWasYourExperience')) + '</h3><p>' + esc(t('rateYourConversation')) + '</p>'
     +'<div class="tgx-stars" id="tgxStars">'
     +'<span class="tgx-star" data-v="1">&#9733;</span><span class="tgx-star" data-v="2">&#9733;</span>'
     +'<span class="tgx-star" data-v="3">&#9733;</span><span class="tgx-star" data-v="4">&#9733;</span>'
@@ -4957,7 +5347,7 @@ function showRatingOverlay(ratingChannel) {
         var val = parseInt(this.getAttribute("data-v"));
         if (ratingChannel) ratingChannel.publish("rating", {rating: val});
         try { persistConversation({ rating: val }); } catch(e){}
-        ov.innerHTML = '<h3>Thanks for your feedback!</h3><p>You can start a new chat anytime.</p>';
+        ov.innerHTML = '<h3>' + esc(t('thanksForFeedback')) + '</h3><p>' + esc(t('startNewAnytime')) + '</p>';
         setTimeout(function(){ if (ov.parentNode) ov.remove(); }, 2000);
       });
     });
@@ -4989,6 +5379,7 @@ function showRatingOverlay(ratingChannel) {
 async function streamFromLuna(userText) {
   history.push({role: "user", content: userText});
   var requestBody = {
+      language: C.language || "en",
     // history excludes the turn we just pushed — it is sent separately as
     // `message`, so slicing to -1 stops the current message being sent twice
     // (the server would otherwise see the visitor's line duplicated).
@@ -5370,6 +5761,7 @@ async function callLuna(userText) {
   history.push({role: "user", content: userText});
   try {
     var requestBody = {
+      language: C.language || "en",
       // history excludes the turn we just pushed (sent separately as `message`)
       // so the current message is not delivered to the model twice.
       message: userText, convId: convId, visitorName: userName || undefined,
@@ -5395,7 +5787,7 @@ async function callLuna(userText) {
     if (!res.ok) {
       var errText = await res.text();
       console.error("Luna widget: endpoint error:", res.status, errText);
-      return {reply: "I'm having trouble connecting right now. You can use the \"" + C.escalateLabel + "\" button below to reach our team directly."};
+      return {reply: t('connectionTrouble', { label: C.escalateLabel })};
     }
     var data = await res.json();
     var reply = data.reply || "Sorry, I'm having trouble connecting right now.";
@@ -5406,7 +5798,7 @@ async function callLuna(userText) {
     return data;
   } catch(e) {
     console.error("Luna widget: fetch error:", e.message);
-    return {reply: "I'm having trouble connecting right now. You can use the \"" + C.escalateLabel + "\" button below to reach our team directly."};
+    return {reply: t('connectionTrouble', { label: C.escalateLabel })};
   }
 }
 
@@ -5417,15 +5809,17 @@ async function callLuna(userText) {
    happening without changing actual response time. */
 var _typingStatusTimers = [];
 function pickStage2Status(text) {
-  var t = (text || "").toLowerCase();
+  /* Renamed from `t` — that shadowed the translator function of the same name
+     and made every status line inside here untranslatable. */
+  var txt = (text || "").toLowerCase();
   /* Match on visitor intent — most specific first */
-  if (/booking|reference|reservation|confirm/.test(t)) return "Looking up your booking…";
-  if (/cancel|refund|insurance|baggage|visa|passport|policy|terms/.test(t)) return "Checking the policy…";
-  if (/stuck|lost|emergency|urgent|stranded|help/.test(t)) return "Pulling up emergency info…";
-  if (/holiday|sunshine|hot|warm|sun|beach|family|honeymoon|romantic|february|march|april|may|june|july|august|september|october|november|december|january|winter|summer|spring|autumn|where|ideas|inspire|suggestion/.test(t)) return "Finding destinations…";
-  if (/price|cost|deal|offer|cheap|budget|all.?inclusive|package/.test(t)) return "Checking what's available…";
-  if (/speak|human|agent|team|expert|someone/.test(t)) return "Finding the right person…";
-  return "Thinking it through…";
+  if (/booking|reference|reservation|confirm/.test(txt)) return t('lookingUpBooking');
+  if (/cancel|refund|insurance|baggage|visa|passport|policy|terms/.test(txt)) return t('checkingPolicy');
+  if (/stuck|lost|emergency|urgent|stranded|help/.test(txt)) return t('emergencyInfo');
+  if (/holiday|sunshine|hot|warm|sun|beach|family|honeymoon|romantic|february|march|april|may|june|july|august|september|october|november|december|january|winter|summer|spring|autumn|where|ideas|inspire|suggestion/.test(txt)) return t('findingDestinations');
+  if (/price|cost|deal|offer|cheap|budget|all.?inclusive|package/.test(txt)) return t('checkingAvailable');
+  if (/speak|human|agent|team|expert|someone/.test(txt)) return t('findingRightPerson');
+  return t('thinkingItThrough');
 }
 function startTypingStatus(visitorText) {
   stopTypingStatus(); /* clear any prior timers */
@@ -5433,9 +5827,9 @@ function startTypingStatus(visitorText) {
   if (!$status) return;
   $status.textContent = "";
   $status.classList.remove("visible");
-  var stage1 = "Thinking…";
+  var stage1 = t('thinking');
   var stage2 = pickStage2Status(visitorText);
-  var stage3 = "Still working…";
+  var stage3 = t('stillWorking');
   /* Stage 1 — show after 400ms (avoid flashing on fast responses) */
   _typingStatusTimers.push(setTimeout(function() {
     $status.textContent = stage1;
@@ -5779,22 +6173,22 @@ function offerCrossDeviceRecall(email){
   card.id = "tgxRecallCard";
   card.className = "tgx-recall";
   card.setAttribute("role", "group");
-  card.setAttribute("aria-label", "Continue a previous conversation");
+  card.setAttribute("aria-label", t('continuePreviousConversation'));
 
   var title = document.createElement("div");
   title.className = "tgx-recall-title";
-  title.textContent = "Chatted with us before on another device?";
+  title.textContent = t('chattedBefore');
   var body = document.createElement("div");
   body.className = "tgx-recall-body";
-  body.textContent = "We can send a code to " + email + " and pick up where you left off.";
+  body.textContent = t('weCanSendCode', { email: email });
   var go = document.createElement("button");
   go.type = "button";
   go.className = "tgx-recall-btn";
-  go.textContent = "Send me a code";
+  go.textContent = t('sendMeACode');
   var dismiss = document.createElement("button");
   dismiss.type = "button";
   dismiss.className = "tgx-recall-link";
-  dismiss.textContent = "No thanks";
+  dismiss.textContent = t('noThanks');
 
   card.appendChild(title); card.appendChild(body);
   card.appendChild(go); card.appendChild(dismiss);
@@ -5803,7 +6197,7 @@ function offerCrossDeviceRecall(email){
   dismiss.addEventListener("click", function(){ card.remove(); });
   go.addEventListener("click", function(){
     go.disabled = true;
-    go.textContent = "Sending…";
+    go.textContent = t('sending');
     fetch(recallEndpoint("request"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -5820,10 +6214,10 @@ function showRecallCodeEntry(card, email){
 
   var title = document.createElement("div");
   title.className = "tgx-recall-title";
-  title.textContent = "Check your email";
+  title.textContent = t('checkYourEmail');
   var body = document.createElement("div");
   body.className = "tgx-recall-body";
-  body.textContent = "If we recognise " + email + ", a 6 digit code is on its way. It expires in 10 minutes.";
+  body.textContent = t('ifWeRecognise', { email: email });
 
   var input = document.createElement("input");
   input.type = "text";
@@ -5831,7 +6225,7 @@ function showRecallCodeEntry(card, email){
   input.setAttribute("inputmode", "numeric");
   input.setAttribute("autocomplete", "one-time-code");
   input.setAttribute("maxlength", "6");
-  input.setAttribute("aria-label", "6 digit code");
+  input.setAttribute("aria-label", t('sixDigitCode'));
   input.placeholder = "000000";
 
   var go = document.createElement("button");
@@ -5853,8 +6247,8 @@ function showRecallCodeEntry(card, email){
   dismiss.addEventListener("click", function(){ card.remove(); });
   function submit(){
     var code = (input.value || "").replace(/\D/g, "");
-    if (code.length !== 6) { err.textContent = "Enter the 6 digit code."; return; }
-    go.disabled = true; go.textContent = "Checking…"; err.textContent = "";
+    if (code.length !== 6) { err.textContent = t('enterSixDigitCode'); return; }
+    go.disabled = true; go.textContent = t('checking'); err.textContent = "";
     fetch(recallEndpoint("verify"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -5873,7 +6267,7 @@ function showRecallCodeEntry(card, email){
     })
     .catch(function(){
       go.disabled = false; go.textContent = "Continue";
-      err.textContent = "Something went wrong. Please try again.";
+      err.textContent = t('somethingWentWrongRetry');
     });
   }
   go.addEventListener("click", submit);
@@ -5891,7 +6285,7 @@ function applyRecalledMemory(d, email){
     saveVisitorProfile(p);
     visitorProfile = p;
     isReturningVisitor = true;
-    if (p.name && !userName) { userName = p.name; nameCollected = true; }
+    if (realName(p.name) && !userName) { userName = realName(p.name); nameCollected = true; }
     visitorMemoryContext = buildVisitorMemoryContext(p);
     maybeRegreet();
   } catch(e){}
@@ -5924,7 +6318,7 @@ function fetchServerMemory(){
       saveVisitorProfile(p);
       visitorProfile = p;
       isReturningVisitor = true;
-      if (p.name && !userName) { userName = p.name; nameCollected = true; }
+      if (realName(p.name) && !userName) { userName = realName(p.name); nameCollected = true; }
       visitorMemoryContext = buildVisitorMemoryContext(p);
       maybeRegreet();
     })
@@ -5936,10 +6330,10 @@ function fetchServerMemory(){
    greeting once we learn (possibly async) that this is a returning visitor. */
 function maybeRegreet(){
   try {
-    if (!isReturningVisitor || !userName || !$msgs) return;
+    if (!isReturningVisitor || !$msgs) return;
     if (msgs.length === 1 && (msgs[0].role === "bot" || msgs[0].role === "assistant")) {
       var bubble = $msgs.querySelector(".tgx-msg.bot");
-      var text = "Welcome back, " + userName + "! How can I help today?";
+      var text = welcomeBackGreeting(userName) + ' ' + (C.welcome || t('defaultWelcome'));
       msgs[0].content = text;
       if (bubble) renderSafeMarkdown(bubble, text);
       recordBotOpener(text);
@@ -5950,10 +6344,12 @@ function maybeRegreet(){
 
 function startChat() {
   var welcomeText = C.welcome;
-  if (isReturningVisitor && userName) {
-    welcomeText = "Welcome back, " + userName + "! " + welcomeText.replace(/^Hey there[!,. ]*/i, "").replace(/^Hi there[!,. ]*/i, "");
-  } else if (userName) {
-    welcomeText = "Hey " + userName + "! " + welcomeText.replace(/^Hey there! /, "").replace(/^Hey there\b/, "");
+  // A returning visitor is welcomed back whether or not we know their name;
+  // welcomeBackGreeting() drops the name half when there isn't one to use.
+  if (isReturningVisitor) {
+    welcomeText = welcomeBackGreeting(userName) + ' ' + welcomeText.replace(/^Hey there[!,. ]*/i, "").replace(/^Hi there[!,. ]*/i, "");
+  } else if (realName(userName)) {
+    welcomeText = t('heyName', { name: realName(userName) }) + ' ' + welcomeText.replace(/^Hey there! /, "").replace(/^Hey there\b/, "");
   } else {
     welcomeText = applyTimeAwareGreeting(welcomeText);
   }
@@ -6079,8 +6475,8 @@ function ensureVoiceRecognition() {
       var input = _voiceActiveInput === "home" ? _voiceInputHomeEl : _voiceInputChatEl;
       if (input) {
         var orig = input.placeholder;
-        input.placeholder = "Microphone permission needed";
-        setTimeout(function() { if (input.placeholder === "Microphone permission needed") input.placeholder = orig; }, 3500);
+        input.placeholder = t('micPermission');
+        setTimeout(function() { if (input.placeholder === t('micPermission')) input.placeholder = orig; }, 3500);
       }
     }
     // No matter the error, return to idle
@@ -6378,7 +6774,7 @@ async function boot() {
     if (visitorProfile) {
       isReturningVisitor = !!((visitorProfile.memory && visitorProfile.memory.length) || visitorProfile.name);
       visitorMemoryContext = buildVisitorMemoryContext(visitorProfile);
-      if (visitorProfile.name && !userName) userName = visitorProfile.name;
+      if (realName(visitorProfile.name) && !userName) userName = realName(visitorProfile.name);
       if (visitorProfile.email && !visitorEmail) visitorEmail = visitorProfile.email;
       if (typeof visitorProfile.marketingConsent === "boolean") marketingConsent = visitorProfile.marketingConsent;
       if (visitorProfile.tripBrief && typeof visitorProfile.tripBrief === "object") mergeTripBrief(visitorProfile.tripBrief);
@@ -6437,7 +6833,7 @@ async function boot() {
     if (msgs.length === 1 && (msgs[0].role === 'bot' || msgs[0].role === 'assistant')) {
       var defaultWelcome = C.welcome || 'Hi there! How can I help today?';
       if (userName) {
-        defaultWelcome = 'Hey ' + userName + '! ' + defaultWelcome.replace(/^Hey there! /, '').replace(/^Hey there\b/, '');
+        defaultWelcome = t('heyName', { name: realName(userName) }) + ' ' + defaultWelcome.replace(/^Hey there! /, '').replace(/^Hey there\b/, '');
       } else {
         defaultWelcome = applyTimeAwareGreeting(defaultWelcome);
       }
@@ -6659,7 +7055,7 @@ async function boot() {
     if (data.photo && data.photo.photographer && data.photo.source) {
       var credit = document.createElement('div');
       credit.className = 'tgx-hl-credit';
-      credit.textContent = 'Photo: ' + data.photo.photographer + ' / ' + data.photo.source;
+      credit.textContent = t('photo') + ' ' + data.photo.photographer + ' / ' + data.photo.source;
       hero.appendChild(credit);
     }
     card.appendChild(hero);
@@ -6962,7 +7358,7 @@ async function boot() {
       if (!el.hasAttribute('role')) el.setAttribute('role', 'button');
       if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '0');
       if (!el.hasAttribute('aria-label') && !(el.textContent || '').trim()) {
-        el.setAttribute('aria-label', 'Open chat');
+        el.setAttribute('aria-label', t('openChat'));
       }
       el.style.cursor = el.style.cursor || 'pointer';
     });
@@ -7044,7 +7440,7 @@ async function boot() {
         if (msgs.length === 1 && (msgs[0].role === 'bot' || msgs[0].role === 'assistant')) {
           var defaultWelcome = C.welcome || 'Hi there! How can I help today?';
           if (userName) {
-            defaultWelcome = 'Hey ' + userName + '! ' + defaultWelcome.replace(/^Hey there! /, '').replace(/^Hey there\b/, '');
+            defaultWelcome = t('heyName', { name: realName(userName) }) + ' ' + defaultWelcome.replace(/^Hey there! /, '').replace(/^Hey there\b/, '');
           } else {
             defaultWelcome = applyTimeAwareGreeting(defaultWelcome);
           }

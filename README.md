@@ -55,7 +55,7 @@ Every search link Luna builds is corrected server side before the visitor sees
 it, so a Luna search covers the same ground as the same search on the site.
 The site sends Travelify a curated centre point, a per-destination radius and
 Travelify's own airport grouping (GR1 for Crete, AE1 for Dubai). The model
-still names the place; `lib/geo-resolver.js` swaps in the site's `lat`, `lng`,
+still names the place; `lib/deeplink.js` swaps in the site's `lat`, `lng`,
 `rad` and `dst` whenever the `loc` it wrote matches a row in the table.
 
 - **Radius is in miles.** The deeplink's `rad` takes miles, and so does the
@@ -71,3 +71,37 @@ still names the place; `lib/geo-resolver.js` swaps in the site's `lat`, `lng`,
   are Flights links (no place, only airports) and any match whose centre is
   nowhere near the model's own coordinates (Paris, Texas is not Paris).
 - **Off switch:** `LUNA_GEO_REWRITE=0`. Nothing else about a reply changes.
+
+## The widget's language
+
+Luna always replies in whatever language the visitor writes in. That is
+unconditional and has no setting. Separately, the widget can present *itself* in
+a client's language, and that is what `WidgetLanguage` on the Luna Clients table
+controls.
+
+It governs three things:
+
+- the widget's own furniture — labels, placeholders, button titles, the name
+  form, and the "thinking" status lines (`STRINGS` in `public/widget-core.js`
+  and `lib/status-strings.js`)
+- the `Lang` parameter on every search deep link, so the results page opens in
+  the same language
+- the default welcome, tagline and button labels, but only for a client who has
+  not written their own. Anything a client typed is left alone.
+
+**Not set is a real state, and the default.** It means draw in English and send
+no `Lang` at all, which is byte for byte what a client got before this existed.
+That matters: forcing `Lang=EN` on a client who never opened the setting could
+turn a results page that is already correct into an English one.
+
+**`lib/languages.js` is the only list.** A language belongs in it once, and only
+once, both string tables carry a complete translation. The dashboard picker is
+built from what the API sends rather than a copy of its own, and the tests fail
+if a language is offered without strings, or if a table is missing a key that
+English has. Two settings that predated this (`MultilingualEnabled` and
+`SupportedLanguages`) were saved to Airtable and read by nothing; their
+dashboard controls are gone.
+
+**Adding a language:** translate the `en` block in `public/widget-core.js` and
+in `lib/status-strings.js`, add a row to `lib/languages.js`, and add the choice
+to the `WidgetLanguage` field. Nothing else needs touching.

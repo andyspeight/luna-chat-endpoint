@@ -38,6 +38,7 @@
 // Env: AIRTABLE_KEY (server-held).
 
 const ratelimit = require('../lib/ratelimit');
+const visitorName = require('../lib/visitor-name');
 const auth = require('../lib/luna-auth');
 
 const BASE = 'app6Ot3eOb3DangkB';
@@ -137,7 +138,7 @@ module.exports = async function handler(req, res) {
 
     return res.status(200).json({
       found: true,
-      name: name || undefined,
+      name: visitorName.realName(name) || undefined,
       lastSeen: recent[F.lastMessageAt] || undefined,
       count: rows.length,
       summary: parts.join('. ') || undefined
