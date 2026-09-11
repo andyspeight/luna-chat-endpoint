@@ -483,6 +483,7 @@ var STRINGS = {
     goodMorning: 'Good morning',
     goodAfternoon: 'Good afternoon',
     goodEvening: 'Good evening',
+    welcomeBack: 'Welcome back!',
     welcomeBackName: 'Welcome back, {name}!',
     heyName: 'Hey {name}!',
     /* defaults, used only when the client has not written their own */
@@ -614,6 +615,7 @@ var STRINGS = {
     goodMorning: 'Bună dimineața',
     goodAfternoon: 'Bună ziua',
     goodEvening: 'Bună seara',
+    welcomeBack: 'Bine ai revenit!',
     welcomeBackName: 'Bine ai revenit, {name}!',
     heyName: 'Salut, {name}!',
     defaultTagline: 'ASISTENT AI',
@@ -635,6 +637,35 @@ function esc(v) {
   return String(v == null ? '' : v)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+/* Is this a name the visitor actually gave us?
+   When someone chats without giving one, the conversation is persisted as
+   "Anonymous" so the agent's list has something to show. That is a label for
+   staff, not a name — but it goes into the same field a real name does and
+   comes back out of it the same way, which is how a returning visitor was
+   greeted as "Welcome back, Anonymous!".
+   Kept in step with lib/visitor-name.js by a test; the widget cannot require it. */
+var NAME_PLACEHOLDERS = ['anonymous', 'anon', 'unknown', 'guest', 'visitor', 'n/a', 'na', 'none',
+  'no name', 'noname', 'test', 'null', 'undefined', '-', '--'];
+function realName(value) {
+  if (value === null || value === undefined) return '';
+  var v = Array.isArray(value) ? value[0] : value;
+  if (v && typeof v === 'object') v = v.name;
+  var str = String(v == null ? '' : v).trim();
+  if (!str) return '';
+  if (!/[a-zA-Z\u00C0-\u024F\u0370-\u03FF\u0400-\u04FF]/.test(str)) return '';
+  return NAME_PLACEHOLDERS.indexOf(str.toLowerCase()) === -1 ? str : '';
+}
+
+/* The returning-visitor greeting, with or without a name.
+   Takes the name as an argument rather than reading userName: this lives at
+   file scope, alongside the block renderers, and userName is declared inside
+   the widget's IIFE. Reading it from here is a ReferenceError that throws
+   mid-greeting and leaves the visitor with no opening message at all. */
+function welcomeBackGreeting(name) {
+  var n = realName(name);
+  return n ? t('welcomeBackName', { name: n }) : t('welcomeBack');
 }
 
 /* Look up one interface string.
@@ -6254,7 +6285,7 @@ function applyRecalledMemory(d, email){
     saveVisitorProfile(p);
     visitorProfile = p;
     isReturningVisitor = true;
-    if (p.name && !userName) { userName = p.name; nameCollected = true; }
+    if (realName(p.name) && !userName) { userName = realName(p.name); nameCollected = true; }
     visitorMemoryContext = buildVisitorMemoryContext(p);
     maybeRegreet();
   } catch(e){}
@@ -6287,7 +6318,7 @@ function fetchServerMemory(){
       saveVisitorProfile(p);
       visitorProfile = p;
       isReturningVisitor = true;
-      if (p.name && !userName) { userName = p.name; nameCollected = true; }
+      if (realName(p.name) && !userName) { userName = realName(p.name); nameCollected = true; }
       visitorMemoryContext = buildVisitorMemoryContext(p);
       maybeRegreet();
     })
@@ -6299,10 +6330,10 @@ function fetchServerMemory(){
    greeting once we learn (possibly async) that this is a returning visitor. */
 function maybeRegreet(){
   try {
-    if (!isReturningVisitor || !userName || !$msgs) return;
+    if (!isReturningVisitor || !$msgs) return;
     if (msgs.length === 1 && (msgs[0].role === "bot" || msgs[0].role === "assistant")) {
       var bubble = $msgs.querySelector(".tgx-msg.bot");
-      var text = t('welcomeBackName', { name: userName }) + ' ' + (C.welcome || t('defaultWelcome'));
+      var text = welcomeBackGreeting(userName) + ' ' + (C.welcome || t('defaultWelcome'));
       msgs[0].content = text;
       if (bubble) renderSafeMarkdown(bubble, text);
       recordBotOpener(text);
@@ -6313,10 +6344,12 @@ function maybeRegreet(){
 
 function startChat() {
   var welcomeText = C.welcome;
-  if (isReturningVisitor && userName) {
-    welcomeText = t('welcomeBackName', { name: userName }) + ' ' + welcomeText.replace(/^Hey there[!,. ]*/i, "").replace(/^Hi there[!,. ]*/i, "");
-  } else if (userName) {
-    welcomeText = t('heyName', { name: userName }) + ' ' + welcomeText.replace(/^Hey there! /, "").replace(/^Hey there\b/, "");
+  // A returning visitor is welcomed back whether or not we know their name;
+  // welcomeBackGreeting() drops the name half when there isn't one to use.
+  if (isReturningVisitor) {
+    welcomeText = welcomeBackGreeting(userName) + ' ' + welcomeText.replace(/^Hey there[!,. ]*/i, "").replace(/^Hi there[!,. ]*/i, "");
+  } else if (realName(userName)) {
+    welcomeText = t('heyName', { name: realName(userName) }) + ' ' + welcomeText.replace(/^Hey there! /, "").replace(/^Hey there\b/, "");
   } else {
     welcomeText = applyTimeAwareGreeting(welcomeText);
   }
@@ -6741,7 +6774,7 @@ async function boot() {
     if (visitorProfile) {
       isReturningVisitor = !!((visitorProfile.memory && visitorProfile.memory.length) || visitorProfile.name);
       visitorMemoryContext = buildVisitorMemoryContext(visitorProfile);
-      if (visitorProfile.name && !userName) userName = visitorProfile.name;
+      if (realName(visitorProfile.name) && !userName) userName = realName(visitorProfile.name);
       if (visitorProfile.email && !visitorEmail) visitorEmail = visitorProfile.email;
       if (typeof visitorProfile.marketingConsent === "boolean") marketingConsent = visitorProfile.marketingConsent;
       if (visitorProfile.tripBrief && typeof visitorProfile.tripBrief === "object") mergeTripBrief(visitorProfile.tripBrief);
@@ -6800,7 +6833,7 @@ async function boot() {
     if (msgs.length === 1 && (msgs[0].role === 'bot' || msgs[0].role === 'assistant')) {
       var defaultWelcome = C.welcome || 'Hi there! How can I help today?';
       if (userName) {
-        defaultWelcome = t('heyName', { name: userName }) + ' ' + defaultWelcome.replace(/^Hey there! /, '').replace(/^Hey there\b/, '');
+        defaultWelcome = t('heyName', { name: realName(userName) }) + ' ' + defaultWelcome.replace(/^Hey there! /, '').replace(/^Hey there\b/, '');
       } else {
         defaultWelcome = applyTimeAwareGreeting(defaultWelcome);
       }
@@ -7407,7 +7440,7 @@ async function boot() {
         if (msgs.length === 1 && (msgs[0].role === 'bot' || msgs[0].role === 'assistant')) {
           var defaultWelcome = C.welcome || 'Hi there! How can I help today?';
           if (userName) {
-            defaultWelcome = t('heyName', { name: userName }) + ' ' + defaultWelcome.replace(/^Hey there! /, '').replace(/^Hey there\b/, '');
+            defaultWelcome = t('heyName', { name: realName(userName) }) + ' ' + defaultWelcome.replace(/^Hey there! /, '').replace(/^Hey there\b/, '');
           } else {
             defaultWelcome = applyTimeAwareGreeting(defaultWelcome);
           }

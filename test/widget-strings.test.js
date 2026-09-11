@@ -217,3 +217,87 @@ test('t() resolves the language without reading the IIFE config object', () => {
   assert.match(WIDGET, /TGX_LANG = \(C\.language && STRINGS\[C\.language\]\) \? C\.language : 'en';/,
     'rebuildConfig must keep the holder in step with the client config');
 });
+
+test('the file-scope helpers take their inputs, rather than reaching into the IIFE', () => {
+  // This has bitten twice, and both times it threw at render rather than at
+  // parse, so the unit tests stayed green and the widget simply went blank:
+  //   - t() read C.language, and C is declared inside the IIFE
+  //   - welcomeBackGreeting() read userName, same problem
+  // The string table and the block renderers sit ABOVE the IIFE. Anything up
+  // there must take what it needs as an argument or read a file-scope holder.
+  //
+  // Checked per function body rather than by scanning the whole file-scope
+  // region: that region is full of regex literals containing quotes, which
+  // defeats any cheap comment/string stripper. A broad scan here silently
+  // stopped being able to fail at all, which is worse than not having one. The
+  // backstop for the general case is the Chromium smoke, which caught both.
+  const iife = WIDGET.indexOf('\n(function() {\n"use strict";');
+  assert.ok(iife !== -1);
+  const iifeOnly = ['C', 'D', 'userName', 'visitorProfile', 'isReturningVisitor',
+    'visitorEmail', 'msgs', 'convId', 'nameCollected', 'marketingConsent', 'tripBrief'];
+
+  ['function t(key, vars)', 'function esc(v)', 'function realName(value)',
+   'function welcomeBackGreeting(name)'].forEach((sig) => {
+    const at = WIDGET.indexOf(sig);
+    assert.notEqual(at, -1, sig + ' is missing');
+    assert.ok(at < iife, sig + ' must be at file scope, above the block renderers');
+    const body = WIDGET.slice(at, WIDGET.indexOf('\n}\n', at) + 2)
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .replace(/\/\/[^\n]*/g, ' ');
+    iifeOnly.forEach((n) => {
+      assert.doesNotMatch(body, new RegExp('(?<![\\w$.\'"])' + n + '(?![\\w$])'),
+        sig + ' reads ' + n + ', which is declared inside the IIFE');
+    });
+  });
+
+  // And the renderers above the IIFE really do call into the table, which is
+  // why any of this matters.
+  assert.match(WIDGET.slice(0, iife), /t\('seeDeals'\)/);
+});
+
+test('t() resolves the language without reading the IIFE config object', () => {
+  const fn = WIDGET.slice(WIDGET.indexOf('function t(key, vars)'));
+  const body = fn.slice(0, fn.indexOf('\n}\n') + 2);
+  assert.doesNotMatch(body, /\bC\.language\b/,
+    'C is not in scope for the block renderers; read TGX_LANG instead');
+  assert.match(body, /STRINGS\[TGX_LANG\]/);
+  assert.match(WIDGET, /TGX_LANG = \(C\.language && STRINGS\[C\.language\]\) \? C\.language : 'en';/,
+    'rebuildConfig must keep the holder in step with the client config');
+});
+
+test('nothing at file scope reaches for a variable that lives inside the IIFE', () => {
+  // This has bitten twice now, and both times it threw at render rather than at
+  // parse, so the unit tests stayed green and the widget was simply blank:
+  //   - t() read C.language, and C is declared inside the IIFE
+  //   - welcomeBackGreeting() read userName, same problem
+  // The block renderers and the string table sit ABOVE the IIFE. Anything up
+  // there must take what it needs as an argument, or read a file-scope holder.
+  const iife = WIDGET.indexOf('\n(function() {\n"use strict";');
+  assert.ok(iife !== -1);
+  // Blank out comments and string bodies so prose and CSS cannot raise a false
+  // alarm. Done with a character scan rather than regexes: a lone apostrophe
+  // inside a double-quoted string ("don't") makes a regex string-matcher run on
+  // to the next one and swallow most of the file, which silently turned this
+  // check into one that could never fail.
+  const head = (function strip(src) {
+    let out = '', i = 0;
+    while (i < src.length) {
+      const c = src[i], d = src[i + 1];
+      if (c === '/' && d === '*') { const e = src.indexOf('*/', i + 2); i = e === -1 ? src.length : e + 2; out += ' '; continue; }
+      if (c === '/' && d === '/') { const e = src.indexOf('\n', i); i = e === -1 ? src.length : e; out += ' '; continue; }
+      if (c === "'" || c === '"' || c === '`') {
+        const q = c; i++;
+        while (i < src.length && src[i] !== q) { if (src[i] === '\\') i++; i++; }
+        i++; out += '""'; continue;
+      }
+      out += c; i++;
+    }
+    return out;
+  })(WIDGET.slice(0, iife));
+  const iifeOnly = ['C', 'D', 'userName', 'visitorProfile', 'isReturningVisitor',
+    'visitorEmail', 'msgs', 'convId', 'nameCollected', 'marketingConsent', 'tripBrief'];
+  const leaked = iifeOnly.filter((n) =>
+    new RegExp('(?<![\\w$.])' + n.replace(/\$/g, '\\$') + '(?![\\w$])').test(head));
+  assert.deepEqual(leaked, [],
+    'referenced at file scope but declared inside the IIFE: ' + leaked.join(', '));
+});
