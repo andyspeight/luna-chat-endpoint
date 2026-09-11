@@ -4,6 +4,7 @@ const { clientNameFormula } = require('../lib/luna-auth');
 const modelFallback = require('../lib/model-fallback');
 const geo = require('../lib/deeplink');
 const languages = require('../lib/languages');
+const statusStrings = require('../lib/status-strings');
 
 const Anthropic = require('@anthropic-ai/sdk');
 // Deep links the model builds are corrected against the site's own geo table
@@ -1756,46 +1757,47 @@ function localDailyCapExceeded() {
 // --- INPUT SANITIZATION ---
 // Phase 3.5: server-side intent detection for real-time status events.
 // Returns a short, specific status string based on what the visitor is asking.
-function detectIntent(message, pageContext) {
+function detectIntent(message, pageContext, lang) {
+  var S = function (k, v) { return statusStrings.status(lang || 'en', k, v); };
   var t = (message || '').toLowerCase();
   var pageTitle = (pageContext && pageContext.title) ? pageContext.title.toLowerCase() : '';
   var pagePath = (pageContext && pageContext.path) ? pageContext.path.toLowerCase() : '';
 
   // Most specific intents first
   if (/booking|reservation|reference|my trip|my holiday/.test(t) && /(my|our)/.test(t)) {
-    return 'Looking up your booking…';
+    return S('lookingUpBooking');
   }
-  if (/cancel|refund/.test(t)) return 'Checking our cancellation policy…';
-  if (/insurance|cover|protected/.test(t)) return 'Reading our insurance terms…';
-  if (/visa|passport|entry requirement/.test(t)) return 'Checking entry requirements…';
-  if (/baggage|luggage|hand luggage/.test(t)) return 'Looking up baggage rules…';
-  if (/atol|abta|protect|finan/.test(t)) return 'Checking our financial protection…';
-  if (/safety|safe to travel|fcdo|advice/.test(t)) return 'Checking travel advice…';
+  if (/cancel|refund/.test(t)) return S('cancellationPolicy');
+  if (/insurance|cover|protected/.test(t)) return S('insuranceTerms');
+  if (/visa|passport|entry requirement/.test(t)) return S('entryRequirements');
+  if (/baggage|luggage|hand luggage/.test(t)) return S('baggageRules');
+  if (/atol|abta|protect|finan/.test(t)) return S('financialProtection');
+  if (/safety|safe to travel|fcdo|advice/.test(t)) return S('travelAdvice');
   if (/weather|climate|temperature|hot|cold|rain|sun|season/.test(t)) {
     // Pull destination from page context if possible
     if (pageTitle) {
       var match = pageTitle.match(/(greece|spain|portugal|turkey|cyprus|italy|france|maldives|thailand|africa|caribbean|dubai|egypt|morocco|mexico|usa|cuba)/i);
-      if (match) return 'Checking the weather in ' + match[1].charAt(0).toUpperCase() + match[1].slice(1) + '…';
+      if (match) return S('weatherIn', { place: match[1].charAt(0).toUpperCase() + match[1].slice(1) });
     }
-    return 'Checking the weather…';
+    return S('weather');
   }
-  if (/best time|when to visit|when should/.test(t)) return 'Looking up the best time to visit…';
-  if (/airport|terminal|transfer|arrival|departure/.test(t)) return 'Looking up airport info…';
-  if (/family|kids|child|teen/.test(t)) return 'Finding family-friendly options…';
-  if (/honeymoon|romantic|couple/.test(t)) return 'Finding ideas for couples…';
-  if (/budget|cheap|deal|offer|cost|price/.test(t)) return 'Checking what\'s available…';
-  if (/luxury|five star|premium|exclusive/.test(t)) return 'Looking up our luxury options…';
-  if (/all.?inclusive|board|meal/.test(t)) return 'Checking what\'s included…';
-  if (/speak|human|agent|person|expert|advisor/.test(t)) return 'Finding the right person…';
-  if (/safari|game drive|wildlife/.test(t)) return 'Looking up our safari options…';
-  if (/cruise|ship|sailing/.test(t)) return 'Checking our cruise options…';
-  if (/destination|country|where|inspire|ideas|suggest/.test(t)) return 'Looking up destinations…';
-  if (/recommend|suggest|advice|help me/.test(t)) return 'Putting some ideas together…';
+  if (/best time|when to visit|when should/.test(t)) return S('bestTimeToVisit');
+  if (/airport|terminal|transfer|arrival|departure/.test(t)) return S('airportInfo');
+  if (/family|kids|child|teen/.test(t)) return S('familyOptions');
+  if (/honeymoon|romantic|couple/.test(t)) return S('couplesIdeas');
+  if (/budget|cheap|deal|offer|cost|price/.test(t)) return S('whatsAvailable');
+  if (/luxury|five star|premium|exclusive/.test(t)) return S('luxuryOptions');
+  if (/all.?inclusive|board|meal/.test(t)) return S('whatsIncluded');
+  if (/speak|human|agent|person|expert|advisor/.test(t)) return S('rightPerson');
+  if (/safari|game drive|wildlife/.test(t)) return S('safariOptions');
+  if (/cruise|ship|sailing/.test(t)) return S('cruiseOptions');
+  if (/destination|country|where|inspire|ideas|suggest/.test(t)) return S('destinations');
+  if (/recommend|suggest|advice|help me/.test(t)) return S('puttingIdeasTogether');
   // Page-aware fallback
   if (pageContext && pageContext.title) {
-    return 'Reading the ' + pageContext.title.slice(0, 30).trim() + ' page…';
+    return S('readingPage', { page: pageContext.title.slice(0, 30).trim() });
   }
-  return 'Thinking about your question…';
+  return S('thinkingAboutQuestion');
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -1818,8 +1820,9 @@ function detectIntent(message, pageContext) {
 // All output is plain text from a fixed template set — no user input is
 // rendered without going through capitalisation helpers below, so no XSS
 // risk from the message contents.
-function buildAck(message, pageContext) {
-  if (!message || typeof message !== 'string') return 'One moment…';
+function buildAck(message, pageContext, lang) {
+  var S = function (k, v) { return statusStrings.status(lang || 'en', k, v); };
+  if (!message || typeof message !== 'string') return S('oneMoment');
   var t = message.toLowerCase();
 
   // Destination matcher — high-traffic destinations only. Capitalised via
@@ -1834,62 +1837,62 @@ function buildAck(message, pageContext) {
 
   // Topic detection (priority order — more specific first)
   if (/weather|temperature|hot|cold|rain|sunny|climate|degrees|forecast/.test(t)) {
-    if (destination && month) return 'Let me look into the ' + month + ' weather in ' + destination + ' for you…';
-    if (destination) return 'Let me look into the weather in ' + destination + ' for you…';
-    if (month) return 'Checking what the weather is like in ' + month + '…';
-    return 'Checking the weather…';
+    if (destination && month) return S('weatherMonthIn', { month: month, destination: destination });
+    if (destination) return S('weatherInForYou', { destination: destination });
+    if (month) return S('weatherInMonth', { month: month });
+    return S('weather');
   }
   if (/best time|when to (?:go|visit|travel)|when should/.test(t)) {
-    if (destination) return 'Let me check when is best for ' + destination + '…';
-    return 'Looking up the best time to go…';
+    if (destination) return S('bestTimeFor', { destination: destination });
+    return S('bestTimeToGo');
   }
   if (/airport|terminal|transfer|arrival|departure|flight time|how long.*flight/.test(t)) {
-    if (destination) return 'Checking airport details for ' + destination + '…';
-    return 'Looking up airport info…';
+    if (destination) return S('airportDetailsFor', { destination: destination });
+    return S('airportInfo');
   }
   if (/family|kids|child|children|teen|teenager|family.friendly/.test(t)) {
-    if (destination) return 'Finding family options for ' + destination + '…';
-    return 'Finding family-friendly options…';
+    if (destination) return S('familyOptionsFor', { destination: destination });
+    return S('familyOptions');
   }
   if (/honeymoon|romantic|couple|couples|just the two of us/.test(t)) {
-    if (destination) return 'Looking up romantic ideas in ' + destination + '…';
-    return 'Finding ideas for couples…';
+    if (destination) return S('romanticIdeasIn', { destination: destination });
+    return S('couplesIdeas');
   }
   if (/budget|cheap|deal|offer|cost|price|how much|expensive|afford/.test(t)) {
-    if (destination) return 'Checking prices for ' + destination + '…';
-    return 'Checking what is available…';
+    if (destination) return S('pricesFor', { destination: destination });
+    return S('whatIsAvailable');
   }
   if (/luxury|five star|5.star|premium|exclusive|high.end|upscale/.test(t)) {
-    if (destination) return 'Looking up luxury stays in ' + destination + '…';
-    return 'Looking up our luxury options…';
+    if (destination) return S('luxuryStaysIn', { destination: destination });
+    return S('luxuryOptions');
   }
   if (/all.?inclusive|board basis|half.board|full.board|breakfast included|meals included/.test(t)) {
-    if (destination) return 'Checking all-inclusive options for ' + destination + '…';
-    return 'Checking what is included…';
+    if (destination) return S('allInclusiveFor', { destination: destination });
+    return S('whatIsIncluded');
   }
   if (/safari|game drive|wildlife|big five/.test(t)) {
-    if (destination) return 'Looking up safari options in ' + destination + '…';
-    return 'Looking up our safari options…';
+    if (destination) return S('safariOptionsIn', { destination: destination });
+    return S('safariOptions');
   }
   if (/cruise|ship|sailing|cruising/.test(t)) {
-    if (destination) return 'Checking cruises around ' + destination + '…';
-    return 'Checking our cruise options…';
+    if (destination) return S('cruisesAround', { destination: destination });
+    return S('cruiseOptions');
   }
   if (/speak|human|agent|person|expert|advisor|call me back|phone me/.test(t)) {
-    return 'Finding the right person…';
+    return S('rightPerson');
   }
   if (/find my booking|my reservation|look up my|where('?s| is) my booking|manage.*booking/.test(t)) {
-    return 'Pulling up your booking…';
+    return S('pullingUpBooking');
   }
-  if (destination) return 'Looking into ' + destination + ' for you…';
+  if (destination) return S('lookingIntoDestination', { destination: destination });
   if (/inspire|ideas|suggest|recommend|advice|help me|not sure|where should/.test(t)) {
-    return 'Putting some ideas together…';
+    return S('puttingIdeasTogether');
   }
   if (pageContext && pageContext.title) {
     // pageContext.title has already been through sanitizeInput
-    return 'Reading the ' + pageContext.title.slice(0, 40).trim() + ' page for you…';
+    return S('readingPageForYou', { page: pageContext.title.slice(0, 40).trim() });
   }
-  return 'Looking that up for you…';
+  return S('lookingThatUp');
 }
 
 function capitaliseAckPhrase(s) {
@@ -2656,6 +2659,15 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: 'Missing or invalid message' });
   }
 
+  // The language for the status lines that go down the stream. It comes from
+  // the widget on the request body, because the first one is emitted BEFORE the
+  // client's Airtable record has been read. The widget already knows its own
+  // language (it was configured with it), the value is checked against the
+  // supported list, and it chooses nothing but which sentence to show — so
+  // trusting the client for this costs nothing. Anything absent or unknown,
+  // including the WhatsApp path which sends no widget config at all, is English.
+  var statusLang = statusStrings.langFromRequest(body.language);
+
   // ═══ Phase 3.5: early SSE setup for real-time status events ═══
   // Set up headers and sendEvent EARLY so we can emit status messages while
   // doing knowledge-base / destination lookups (each up to ~1s). Without this,
@@ -2746,7 +2758,7 @@ module.exports = async function handler(req, res) {
   // request being received, so the visitor sees a contextual response almost
   // instantly. Gated by body.useAck so old widget builds are unaffected.
   if (wantAck && !openerRequest) {
-    emitAck(buildAck(effectiveMessage, pageContext));
+    emitAck(buildAck(effectiveMessage, pageContext, statusLang));
     mark('ackSent');
   }
 
@@ -2756,7 +2768,7 @@ module.exports = async function handler(req, res) {
   // detectIntent's generic status, and emitting both back-to-back lets the
   // status overwrite the ack on the widget's fade-in timer (~200ms).
   if (wantStream && !openerRequest && !wantAck) {
-    emitStatus(detectIntent(effectiveMessage, pageContext));
+    emitStatus(detectIntent(effectiveMessage, pageContext, statusLang));
   }
 
   // Phase 3: skip moderation for opener requests (no user content to moderate)
@@ -3377,7 +3389,7 @@ No problem, drop your email and departure date in below and I'll find it.
       // Phase 3.5: status update — we found something in the knowledge base
       // Suppressed when ack is in use: the ack already conveys progress and
       // we don't want it overwritten on the typing-status line.
-      if (wantStream && !openerRequest && !wantAck) emitStatus('Found something in our knowledge…');
+      if (wantStream && !openerRequest && !wantAck) emitStatus(statusStrings.status(statusLang, 'foundInKnowledge'));
     }
     // Destination context (Airports + Theme Parks) — keyword-triggered
     mark('destCtxStart');
@@ -3387,7 +3399,7 @@ No problem, drop your email and departure date in below and I'll find it.
       systemPrompt += destCtx;
       kbGrounded = true;
       // Phase 3.5: status update — destination data fetched
-      if (wantStream && !openerRequest && !wantAck) emitStatus('Looking up destination details…');
+      if (wantStream && !openerRequest && !wantAck) emitStatus(statusStrings.status(statusLang, 'destinationDetails'));
     }
     useHaiku = true;
   } else {
@@ -3405,7 +3417,7 @@ No problem, drop your email and departure date in below and I'll find it.
   // Phase 3.5: final status before AI call — "Writing your answer…"
   // Also gated on !wantAck so the ack persists right up until the first
   // real text delta arrives and replaces it via ensureBubble().
-  if (wantStream && !openerRequest && !wantAck) emitStatus('Writing your answer…');
+  if (wantStream && !openerRequest && !wantAck) emitStatus(statusStrings.status(statusLang, 'writingAnswer'));
 
   try {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });

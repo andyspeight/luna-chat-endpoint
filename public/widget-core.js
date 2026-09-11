@@ -5348,6 +5348,7 @@ function showRatingOverlay(ratingChannel) {
 async function streamFromLuna(userText) {
   history.push({role: "user", content: userText});
   var requestBody = {
+      language: C.language || "en",
     // history excludes the turn we just pushed — it is sent separately as
     // `message`, so slicing to -1 stops the current message being sent twice
     // (the server would otherwise see the visitor's line duplicated).
@@ -5729,6 +5730,7 @@ async function callLuna(userText) {
   history.push({role: "user", content: userText});
   try {
     var requestBody = {
+      language: C.language || "en",
       // history excludes the turn we just pushed (sent separately as `message`)
       // so the current message is not delivered to the model twice.
       message: userText, convId: convId, visitorName: userName || undefined,
