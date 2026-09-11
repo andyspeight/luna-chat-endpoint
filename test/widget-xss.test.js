@@ -18,8 +18,11 @@ test('email success toast is built with textContent, not innerHTML + email', () 
   // The old sink: bar.innerHTML = '...Sent to ' + email + '...'  — must be gone.
   assert.doesNotMatch(SRC, /innerHTML\s*=\s*'[^']*Sent to '\s*\+\s*email/,
     'the visitor email must never be concatenated into innerHTML');
-  assert.match(SRC, /okBox\.textContent\s*=\s*'[^']*'\s*\+\s*email/,
+  // The address is now substituted into a translated sentence rather than
+  // concatenated inline, but it still lands via textContent.
+  assert.match(SRC, /okBox\.textContent\s*=\s*'[^']*'\s*\+\s*t\('sentTo', \{ email: email \}\)/,
     'the toast must render the email via textContent');
+  assert.doesNotMatch(SRC, /okBox\.innerHTML/, 'the toast must never use innerHTML');
 });
 
 test('showEmailError injects the server message via textContent', () => {

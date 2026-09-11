@@ -44,12 +44,16 @@ function loadSvgIcon() {
   return new Function(body + '\nreturn { ICONS: ICONS, svgIcon: svgIcon };')();
 }
 
-// Same for the greeting helpers.
-function loadGreeting() {
+// Same for the greeting helpers. They read their words from the interface
+// string table now, so that comes along for the ride; `lang` picks which.
+function loadGreeting(lang) {
+  const strings = WIDGET.slice(WIDGET.indexOf('var STRINGS = {'));
+  const table = strings.slice(0, strings.indexOf('\n}\n', strings.indexOf('function t(key, vars)')) + 2);
   const start = WIDGET.indexOf('function getTimeGreeting()');
   const end = WIDGET.indexOf('\n}', WIDGET.indexOf('function applyTimeAwareGreeting')) + 2;
-  return new Function(WIDGET.slice(start, end)
-    + '\nreturn { getTimeGreeting: getTimeGreeting, applyTimeAwareGreeting: applyTimeAwareGreeting };')();
+  return new Function('var TGX_LANG = ' + JSON.stringify(lang || 'en') + ';\n'
+    + table + '\n' + WIDGET.slice(start, end)
+    + '\nreturn { getTimeGreeting: getTimeGreeting, applyTimeAwareGreeting: applyTimeAwareGreeting, t: t };')();
 }
 
 // ── icons ──
