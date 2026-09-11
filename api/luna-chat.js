@@ -2,11 +2,12 @@
 // resolving under the name already embedded on their site. Shared helper.
 const { clientNameFormula } = require('../lib/luna-auth');
 const modelFallback = require('../lib/model-fallback');
-const geo = require('../lib/geo-resolver');
+const geo = require('../lib/deeplink');
+const languages = require('../lib/languages');
 
 const Anthropic = require('@anthropic-ai/sdk');
 // Deep links the model builds are corrected against the site's own geo table
-// (lib/geo-resolver.js) before the visitor sees them. LUNA_GEO_REWRITE=0 is the
+// (lib/deeplink.js) before the visitor sees them. LUNA_GEO_REWRITE=0 is the
 // off switch; nothing else about the reply changes when it is off.
 const GEO_REWRITE = process.env.LUNA_GEO_REWRITE !== '0';
 const ratelimit = require('../lib/ratelimit');
@@ -2774,6 +2775,19 @@ module.exports = async function handler(req, res) {
   const claudeMessages = buildMessages(history, effectiveMessage);
 
   const isTravelgenix = (clientName || '').toLowerCase().includes('travelgenix');
+
+  // The language the WIDGET presents itself in. Set from the client's record
+  // below; English until then, and English for any client who has not chosen.
+  // This is not the language Luna answers in — she follows the visitor.
+  var widgetLanguage = languages.DEFAULT;
+
+  // The Lang parameter to put on search deep links. Deliberately EMPTY unless
+  // the client has explicitly chosen a language, because the results page
+  // already has a default of its own on the booking platform. Forcing Lang=EN
+  // on every client who simply never opened the setting would turn a correct
+  // Romanian results page into an English one — a regression dressed up as a
+  // feature. No choice means no parameter, which is exactly today's behaviour.
+  var deepLinkLang = '';
   let systemPrompt = isTravelgenix ? LUNA_TRAVELGENIX : LUNA_CLIENT;
 
   // -- Temporal anchor: ON for every client, always ----------------------
@@ -2947,6 +2961,9 @@ module.exports = async function handler(req, res) {
           //
           // Only override when the client actually chose something. A blank
           // field, or the "Luna"/"Luna AI" default, leaves the base prompt alone.
+          widgetLanguage = languages.resolve(f.WidgetLanguage);
+          if (languages.isSupported(f.WidgetLanguage)) deepLinkLang = widgetLanguage.deepLink;
+
           var botName = String(f.WidgetBotName || '').trim();
           if (botName && !/^luna( ai)?$/i.test(botName)) {
             systemPrompt += `\n\n## Your name — overrides the name used anywhere above
@@ -3529,7 +3546,7 @@ No problem, drop your email and departure date in below and I'll find it.
         // Tokens may already be buffered (call 2 was fired in parallel).
         try {
           var longStream = await longStreamPromise;
-          var geoLong = geo.createStreamRewriter({ enabled: GEO_REWRITE });
+          var geoLong = geo.createStreamRewriter({ enabled: GEO_REWRITE, lang: deepLinkLang });
           for await (var lev of longStream) {
             if (lev.type === 'content_block_delta' && lev.delta && lev.delta.type === 'text_delta') {
               var ld = lev.delta.text || '';
@@ -3562,7 +3579,7 @@ No problem, drop your email and departure date in below and I'll find it.
                 messages: claudeMessages,
                 metadata: { user_id: convId || 'unknown' }
               }, { timeout: MODEL_TIMEOUT });
-              var geoRetry = geo.createStreamRewriter({ enabled: GEO_REWRITE });
+              var geoRetry = geo.createStreamRewriter({ enabled: GEO_REWRITE, lang: deepLinkLang });
               for await (var rev of retryStream) {
                 if (rev.type === 'content_block_delta' && rev.delta && rev.delta.type === 'text_delta') {
                   var rd = rev.delta.text || '';
@@ -3651,7 +3668,7 @@ No problem, drop your email and departure date in below and I'll find it.
         combinedClean = stripInternalTokens(combinedClean);
         // The stream already corrected (and logged) each link; this keeps the
         // saved reply and the done payload identical to what was streamed.
-        combinedClean = geo.rewriteDeepLinks(combinedClean, { enabled: GEO_REWRITE, quiet: true });
+        combinedClean = geo.rewriteDeepLinks(combinedClean, { enabled: GEO_REWRITE, quiet: true, lang: deepLinkLang });
 
         // Trip brief: strip any [BRIEF] marker (the long call emits it) and capture it.
         var briefSweep2 = extractBriefMarkers(combinedClean);
@@ -3723,7 +3740,7 @@ No problem, drop your email and departure date in below and I'll find it.
       firstTextChunkSeen = false;
       // Holds back a deep link while it is still arriving, rewrites it against
       // the site's geo table, then lets it through. Prose is never delayed.
-      var geoStream = geo.createStreamRewriter({ enabled: GEO_REWRITE });
+      var geoStream = geo.createStreamRewriter({ enabled: GEO_REWRITE, lang: deepLinkLang });
       var emitText = function (t) {
         var out = geoStream.push(t);
         if (out) sendEvent('text', { delta: out });
@@ -3856,7 +3873,7 @@ No problem, drop your email and departure date in below and I'll find it.
         // Layer 3: Strip any internal/protocol/hallucinated tokens. Final
         // safety net so visitors never see <blank_line>, <break>, [removed].
         cleanReply = stripInternalTokens(cleanReply);
-        cleanReply = geo.rewriteDeepLinks(cleanReply, { enabled: GEO_REWRITE, quiet: true });
+        cleanReply = geo.rewriteDeepLinks(cleanReply, { enabled: GEO_REWRITE, quiet: true, lang: deepLinkLang });
 
         var escalate = detectEscalation(cleanReply, message);
 
@@ -4014,7 +4031,7 @@ No problem, drop your email and departure date in below and I'll find it.
     cleanReply = stripInternalTokens(cleanReply);
     // Correct every deep link against the site's geo table (WhatsApp and any
     // other non-streaming caller come through here).
-    cleanReply = geo.rewriteDeepLinks(cleanReply, { enabled: GEO_REWRITE });
+    cleanReply = geo.rewriteDeepLinks(cleanReply, { enabled: GEO_REWRITE, lang: deepLinkLang });
 
     var escalate = detectEscalation(cleanReply, message);
 

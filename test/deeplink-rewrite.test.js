@@ -16,7 +16,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const geo = require('../lib/geo-resolver');
+const geo = require('../lib/deeplink');
 
 const LINK = 'https://dl.tvllnk.com/deeplink/272?st=DynamicPackaging&org=LON&dst=FAO&loc=Algarve&lat=37.1&lng=-8.2&rad=4&fr=2026-10-15&dur=7&adt=2&chd=0&inf=0';
 const params = (u) => new URL(u).searchParams;

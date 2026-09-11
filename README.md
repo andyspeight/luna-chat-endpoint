@@ -55,7 +55,7 @@ Every search link Luna builds is corrected server side before the visitor sees
 it, so a Luna search covers the same ground as the same search on the site.
 The site sends Travelify a curated centre point, a per-destination radius and
 Travelify's own airport grouping (GR1 for Crete, AE1 for Dubai). The model
-still names the place; `lib/geo-resolver.js` swaps in the site's `lat`, `lng`,
+still names the place; `lib/deeplink.js` swaps in the site's `lat`, `lng`,
 `rad` and `dst` whenever the `loc` it wrote matches a row in the table.
 
 - **Radius is in miles.** The deeplink's `rad` takes miles, and so does the

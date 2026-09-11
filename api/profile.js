@@ -2,6 +2,7 @@
 // Read and write business profile data
 
 const crypto = require('crypto');
+const languages = require('../lib/languages');
 const auth = require('../lib/luna-auth');
 
 const AT_BASE = 'app6Ot3eOb3DangkB';
@@ -154,6 +155,7 @@ module.exports = async function handler(req, res) {
           emailPlatformApiKeySet: !!fields.EmailPlatformApiKey,
           emailPlatformListId: fields.EmailPlatformListId || '',
           multilingualEnabled: !!fields.MultilingualEnabled,
+          widgetLanguage: fields.WidgetLanguage ? (typeof fields.WidgetLanguage === 'object' ? fields.WidgetLanguage.name : fields.WidgetLanguage) : '',
           supportedLanguages: fields.SupportedLanguages || '',
           cannedResponses: fields.CannedResponses || '',
           scannedUrls: fields.scannedUrls || '',
@@ -219,6 +221,15 @@ module.exports = async function handler(req, res) {
       if (body.emailPlatformApiKey !== undefined && !isMaskedSecret(body.emailPlatformApiKey)) updateFields.EmailPlatformApiKey = body.emailPlatformApiKey;
       if (body.emailPlatformListId !== undefined) updateFields.EmailPlatformListId = body.emailPlatformListId;
       if (body.multilingualEnabled !== undefined) updateFields.MultilingualEnabled = body.multilingualEnabled;
+      // Only a language we actually have translations for may be stored, and
+      // an empty value clears the choice (which means "leave the deep link's
+      // Lang alone and draw the widget in English").
+      if (body.widgetLanguage !== undefined) {
+        var wl = String(body.widgetLanguage || '').trim();
+        if (!wl) updateFields.WidgetLanguage = null;
+        else if (languages.isSupported(wl)) updateFields.WidgetLanguage = languages.resolve(wl).name;
+        else return res.status(400).json({ error: 'Unsupported widget language: ' + wl });
+      }
       if (body.supportedLanguages !== undefined) updateFields.SupportedLanguages = body.supportedLanguages;
 
       // Canned responses
