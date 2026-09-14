@@ -4,6 +4,7 @@ const { clientNameFormula } = require('../lib/luna-auth');
 const modelFallback = require('../lib/model-fallback');
 const geo = require('../lib/deeplink');
 const languages = require('../lib/languages');
+const departureMarkets = require('../lib/departure-markets');
 const statusStrings = require('../lib/status-strings');
 
 const Anthropic = require('@anthropic-ai/sdk');
@@ -2800,6 +2801,12 @@ module.exports = async function handler(req, res) {
   // Romanian results page into an English one — a regression dressed up as a
   // feature. No choice means no parameter, which is exactly today's behaviour.
   var deepLinkLang = '';
+
+  // Where this agency's customers fly FROM, used only to suggest an airport
+  // when the visitor has not named one. The visitor's own airport always wins,
+  // wherever in the world it is. Defaults to the UK so every existing client
+  // is unchanged.
+  var departureMarket = departureMarkets.DEFAULT;
   let systemPrompt = isTravelgenix ? LUNA_TRAVELGENIX : LUNA_CLIENT;
 
   // -- Temporal anchor: ON for every client, always ----------------------
@@ -2974,6 +2981,7 @@ module.exports = async function handler(req, res) {
           // Only override when the client actually chose something. A blank
           // field, or the "Luna"/"Luna AI" default, leaves the base prompt alone.
           widgetLanguage = languages.resolve(f.WidgetLanguage);
+          departureMarket = departureMarkets.resolve(f.DepartureMarket);
           if (languages.isSupported(f.WidgetLanguage)) deepLinkLang = widgetLanguage.deepLink;
 
           var botName = String(f.WidgetBotName || '').trim();
@@ -3039,9 +3047,7 @@ https://dl.tvllnk.com/deeplink/${siteId}?st=Accommodation&loc={LOCATION_NAME}&la
 
 ### Parameter Rules
 
-**ORIGIN_IATA** — always a UK airport code. Common options:
-LON (all London), LHR (Heathrow), LGW (Gatwick), STN (Stansted), LTN (Luton), LCY (London City), MAN (Manchester), BHX (Birmingham), EDI (Edinburgh), GLA (Glasgow), LBA (Leeds Bradford), NCL (Newcastle), LPL (Liverpool), BRS (Bristol), EMA (East Midlands), BFS (Belfast International), BHD (Belfast City), SOU (Southampton), CWL (Cardiff), ABZ (Aberdeen), EXT (Exeter), BOH (Bournemouth), NWI (Norwich), INV (Inverness).
-If the visitor says "London" use LON. If they name a specific London airport, use that code.
+${departureMarkets.originPromptFor(departureMarket)}
 
 **DEST_IATA** — the IATA airport code nearest to the destination. Use your knowledge of world airports. For cities with multiple airports, use the main international one (e.g. JFK for New York, CDG for Paris, FCO for Rome). For resort destinations, use the nearest serving airport (e.g. PMI for Mallorca, HER for Crete, DPS for Bali, PUJ for Punta Cana).
 
@@ -3097,7 +3103,7 @@ This flow is for Bucket Q (READY mode) ONLY — when the visitor has named a des
    - Good: "Sounds lovely. To search, I just need to know which airport you'd fly from, your rough dates and how many of you are travelling."
    - Bad: "Sounds lovely. Which airport would you fly from?" (then next turn) "Great. When are you thinking?" (then next turn) "And how many of you?"
 5. As soon as the visitor provides the missing fields, generate the search link. Do not introduce new questions you didn't ask in step 4.
-6. Default departure airport suggestion when completely absent: suggest "London" as default, and mention other UK airports are available if they'd prefer.
+6. When the visitor has given no departure airport at all, suggest the busiest airport in this agency's home market and say others are available if they'd prefer. If they name an airport anywhere in the world, use theirs — do not steer them back to the home market.
 
 ### Important Rules
 - ALWAYS use your own knowledge for IATA codes and coordinates. You know world geography, use it confidently.

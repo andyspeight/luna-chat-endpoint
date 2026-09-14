@@ -2772,6 +2772,11 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
         <select class="settings-input" id="setWidgetLanguage"></select>
         <div class="settings-hint">Leave this as <strong>Not set</strong> to keep the window in English and let your booking platform decide the language of the results page. Choosing a language changes both.</div>
       </div>
+      <div class="settings-row">
+        <label class="settings-label">Customers usually fly from</label>
+        <select class="settings-input" id="setDepartureMarket"></select>
+        <div class="settings-hint">Only used to suggest an airport when a visitor has not said where they are flying from. Luna searches from any airport in the world, so a visitor who names their own local airport always gets that one.</div>
+      </div>
     </div>
 
     <div class="settings-section">
@@ -5239,6 +5244,23 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
   /* Build the language picker from the list the API sends. The dashboard keeps
      no copy of its own, so a language can never appear here that the widget
      has no strings for. */
+  /* Build a select from the list the API sends. Shared so a second picker does
+     not mean a second copy of a list the dashboard has no business keeping. */
+  function renderChoice(id, available, current, noneLabel) {
+    var sel = document.getElementById(id);
+    if (!sel) return;
+    sel.innerHTML = '';
+    var none = document.createElement('option');
+    none.value = ''; none.textContent = noneLabel;
+    sel.appendChild(none);
+    (available || []).forEach(function(name) {
+      var o = document.createElement('option');
+      o.value = name; o.textContent = name;
+      sel.appendChild(o);
+    });
+    sel.value = current || '';
+  }
+
   function renderWidgetLanguage(available, current) {
     var sel = document.getElementById('setWidgetLanguage');
     if (!sel) return;
@@ -5600,6 +5622,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       document.getElementById('setEmailApiKey').value = p.emailPlatformApiKey || '';
       document.getElementById('setEmailListId').value = p.emailPlatformListId || '';
       renderWidgetLanguage(p.availableLanguages, p.widgetLanguage);
+      renderChoice('setDepartureMarket', p.availableDepartureMarkets, p.departureMarket, 'Not set (United Kingdom)');
 
       renderBrandColorGrid();
       renderAccentColorGrid();
@@ -5657,6 +5680,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
           emailPlatformApiKey: document.getElementById('setEmailApiKey').value,
           emailPlatformListId: document.getElementById('setEmailListId').value,
           widgetLanguage: document.getElementById('setWidgetLanguage').value,
+          departureMarket: document.getElementById('setDepartureMarket').value,
           widgetBotName: document.getElementById('setBotName').value,
           widgetTagline: document.getElementById('setTagline').value,
           widgetWelcome: document.getElementById('setWelcome').value,
