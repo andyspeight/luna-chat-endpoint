@@ -4,6 +4,7 @@ const { clientNameFormula } = require('../lib/luna-auth');
 const modelFallback = require('../lib/model-fallback');
 const geo = require('../lib/deeplink');
 const languages = require('../lib/languages');
+const departureMarkets = require('../lib/departure-markets');
 const statusStrings = require('../lib/status-strings');
 
 const Anthropic = require('@anthropic-ai/sdk');
@@ -2800,6 +2801,12 @@ module.exports = async function handler(req, res) {
   // Romanian results page into an English one — a regression dressed up as a
   // feature. No choice means no parameter, which is exactly today's behaviour.
   var deepLinkLang = '';
+
+  // Where this agency's customers fly FROM, used only to suggest an airport
+  // when the visitor has not named one. The visitor's own airport always wins,
+  // wherever in the world it is. Defaults to the UK so every existing client
+  // is unchanged.
+  var departureMarket = departureMarkets.DEFAULT;
   let systemPrompt = isTravelgenix ? LUNA_TRAVELGENIX : LUNA_CLIENT;
 
   // -- Temporal anchor: ON for every client, always ----------------------
@@ -2843,7 +2850,7 @@ module.exports = async function handler(req, res) {
   // Luna detects the visitor's language and replies in it, for all clients,
   // with no per-client flag. The [LANG:...] marker is stripped before the
   // visitor sees the reply (see marker-stripping below). Fails safe to English.
-  systemPrompt += '\n\n## Multilingual support\nYou speak multiple languages fluently. Detect the language the visitor is writing in and respond in that same language throughout the conversation. If the visitor switches language mid-conversation, follow their lead. The travel knowledge base is in English, so translate facts and information naturally into the visitor\'s language. Keep your warm, friendly tone in every language. Do not mention that you are translating or that the knowledge base is in English.\n\nCRITICAL: Start EVERY response with [LANG:LanguageName] on its own line (e.g. [LANG:French] or [LANG:English]). This tag will be removed before the visitor sees it. Always include it, even for English.';
+  systemPrompt += '\n\n## Multilingual support\nYou speak multiple languages fluently. Detect the language the visitor is writing in and respond in that same language throughout the conversation. If the visitor switches language mid-conversation, follow their lead. The travel knowledge base is in English, so translate facts and information naturally into the visitor\'s language. Keep your warm, friendly tone in every language. Do not mention that you are translating or that the knowledge base is in English.\n\nCRITICAL: Start EVERY response with [LANG:LanguageName] on its own line (e.g. [LANG:French] or [LANG:English]). This tag will be removed before the visitor sees it. Always include it, even for English.\n\nTHE LANGUAGE RULE COVERS THE CARDS TOO, NOT JUST YOUR SENTENCES. Everything inside a [BLOCK] that a visitor can read is your writing and must be in their language: the destination name as they would say it, the vibe line, every tag, the temperature note and the flight time. Write the flight time as words in their language, not as "3.5h flight". Never leave an English word sitting inside a sentence in another language — "Soare year-round" is wrong, write the whole phrase in their language.\n\nThe same goes for the values you put in [BRIEF]. They are shown back to the visitor as chips they can read and remove, so a holiday type reads "plaja" in Romanian, not "beach". The field NAMES in that JSON stay in English because they are keys; the values are visitor-facing text.';
 
   // -- Trip brief: structured slot-filling (every client) ------------------
   // Luna keeps a running, structured brief of the visitor's trip and emits it
@@ -2974,6 +2981,7 @@ module.exports = async function handler(req, res) {
           // Only override when the client actually chose something. A blank
           // field, or the "Luna"/"Luna AI" default, leaves the base prompt alone.
           widgetLanguage = languages.resolve(f.WidgetLanguage);
+          departureMarket = departureMarkets.resolve(f.DepartureMarket);
           if (languages.isSupported(f.WidgetLanguage)) deepLinkLang = widgetLanguage.deepLink;
 
           var botName = String(f.WidgetBotName || '').trim();
@@ -3039,9 +3047,7 @@ https://dl.tvllnk.com/deeplink/${siteId}?st=Accommodation&loc={LOCATION_NAME}&la
 
 ### Parameter Rules
 
-**ORIGIN_IATA** — always a UK airport code. Common options:
-LON (all London), LHR (Heathrow), LGW (Gatwick), STN (Stansted), LTN (Luton), LCY (London City), MAN (Manchester), BHX (Birmingham), EDI (Edinburgh), GLA (Glasgow), LBA (Leeds Bradford), NCL (Newcastle), LPL (Liverpool), BRS (Bristol), EMA (East Midlands), BFS (Belfast International), BHD (Belfast City), SOU (Southampton), CWL (Cardiff), ABZ (Aberdeen), EXT (Exeter), BOH (Bournemouth), NWI (Norwich), INV (Inverness).
-If the visitor says "London" use LON. If they name a specific London airport, use that code.
+${departureMarkets.originPromptFor(departureMarket)}
 
 **DEST_IATA** — the IATA airport code nearest to the destination. Use your knowledge of world airports. For cities with multiple airports, use the main international one (e.g. JFK for New York, CDG for Paris, FCO for Rome). For resort destinations, use the nearest serving airport (e.g. PMI for Mallorca, HER for Crete, DPS for Bali, PUJ for Punta Cana).
 
@@ -3097,7 +3103,7 @@ This flow is for Bucket Q (READY mode) ONLY — when the visitor has named a des
    - Good: "Sounds lovely. To search, I just need to know which airport you'd fly from, your rough dates and how many of you are travelling."
    - Bad: "Sounds lovely. Which airport would you fly from?" (then next turn) "Great. When are you thinking?" (then next turn) "And how many of you?"
 5. As soon as the visitor provides the missing fields, generate the search link. Do not introduce new questions you didn't ask in step 4.
-6. Default departure airport suggestion when completely absent: suggest "London" as default, and mention other UK airports are available if they'd prefer.
+6. When the visitor has given no departure airport at all, suggest the busiest airport in this agency's home market and say others are available if they'd prefer. If they name an airport anywhere in the world, use theirs — do not steer them back to the home market.
 
 ### Important Rules
 - ALWAYS use your own knowledge for IATA codes and coordinates. You know world geography, use it confidently.

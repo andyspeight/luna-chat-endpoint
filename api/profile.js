@@ -3,6 +3,7 @@
 
 const crypto = require('crypto');
 const languages = require('../lib/languages');
+const departureMarkets = require('../lib/departure-markets');
 const auth = require('../lib/luna-auth');
 
 const AT_BASE = 'app6Ot3eOb3DangkB';
@@ -161,6 +162,8 @@ module.exports = async function handler(req, res) {
           // capability-card icon sets drifted apart until half the icons the
           // editor offered drew nothing at all on the live widget.
           availableLanguages: languages.names(),
+          departureMarket: fields.DepartureMarket ? (typeof fields.DepartureMarket === 'object' ? fields.DepartureMarket.name : fields.DepartureMarket) : '',
+          availableDepartureMarkets: departureMarkets.names(),
           supportedLanguages: fields.SupportedLanguages || '',
           cannedResponses: fields.CannedResponses || '',
           scannedUrls: fields.scannedUrls || '',
@@ -229,6 +232,14 @@ module.exports = async function handler(req, res) {
       // Only a language we actually have translations for may be stored, and
       // an empty value clears the choice (which means "leave the deep link's
       // Lang alone and draw the widget in English").
+      // Where their customers fly from. Empty clears the choice, which means
+      // the United Kingdom — the behaviour every client had before this existed.
+      if (body.departureMarket !== undefined) {
+        var dm = String(body.departureMarket || '').trim();
+        if (!dm) updateFields.DepartureMarket = null;
+        else if (departureMarkets.isSupported(dm)) updateFields.DepartureMarket = departureMarkets.resolve(dm).name;
+        else return res.status(400).json({ error: 'Unsupported departure market: ' + dm });
+      }
       if (body.widgetLanguage !== undefined) {
         var wl = String(body.widgetLanguage || '').trim();
         if (!wl) updateFields.WidgetLanguage = null;

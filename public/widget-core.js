@@ -356,6 +356,27 @@ var TGX_LANG = 'en';
 
 var STRINGS = {
   en: {
+    tellMeMore: 'Tell me more',
+    enquiryTitle: 'Get this priced by {agency}',
+    enqDestination: 'Destination',
+    enqDates: 'Dates',
+    enqTravelling: 'Travelling',
+    enqFrom: 'From',
+    enquiryNote: 'Real availability, checked by a human — they\u2019ll come back to you personally.',
+    enquirySent: '\u2713 Done — {agency} has your trip and will be in touch',
+    priceFrom: 'From',
+    perPerson: 'pp',
+    callNow: 'Call now',
+    noEmergencyPhone: 'Please contact us directly — emergency phone not yet configured.',
+    urgentHelp: 'Need urgent help?',
+    fcdoAdvice: 'Official travel advice',
+    climatePrefix: 'Climate',
+    rightNowPrefix: 'Right now',
+    loadingMap: 'Loading map…',
+    mapUnavailable: 'Map preview unavailable',
+    coordsUnavailable: 'Coordinates not available',
+    useTheseDates: 'Use these dates',
+    monthOutlook: 'In {month}, expect around {temp}°C',
     /* home + chat chrome */
     onlineNow: 'Online now',
     online: 'Online',
@@ -501,6 +522,27 @@ var STRINGS = {
      clients — the words are ours, the tone should be theirs. Correcting one is
      a single-line edit here. */
   ro: {
+    tellMeMore: 'Spune-mi mai multe',
+    enquiryTitle: 'Cere un preț de la {agency}',
+    enqDestination: 'Destinație',
+    enqDates: 'Perioadă',
+    enqTravelling: 'Călători',
+    enqFrom: 'Plecare din',
+    enquiryNote: 'Disponibilitate reală, verificată de un coleg. Te contactează personal.',
+    enquirySent: '\u2713 Gata — {agency} are detaliile călătoriei tale și te va contacta',
+    priceFrom: 'De la',
+    perPerson: '/pers.',
+    callNow: 'Sună acum',
+    noEmergencyPhone: 'Te rugăm să ne contactezi direct. Numărul pentru urgențe nu este încă configurat.',
+    urgentHelp: 'Ai nevoie de ajutor urgent?',
+    fcdoAdvice: 'Recomandări oficiale de călătorie',
+    climatePrefix: 'Climă',
+    rightNowPrefix: 'Acum',
+    loadingMap: 'Se încarcă harta…',
+    mapUnavailable: 'Harta nu este disponibilă',
+    coordsUnavailable: 'Coordonate indisponibile',
+    useTheseDates: 'Folosește aceste date',
+    monthOutlook: 'În {month}, așteaptă-te la circa {temp}°C',
     onlineNow: 'Online acum',
     online: 'Online',
     whatICanHelpWith: 'Cu ce te pot ajuta',
@@ -784,7 +826,7 @@ function renderDestinationCard(props, ctx) {
   // Actions
   const actions = el('div', 'luna-dest-actions');
 
-  const tellMe = el('button', 'luna-btn', 'Tell me more');
+  const tellMe = el('button', 'luna-btn', t('tellMeMore'));
   tellMe.type = 'button';
   tellMe.addEventListener('click', () => {
     if (ctx && ctx.dispatch) ctx.dispatch({ type: 'send_message', text: t('tellMeMoreAbout', { name: props.name }) });
@@ -868,9 +910,9 @@ function renderOfferCard(props, ctx) {
   if (typeof props.pricePerPerson === 'number') {
     const currency = (props.currency === 'EUR') ? '€' : (props.currency === 'USD') ? '$' : '£';
     const priceWrap = el('div', 'luna-offer-price');
-    priceWrap.appendChild(el('span', 'luna-offer-price-label', 'From'));
+    priceWrap.appendChild(el('span', 'luna-offer-price-label', t('priceFrom')));
     priceWrap.appendChild(el('span', 'luna-offer-price-value', `${currency}${props.pricePerPerson.toLocaleString()}`));
-    priceWrap.appendChild(el('span', 'luna-offer-price-pp', 'pp'));
+    priceWrap.appendChild(el('span', 'luna-offer-price-pp', t('perPerson')));
     priceRow.appendChild(priceWrap);
   }
 
@@ -971,7 +1013,7 @@ function renderFcdoCard(props, ctx) {
   card.dataset.fcdo = '1';
 
   const head = el('div', 'luna-faq-head');
-  const pill = el('span', 'luna-faq-pill', 'FCDO advice');
+  const pill = el('span', 'luna-faq-pill', t('fcdoAdvice'));
   pill.dataset.category = 'advice';
   head.appendChild(pill);
   if (props.country) {
@@ -1138,7 +1180,7 @@ function renderEmergencyCard(props, ctx) {
 
   const head = el('div', 'luna-emergency-head');
   head.appendChild(iconNode('phone'));
-  head.appendChild(el('span', 'luna-emergency-label', 'Need urgent help?'));
+  head.appendChild(el('span', 'luna-emergency-label', t('urgentHelp')));
   card.appendChild(head);
 
   if (props.reassurance) {
@@ -1153,7 +1195,7 @@ function renderEmergencyCard(props, ctx) {
     phoneLink.textContent = props.phoneDisplay || props.phone;
     card.appendChild(phoneLink);
 
-    const callBtn = el('button', 'luna-emergency-btn', 'Call now');
+    const callBtn = el('button', 'luna-emergency-btn', t('callNow'));
     callBtn.type = 'button';
     callBtn.addEventListener('click', () => {
       // Trigger the tel: link
@@ -1163,7 +1205,7 @@ function renderEmergencyCard(props, ctx) {
   } else {
     // No phone configured — show fallback
     card.appendChild(el('div', 'luna-emergency-fallback',
-      'Please contact us directly — emergency phone not yet configured.'));
+      t('noEmergencyPhone')));
   }
 
   return card;
@@ -1219,7 +1261,7 @@ function renderEnquiryCard(props, ctx) {
   const card = el('div', 'luna-enquiry-card');
   const agency = (ctx && ctx.agencyName) || 'the team';
 
-  card.appendChild(el('div', 'luna-enquiry-title', 'Get this priced by ' + agency));
+  card.appendChild(el('div', 'luna-enquiry-title', t('enquiryTitle', { agency: agency })));
 
   // Trip summary rows — only what Luna actually knows.
   const partyBits = [];
@@ -1229,14 +1271,14 @@ function renderEnquiryCard(props, ctx) {
       + (props.childAges ? ' (' + props.childAges + ')' : ''));
   }
   const rows = [
-    ['Destination', props.destination],
-    ['Dates', props.departureDate
+    [t('enqDestination'), props.destination],
+    [t('enqDates'), props.departureDate
       ? props.departureDate + (props.nights ? ', ' + props.nights + ' nights' : '')
       : props.dateFlexibility],
-    ['Travelling', partyBits.join(' + ')],
-    ['From', props.departureAirport],
-    ['Board', props.board],
-    ['Budget', props.budget]
+    [t('enqTravelling'), partyBits.join(' + ')],
+    [t('enqFrom'), props.departureAirport],
+    [t('tripBoard'), props.board],
+    [t('tripBudget'), props.budget]
   ].filter(r => r[1]);
   if (rows.length) {
     const sum = el('div', 'luna-enquiry-summary');
@@ -1248,14 +1290,13 @@ function renderEnquiryCard(props, ctx) {
     });
     card.appendChild(sum);
   }
-  card.appendChild(el('div', 'luna-enquiry-note',
-    'Real availability, checked by a human — they’ll come back to you personally.'));
+  card.appendChild(el('div', 'luna-enquiry-note', t('enquiryNote')));
 
   // Contact form, prefilled with anything the widget already knows.
   const visitor = (ctx && ctx.visitor) || {};
   const form = el('div', 'luna-enquiry-form');
   const nameIn = document.createElement('input');
-  nameIn.type = 'text'; nameIn.placeholder = 'Your name'; nameIn.autocomplete = 'name';
+  nameIn.type = 'text'; nameIn.placeholder = t('yourName'); nameIn.autocomplete = 'name';
   nameIn.value = visitor.name || '';
   const emailIn = document.createElement('input');
   emailIn.type = 'email'; emailIn.placeholder = t('email'); emailIn.autocomplete = 'email';
@@ -1290,7 +1331,7 @@ function renderEnquiryCard(props, ctx) {
         onDone: function () {
           form.remove();
           card.appendChild(el('div', 'luna-enquiry-done',
-            '✓ Done — ' + agency + ' has your trip and will be in touch'
+            t('enquirySent', { agency: agency })
             + (email ? ' at ' + email : '') + '. Keep chatting with me in the meantime.'));
         },
         onFail: function () {
@@ -1400,7 +1441,7 @@ function renderDatePicker(props, ctx) {
   const err = el('div', 'tgx-datepick-err', '');
   card.appendChild(err);
 
-  const go = el('button', 'tgx-datepick-go', 'Use these dates');
+  const go = el('button', 'tgx-datepick-go', t('useTheseDates'));
   go.type = 'button';
   go.addEventListener('click', function () {
     err.textContent = '';
@@ -1503,7 +1544,7 @@ function renderLocationCard(props, ctx) {
     var mapId = 'luna-map-' + Math.random().toString(36).slice(2, 9);
     mapWrap.id = mapId;
     // Fallback static text (replaced once Leaflet loads)
-    var loadingMsg = el('div', 'luna-location-map-loading', 'Loading map…');
+    var loadingMsg = el('div', 'luna-location-map-loading', t('loadingMap'));
     mapWrap.appendChild(loadingMsg);
 
     ensureLeaflet().then(function(L) {
@@ -1529,16 +1570,16 @@ function renderLocationCard(props, ctx) {
       } catch (err) {
         console.warn('[Luna] Leaflet init failed:', err.message);
         mapWrap.innerHTML = '';
-        mapWrap.appendChild(el('div', 'luna-location-map-error', 'Map preview unavailable'));
+        mapWrap.appendChild(el('div', 'luna-location-map-error', t('mapUnavailable')));
       }
     }).catch(function(err) {
       console.warn('[Luna] Leaflet load failed:', err.message);
       if (!mapWrap.isConnected) return;
       mapWrap.innerHTML = '';
-      mapWrap.appendChild(el('div', 'luna-location-map-error', 'Map preview unavailable'));
+      mapWrap.appendChild(el('div', 'luna-location-map-error', t('mapUnavailable')));
     });
   } else {
-    mapWrap.appendChild(el('div', 'luna-location-map-error', 'Coordinates not available'));
+    mapWrap.appendChild(el('div', 'luna-location-map-error', t('coordsUnavailable')));
   }
 
   // Description below the map
@@ -1581,8 +1622,26 @@ function renderLocationCard(props, ctx) {
 // destination has coordinates; falls back to climate-only when not.
 
 var MONTH_LABELS = ['J','F','M','A','M','J','J','A','S','O','N','D'];
-var MONTH_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-var DAY_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+/* Month and day names, per interface language. A date picker and a weather
+   outlook written in English inside a Romanian conversation is the same kind
+   of seam as an English button: small, and the sort of thing a visitor reads
+   as "this was not really built for me". Indexed by the same code as STRINGS,
+   falling back to English. */
+var CALENDAR_NAMES = {
+  en: {
+    months: ['January','February','March','April','May','June','July','August','September','October','November','December'],
+    days: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+  },
+  ro: {
+    months: ['ianuarie','februarie','martie','aprilie','mai','iunie','iulie','august','septembrie','octombrie','noiembrie','decembrie'],
+    days: ['Dum','Lun','Mar','Mie','Joi','Vin','Sâm']
+  }
+};
+function calendarNames() { return CALENDAR_NAMES[TGX_LANG] || CALENDAR_NAMES.en; }
+/* Resolved per call, not captured at load: the language is set from the client
+   config after this file is parsed. */
+function monthName(i) { return calendarNames().months[i] || CALENDAR_NAMES.en.months[i] || ''; }
+function dayName_(i) { return calendarNames().days[i] || CALENDAR_NAMES.en.days[i] || ''; }
 
 // Map Open-Meteo WMO weather codes to icon name + short label.
 // Reference: https://open-meteo.com/en/docs (Weather Variables section)
@@ -1672,8 +1731,8 @@ function computeBestMonthsRange(seasons) {
     var lenB = b.wraps ? (12 - b.start) + (b.end + 1) : (b.end - b.start + 1);
     return lenB > lenA ? b : a;
   });
-  var startName = MONTH_FULL[longest.start];
-  var endName = MONTH_FULL[longest.end];
+  var startName = monthName(longest.start);
+  var endName = monthName(longest.end);
   if (longest.start === longest.end) return startName;
   return startName + ' to ' + endName;
 }
@@ -1698,7 +1757,7 @@ function renderWeatherCard(props, ctx) {
     var heroLeft = el('div', 'luna-weather-hero-left');
     var heroLoc = el('div', 'luna-weather-hero-loc', name || 'Today');
     heroLeft.appendChild(heroLoc);
-    var heroLabel = el('div', 'luna-weather-hero-label', 'Right now · ' + ico.label);
+    var heroLabel = el('div', 'luna-weather-hero-label', t('rightNowPrefix') + ' · ' + ico.label);
     heroLeft.appendChild(heroLabel);
     var heroTemp = el('div', 'luna-weather-hero-temp');
     heroTemp.innerHTML = Math.round(props.currentTempC) + '<span class="luna-weather-deg">°C</span>';
@@ -1739,7 +1798,7 @@ function renderWeatherCard(props, ctx) {
         } else {
           try {
             var dt = new Date(d.date);
-            dayName = DAY_SHORT[dt.getDay()];
+            dayName = dayName_(dt.getDay());
           } catch (e) { dayName = ''; }
         }
         var nameEl = el('div', 'luna-weather-day-name', dayName);
@@ -1764,7 +1823,7 @@ function renderWeatherCard(props, ctx) {
     icon.innerHTML = weatherIconSvg('sun', 14);
     head.appendChild(icon);
     var headText = el('div', 'luna-weather-head-text');
-    if (name) headText.appendChild(el('div', 'luna-weather-name', 'Climate · ' + name));
+    if (name) headText.appendChild(el('div', 'luna-weather-name', t('climatePrefix') + ' · ' + name));
     if (subtitle) headText.appendChild(el('div', 'luna-weather-subtitle', subtitle));
     head.appendChild(headText);
     card.appendChild(head);
@@ -1835,14 +1894,14 @@ function renderWeatherCard(props, ctx) {
 
   if (highlight >= 0 && temps[highlight] != null) {
     var callout = el('div', 'luna-weather-callout');
-    var monthName = MONTH_FULL[highlight];
+    var monthLabel = monthName(highlight);
     var temp = Math.round(temps[highlight]);
     var rain = rainfall[highlight];
     var season = seasons[highlight] || '';
     var seasonLabel = season === 'best' ? 'a peak month' :
                       season === 'shoulder' ? 'a shoulder month' :
                       season === 'off' ? 'off-peak' : '';
-    var msg = 'In ' + monthName + ', expect around ' + temp + '°C';
+    var msg = t('monthOutlook', { month: monthLabel, temp: temp });
     if (typeof rain === 'number') msg += ', ' + Math.round(rain) + 'mm rainfall';
     if (seasonLabel) msg += ' — ' + seasonLabel;
     msg += '.';
@@ -7103,7 +7162,7 @@ async function boot() {
       row.appendChild(arrow);
 
       // Click sends "Tell me more about [headline]" as a user message
-      var prompt = 'Tell me more about ' + (it.headline || it.eyebrow || 'this');
+      var prompt = t('tellMeMoreAbout', { name: (it.headline || it.eyebrow || 'this') });
       row.addEventListener('click', function() { sendToAI(prompt); });
       row.addEventListener('keydown', function(e) {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sendToAI(prompt); }
