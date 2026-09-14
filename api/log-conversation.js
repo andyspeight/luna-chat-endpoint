@@ -15,6 +15,7 @@
 const { clientNameFormula } = require('../lib/luna-auth');
 
 const ratelimit = require('../lib/ratelimit');
+const chatNotify = require('../lib/chat-notify');
 
 const AT_BASE = 'app6Ot3eOb3DangkB';
 const CONV_TABLE = 'tblyin27D2J9ejHvf';
@@ -76,7 +77,9 @@ async function findClientByName(atKey, clientName) {
   var r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + atKey } });
   if (!r.ok) return null;
   var d = await r.json();
-  return (d.records && d.records[0]) ? d.records[0].id : null;
+  // The whole record, not just the id: the notification below needs the
+  // client's ContactEmail, and this is the lookup that already has it.
+  return (d.records && d.records[0]) || null;
 }
 
 async function findConversation(atKey, convId) {
@@ -87,6 +90,37 @@ async function findConversation(atKey, convId) {
   if (!r.ok) return null;
   var d = await r.json();
   return (d.records && d.records[0]) || null;
+}
+
+// Email the client's ContactEmail. Degrades to a silent no-op whenever it
+// cannot send — no recipient, no SendGrid key, no SendGrid module — because a
+// missing notification must never cost anyone their conversation record.
+async function sendChatNotification(o) {
+  var f = (o.clientRecord && o.clientRecord.fields) || {};
+  var to = String(f.ContactEmail || '').trim();
+  if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+    console.log('[log-conversation] no ContactEmail for ' + o.clientName + ' — not notifying');
+    return;
+  }
+  var key = process.env.SENDGRID_API_KEY;
+  var from = process.env.LEAD_NOTIFY_FROM || process.env.REVIEW_DIGEST_FROM || 'noreply@travelgenix.io';
+  if (!key) return;
+  var sgMail;
+  try { sgMail = require('@sendgrid/mail'); } catch (e) { return; }
+  sgMail.setApiKey(key);
+
+  var mail = chatNotify.buildChatEmail({
+    clientName: o.clientName,
+    visitorName: o.visitorName,
+    visitorEmail: o.visitorEmail,
+    summary: o.summary,
+    page: o.page,
+    at: o.at,
+    urgent: o.urgent,
+    dashboardUrl: (f.DashboardURL || 'https://chat.travelify.io/dashboard.html')
+  });
+  await sgMail.send({ to: to, from: from, subject: mail.subject, html: mail.html });
+  console.log('[log-conversation] notified ' + to + (o.urgent ? ' (handover requested)' : ' (new chat)'));
 }
 
 async function triggerQualityScoring(convId, host) {
@@ -156,7 +190,8 @@ module.exports = async function handler(req, res) {
 
   try {
     // Resolve client record
-    var clientRecordId = await findClientByName(atKey, clientName);
+    var clientRecord = await findClientByName(atKey, clientName);
+    var clientRecordId = clientRecord ? clientRecord.id : null;
     if (!clientRecordId) return res.status(404).json({ error: 'Client not found' });
 
     // Find existing conversation by ID
@@ -215,6 +250,33 @@ module.exports = async function handler(req, res) {
         var ce = await cr.json();
         throw new Error((ce.error && ce.error.message) || 'Create failed');
       }
+    }
+
+    // Tell the client someone chatted. AFTER the write, so a mail failure can
+    // never cost us the conversation record, and awaited because Vercel kills
+    // unawaited promises when the function returns.
+    try {
+      var decision = chatNotify.decideNotification({
+        isNew: !existing,
+        hasVisitorMessage: chatNotify.hasVisitorMessage(fields[F.summary] || (existing && existing.fields && existing.fields[F.summary])),
+        escalated: !!fields[F.wasEscalated],
+        wasEscalated: !!(existing && existing.fields && existing.fields[F.wasEscalated])
+      });
+      if (decision.notify) {
+        await sendChatNotification({
+          clientRecord: clientRecord,
+          clientName: clientName,
+          urgent: decision.urgent,
+          visitorName: fields[F.visitorName] || (existing && existing.fields && existing.fields[F.visitorName]),
+          visitorEmail: fields[F.visitorEmail] || (existing && existing.fields && existing.fields[F.visitorEmail]),
+          summary: fields[F.summary] || (existing && existing.fields && existing.fields[F.summary]),
+          page: fields[F.clientWebsite] || (existing && existing.fields && existing.fields[F.clientWebsite]),
+          convId: convId,
+          at: now
+        });
+      }
+    } catch (notifyErr) {
+      console.warn('[log-conversation] notify failed (non-fatal):', notifyErr && notifyErr.message);
     }
 
     // Trigger quality scoring inline. Must await — Vercel kills unawaited promises
