@@ -301,3 +301,71 @@ test('nothing at file scope reaches for a variable that lives inside the IIFE', 
   assert.deepEqual(leaked, [],
     'referenced at file scope but declared inside the IIFE: ' + leaked.join(', '));
 });
+
+test('no English literal reaches the DOM from the card renderers', () => {
+  // The first pass at this translation missed fifteen strings, all of them in
+  // the block renderers above the IIFE, and all because they are written with
+  // the el(tag, class, text) helper rather than assigned to .textContent — a
+  // shape the original sweep did not look for. "Tell me more" sat under a
+  // Romanian paragraph for a week.
+  //
+  // So look for every shape that puts words on screen, not just the one that
+  // was easy to grep.
+  const iife = WIDGET.indexOf('\n(function() {\n"use strict";');
+  // Cut out the two DEFINITION sites. A month name inside CALENDAR_NAMES, or a
+  // string inside STRINGS, is the translation, not an untranslated literal.
+  let head = WIDGET.slice(0, iife);
+  for (const marker of ['var STRINGS = {', 'var CALENDAR_NAMES = {']) {
+    const at = head.indexOf(marker);
+    if (at === -1) continue;
+    const end = head.indexOf('\n};', at) + 3;
+    head = head.slice(0, at) + head.slice(end);
+  }
+  const patterns = [
+    /el\(\s*'[a-z]+'\s*,\s*(?:'[^']*'|null)\s*,\s*'([^']{2,80})'/g,  // el(tag, class, 'text')
+    /\.placeholder\s*=\s*'([^']{2,80})'/g,
+    /\.textContent\s*=\s*'([^']{2,80})'/g,
+    /\[\s*'([A-Z][a-z]{2,20})'\s*,/g                                  // ['Label', value] summary rows
+  ];
+  const found = new Set();
+  for (const re of patterns) {
+    let m;
+    while ((m = re.exec(head))) {
+      const v = m[1];
+      if (!/[a-z]{2}/.test(v)) continue;          // not prose
+      if (v.startsWith('http') || v.startsWith('luna-')) continue;  // urls, class names
+      if (v.indexOf('{') !== -1) continue;         // a template, not a literal
+      found.add(v);
+    }
+  }
+  assert.deepEqual([...found].sort(), [],
+    'these render as English whatever the widget language is: ' + [...found].join(' | '));
+});
+
+test('month and day names follow the widget language', () => {
+  // A date picker in English under a Romanian conversation is the same seam as
+  // an English button.
+  assert.match(WIDGET, /var CALENDAR_NAMES = \{/);
+  assert.match(WIDGET, /ianuarie/, 'Romanian months must exist');
+  assert.match(WIDGET, /'Sâm'/, 'Romanian day names must exist');
+  assert.doesNotMatch(WIDGET, /var MONTH_FULL = \[/, 'the fixed English array must be gone');
+  assert.doesNotMatch(WIDGET, /var DAY_SHORT = \[/);
+  // Same length as English, or a date renders blank.
+  const block = WIDGET.slice(WIDGET.indexOf('var CALENDAR_NAMES = {'));
+  const table = block.slice(0, block.indexOf('\n};') + 3);
+  const en = (table.match(/months: \[([^\]]*)\]/g) || []);
+  assert.equal(en.length, 2, 'expected a months array per language');
+  en.forEach((m) => assert.equal((m.match(/'/g) || []).length / 2, 12, 'twelve months: ' + m.slice(0, 40)));
+  (table.match(/days: \[([^\]]*)\]/g) || []).forEach((d) =>
+    assert.equal((d.match(/'/g) || []).length / 2, 7, 'seven days: ' + d.slice(0, 40)));
+});
+
+test('the enquiry card a visitor fills in is fully translated', () => {
+  // The screenshot that prompted this: a Romanian conversation, then an
+  // English form asking for "Your name" under "Get this priced by".
+  for (const key of ['enquiryTitle', 'enqDestination', 'enqDates', 'enqTravelling',
+    'enqFrom', 'enquiryNote', 'enquirySent', 'yourName']) {
+    assert.ok(WIDGET.indexOf("t('" + key + "'") !== -1, key + ' is not wired up');
+  }
+  assert.match(WIDGET, /t\('enquiryTitle', \{ agency: agency \}\)/);
+});
