@@ -6,8 +6,8 @@
 //   1. verify the client exists (Clients table),
 //   2. write a qualified enquiry to the Enquiries table — idempotent per
 //      conversation: a re-submit updates the same row instead of duplicating,
-//   3. best-effort email the client's ContactEmail so out-of-hours enquiries
-//      aren't missed (same philosophy as notify-lead.js),
+//   3. best-effort email the client's notification address so out-of-hours
+//      enquiries aren't missed (same philosophy as notify-lead.js),
 // and return the record id. The widget separately pings the agent dashboard
 // over the existing Ably dashboard channel — no Ably key needed here.
 //
@@ -17,6 +17,9 @@
 // Env: AIRTABLE_KEY. Optional: SENDGRID_API_KEY, LEAD_NOTIFY_FROM.
 
 const ratelimit = require('../lib/ratelimit');
+// Where this client's alerts go — their own NotificationEmail if they have set
+// one in Settings, otherwise ContactEmail, exactly as before.
+const notifyTo = require('../lib/notify-recipient');
 
 const AT_BASE = 'app6Ot3eOb3DangkB';
 const AT_CLIENTS = 'tbl6CZ7aVzq1wHF2v';
@@ -103,9 +106,9 @@ function composeSummary(name, brief) {
 }
 
 async function emailClient(clientFields, name, email, phone, summary) {
-  var to = clientFields.ContactEmail;
+  var to = notifyTo.recipients(clientFields);
   var key = process.env.SENDGRID_API_KEY;
-  if (!to || !key) return; // degrade silently — the dashboard ping + Airtable row still land
+  if (!to.length || !key) return; // degrade silently — the dashboard ping + Airtable row still land
   var html =
     '<p><strong>New qualified booking enquiry from Luna Chat</strong></p>'
     + '<p>' + esc(summary) + '</p>'
@@ -115,7 +118,7 @@ async function emailClient(clientFields, name, email, phone, summary) {
     method: 'POST',
     headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      personalizations: [{ to: [{ email: to }] }],
+      personalizations: [{ to: to.map(function (addr) { return { email: addr }; }) }],
       from: { email: FROM_EMAIL, name: 'Luna Chat' },
       subject: 'New booking enquiry — ' + esc(name),
       content: [{ type: 'text/html', value: html }],

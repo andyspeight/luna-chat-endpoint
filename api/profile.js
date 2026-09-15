@@ -4,6 +4,7 @@
 const crypto = require('crypto');
 const languages = require('../lib/languages');
 const departureMarkets = require('../lib/departure-markets');
+const notifyTo = require('../lib/notify-recipient');
 const auth = require('../lib/luna-auth');
 
 const AT_BASE = 'app6Ot3eOb3DangkB';
@@ -110,7 +111,18 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({
         profile: {
           clientName: fields.ClientName || '',
+          // READ ONLY, deliberately. ContactEmail is a sign-in path for any
+          // client whose record has no AuthClientId (lib/luna-auth.js), so a
+          // client editing it here could lock themselves out. It is shown so
+          // they can see what the default is; notificationEmail is the one
+          // they can change.
           email: fields.ContactEmail || '',
+          notificationEmail: fields.NotificationEmail || '',
+          // What alerts would go to right now, whichever field is supplying
+          // it — so the dashboard can show the real answer rather than a
+          // blank box that looks like nothing is configured.
+          notificationEmailEffective: notifyTo.recipients(fields).join(', '),
+          notificationEmailMax: notifyTo.MAX_RECIPIENTS,
           address: fields.BusinessAddress || '',
           phone: fields.BusinessPhone || '',
           website: fields.BusinessWebsite || '',
@@ -245,6 +257,15 @@ module.exports = async function handler(req, res) {
         if (!wl) updateFields.WidgetLanguage = null;
         else if (languages.isSupported(wl)) updateFields.WidgetLanguage = languages.resolve(wl).name;
         else return res.status(400).json({ error: 'Unsupported widget language: ' + wl });
+      }
+      // Where chat alerts, enquiries and leave-a-message notifications go.
+      // Empty clears it, which falls back to ContactEmail — the behaviour
+      // every client had before this field existed. ContactEmail itself is
+      // never written from here: see the note on the GET above.
+      if (body.notificationEmail !== undefined) {
+        var ne = notifyTo.validate(body.notificationEmail);
+        if (!ne.ok) return res.status(400).json({ error: ne.error });
+        updateFields.NotificationEmail = ne.value || null;
       }
       if (body.supportedLanguages !== undefined) updateFields.SupportedLanguages = body.supportedLanguages;
 

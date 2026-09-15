@@ -16,6 +16,9 @@ const { clientNameFormula } = require('../lib/luna-auth');
 
 const ratelimit = require('../lib/ratelimit');
 const chatNotify = require('../lib/chat-notify');
+// Where this client's alerts go — their own NotificationEmail if they have set
+// one in Settings, otherwise ContactEmail, exactly as before.
+const notifyTo = require('../lib/notify-recipient');
 
 const AT_BASE = 'app6Ot3eOb3DangkB';
 const CONV_TABLE = 'tblyin27D2J9ejHvf';
@@ -92,14 +95,14 @@ async function findConversation(atKey, convId) {
   return (d.records && d.records[0]) || null;
 }
 
-// Email the client's ContactEmail. Degrades to a silent no-op whenever it
-// cannot send — no recipient, no SendGrid key, no SendGrid module — because a
-// missing notification must never cost anyone their conversation record.
+// Email the client's notification address. Degrades to a silent no-op whenever
+// it cannot send — no recipient, no SendGrid key, no SendGrid module — because
+// a missing notification must never cost anyone their conversation record.
 async function sendChatNotification(o) {
   var f = (o.clientRecord && o.clientRecord.fields) || {};
-  var to = String(f.ContactEmail || '').trim();
-  if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
-    console.log('[log-conversation] no ContactEmail for ' + o.clientName + ' — not notifying');
+  var to = notifyTo.recipients(f);
+  if (!to.length) {
+    console.log('[log-conversation] no notification address for ' + o.clientName + ' — not notifying');
     return;
   }
   var key = process.env.SENDGRID_API_KEY;
@@ -120,7 +123,7 @@ async function sendChatNotification(o) {
     dashboardUrl: (f.DashboardURL || 'https://chat.travelify.io/dashboard.html')
   });
   await sgMail.send({ to: to, from: from, subject: mail.subject, html: mail.html });
-  console.log('[log-conversation] notified ' + to + (o.urgent ? ' (handover requested)' : ' (new chat)'));
+  console.log('[log-conversation] notified ' + to.join(', ') + (o.urgent ? ' (handover requested)' : ' (new chat)'));
 }
 
 async function triggerQualityScoring(convId, host) {

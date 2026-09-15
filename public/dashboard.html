@@ -2471,6 +2471,16 @@ We don't charge booking fees on any of our package holidays." rows="14" style="m
       </div>
     </div>
 
+    <div class="settings-section">
+      <h4>Where Your Alerts Go</h4>
+      <div class="settings-hint" style="margin-bottom:12px;margin-top:-8px">The inbox we email when someone chats with Luna, sends an enquiry or leaves a message. It is also the address a visitor reaches if they reply to the chat transcript we send them.</div>
+      <div class="settings-row">
+        <label class="settings-label">Notification Email</label>
+        <input class="settings-input" id="setNotificationEmail" type="email" multiple placeholder="e.g. sales@yourcompany.com, manager@yourcompany.com">
+        <div class="settings-hint" id="setNotificationEmailNow" style="margin-top:8px"></div>
+      </div>
+    </div>
+
     <div>
       <button class="settings-save" id="settingsSaveBtn" onclick="window._saveSettings()">Save Profile</button>
       <span class="settings-saved" id="settingsSaved">Saved!</span>
@@ -5276,6 +5286,31 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
     sel.value = current || '';
   }
 
+  /* The notification address, and a plain sentence under it saying where
+     alerts are ACTUALLY going right now. A blank box on its own reads as
+     "nothing is configured", when in fact the account contact address has
+     been quietly receiving everything all along. Written with textContent,
+     never innerHTML: the value came off a client record. */
+  function renderNotificationEmail(p) {
+    var input = document.getElementById('setNotificationEmail');
+    if (!input) return;
+    input.value = (p && p.notificationEmail) || '';
+    var max = (p && p.notificationEmailMax) || 5;
+    input.placeholder = 'e.g. sales@yourcompany.com, manager@yourcompany.com';
+    var note = document.getElementById('setNotificationEmailNow');
+    if (!note) return;
+    var effective = (p && p.notificationEmailEffective) || '';
+    if (input.value) {
+      note.textContent = 'Alerts are going to ' + effective + '. You can list up to '
+        + max + ' addresses, separated by commas. Clear this box to go back to your account contact address.';
+    } else if (effective) {
+      note.textContent = 'Nothing set here, so alerts are going to your account contact address, '
+        + effective + '. Type an address above to send them somewhere else instead.';
+    } else {
+      note.textContent = 'No address is set, so nobody is being emailed when a visitor gets in touch. Add one above.';
+    }
+  }
+
   function renderBrandColorGrid() {
     makeSwatchGrid(BRAND_PRESETS, selectedBrandColor, null, 'brandColorGrid');
     document.getElementById('setBrandColorPicker').value = selectedBrandColor;
@@ -5523,6 +5558,8 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
   };
   const SIZE_MIGRATION = { compact:'small', standard:'medium', large:'large' };
 
+  let lastProfile = {};
+
   async function loadProfile() {
     try {
       const res = await fetch('/api/profile', {
@@ -5535,6 +5572,9 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       if (!res.ok) { console.warn('Profile load failed:', res.status); return; }
       const data = await res.json();
       const p = data.profile || {};
+      // Kept so a save can refresh the "where alerts go" line without
+      // re-running the whole load, which would recompose the description box.
+      lastProfile = p;
 
       // Expose to welcome panel (added by splice)
       window._clientConfig = window._clientConfig || {};
@@ -5560,6 +5600,7 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
       document.getElementById('setWebsite').value = p.website || '';
       document.getElementById('setAddress').value = p.address || '';
       document.getElementById('setHours').value = p.hours || '';
+      renderNotificationEmail(p);
 
       // Widget colours — new fields take priority, fall back to old theme name
       if (p.brandColor) {
@@ -5662,6 +5703,12 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
           website: document.getElementById('setWebsite').value,
           address: document.getElementById('setAddress').value,
           hours: document.getElementById('setHours').value,
+          // Only sent once the profile has actually been read. The widget
+          // editor delegates to this same save, and an empty box that was
+          // never filled in would otherwise clear a client's notification
+          // address and quietly stop their alerts. An absent key is left
+          // alone by the API; an empty one is a deliberate clear.
+          ...(profileLoaded ? { notificationEmail: document.getElementById('setNotificationEmail').value } : {}),
           brandColor: selectedBrandColor,
           accentColor: selectedAccentColor,
           themeMode: selectedThemeMode,
@@ -5694,7 +5741,21 @@ https://www.yoursite.com/financial-protection" rows="6" style="font-family:var(-
           businessTypes: selectedBusinessTypes
         })
       });
-      if (!res.ok) throw new Error('Save failed: ' + res.status);
+      if (!res.ok) {
+        // A 400 is a message the client can act on, e.g. a mistyped
+        // notification address. Show what it says, not a bare status code.
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || ('Save failed: ' + res.status));
+      }
+      // The saved address changes where alerts go, so the line under the box
+      // has to stop describing the old answer.
+      if (profileLoaded) {
+        const typedNotify = document.getElementById('setNotificationEmail').value
+          .split(',').map(v => v.trim()).filter(Boolean).join(', ');
+        lastProfile.notificationEmail = typedNotify;
+        lastProfile.notificationEmailEffective = typedNotify || lastProfile.email || '';
+        renderNotificationEmail(lastProfile);
+      }
       saveds.forEach(s => { s.classList.add('show'); setTimeout(() => s.classList.remove('show'), 2500); });
     } catch (e) {
       alert('Failed to save: ' + e.message);
