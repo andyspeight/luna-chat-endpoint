@@ -117,6 +117,75 @@ test('a paste accident is rejected on length', () => {
   assert.equal(notifyTo.isEmail('a'.repeat(300) + '@shop.co.uk'), false);
 });
 
+// ── what we accept, SendGrid must accept ──
+//
+// The first version of this gate was the loose pattern the old notification
+// paths used. It waved through addresses that bounce, and because a stored
+// value is non-empty, a stored bad value SUPPRESSES the ContactEmail fallback.
+// A client pasting "<sales@shop.co.uk>" out of Outlook would have seen "Saved!"
+// and then lost every enquiry, silently. Found by an adversarial review.
+
+test('addresses that would bounce are refused, not saved', () => {
+  const bounces = [
+    'bob@shop.co.uk.',          // trailing full stop, the commonest paste error
+    '<bob@shop.co.uk>',         // angle brackets out of a mail client
+    'bob@shop.co.uk>',          // half of the same
+    '.bob@shop.co.uk',          // leading dot
+    'bob.@shop.co.uk',          // trailing dot on the local part
+    'bob..smith@shop.co.uk',    // doubled dot
+    'bob@shop..co.uk',          // doubled dot in the domain
+    'bob@-shop.co.uk',          // label starting with a hyphen
+    'bob@shop-.co.uk',          // label ending with a hyphen
+    'bob@shop.c',               // one-letter TLD
+    'bob@shop.co.123',          // numeric TLD
+    'bob@localhost',            // no dot at all
+    '"bob"@shop.co.uk',         // quoted local part
+    'bob(hi)@shop.co.uk'        // comment syntax
+  ];
+  for (const b of bounces) {
+    assert.equal(notifyTo.isEmail(b), false, 'accepted a bouncing address: ' + b);
+    assert.equal(notifyTo.validate(b).ok, false, 'saved a bouncing address: ' + b);
+  }
+});
+
+test('a bad stored value falls back instead of going quiet', () => {
+  // This is the point of the whole exercise. Anything the gate now rejects is
+  // dropped by parseList, so recipients() returns ContactEmail rather than an
+  // address nothing can be delivered to.
+  assert.deepEqual(
+    notifyTo.recipients({ NotificationEmail: '<bob@shop.co.uk>', ContactEmail: 'real@shop.co.uk' }),
+    ['real@shop.co.uk']
+  );
+});
+
+test('every address a real client already uses still passes', () => {
+  // Checked against the live Clients table. A stricter rule that rejected one
+  // of these would have silenced that client's alerts, which is the exact
+  // failure being fixed. The Gmail +alias and the hyphenated domain are the
+  // two that a careless tightening breaks.
+  const live = [
+    'luke.livsey@agendas.group', 'andyspeight06+test@gmail.com',
+    'andy.speight@agendas.group', 'admin@travelbookers.co.uk',
+    'rashad.ali@cyphertravelsoftware.com', 'rares.biris@transilvania-soft.ro',
+    'keith@hnholidays.co.uk', 'luis@travelnet.ie', 'jamie@jamiewaketravel.co.uk',
+    'james@exploreescapes.co.uk', 'darren.swan@agendas.group',
+    'hakon@snowdragonskiholidays.com', 'info@travelgenix.io',
+    'stefan@tailorevents.se', 'tracy@yourticketgenie.com',
+    'scott@murraytravel.co.uk', 'director@thatsmydreamholiday.com',
+    'paras@globaltravelsolution.co.uk', 'tania@getzendra.com'
+  ];
+  for (const e of live) {
+    assert.equal(notifyTo.isEmail(e), true, 'rejected a live client address: ' + e);
+  }
+});
+
+test('ordinary shapes people actually type still pass', () => {
+  for (const e of ['a@b.io', 'sales+luna@shop.co.uk', 'first.last@sub.domain.example.com',
+                   'user_name@shop-site.com', "o'brien@shop.ie".replace(/'/g, '')]) {
+    assert.equal(notifyTo.isEmail(e), true, 'rejected a normal address: ' + e);
+  }
+});
+
 // ── validation on the way in from the dashboard ──
 
 test('clearing the box is valid, and means go back to the default', () => {
@@ -237,11 +306,42 @@ test('the dashboard says where alerts are actually going right now', () => {
   // A blank box reads as "nothing is configured", when in fact the account
   // contact address has been receiving everything all along. That sentence is
   // the whole reason a client can find this setting at all.
+  //
+  // The first version of this test asserted three loose patterns against the
+  // whole function body, and an adversarial review proved every one of them
+  // was satisfied by a DIFFERENT branch than the one being described:
+  // /notificationEmailEffective/ matched the variable declaration, /account
+  // contact address/ matched the first branch's copy, and /nobody is being
+  // emailed/ matched the last. Nothing bound to the middle branch at all.
+  // Deleting that branch outright left the whole suite green. It is the branch
+  // every one of the 29 live clients hits today, because none of them has set
+  // a NotificationEmail, so the untested case was the only case in production.
+  //
+  // So each branch is now pinned to the sentence it actually renders.
   const fn = DASH.slice(DASH.indexOf('function renderNotificationEmail'));
   const body = fn.slice(0, fn.indexOf('\n  }\n') + 4);
-  assert.match(body, /notificationEmailEffective/);
-  assert.match(body, /account contact address/);
-  assert.match(body, /nobody is being emailed/, 'the no-address-at-all case must say so plainly');
+
+  // 1. the client has set their own address
+  assert.match(body, /note\.textContent = 'Alerts are going to ' \+ effective \+/,
+    'the custom-address branch must name the address it is going to');
+  assert.match(body, /Clear this box to go back to your account contact address/,
+    'the client must be told how to undo it');
+
+  // 2. nothing set, so it falls back — the branch every live client sees
+  assert.match(
+    body,
+    /note\.textContent = 'Nothing set here, so alerts are going to your account contact address, '\s*\+ effective \+/,
+    'the fallback branch must exist AND name the address alerts are reaching'
+  );
+  assert.match(body, /Type an address above to send them somewhere else instead/);
+
+  // 3. no address anywhere
+  assert.match(body, /note\.textContent = 'No address is set, so nobody is being emailed/,
+    'the no-address-at-all case must say so plainly');
+
+  // and all three are still distinct branches of one chain
+  assert.match(body, /if \(input\.value\) \{[\s\S]*\} else if \(effective\) \{[\s\S]*\} else \{/,
+    'the three cases must stay three branches');
 });
 
 test('the client record is never concatenated into markup', () => {
