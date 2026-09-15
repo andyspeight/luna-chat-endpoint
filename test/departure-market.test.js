@@ -86,8 +86,19 @@ test('the prompt never lets Luna tell a visitor their airport cannot be searched
   // This is the sentence Anca was given. It was not true.
   const p = markets.originPromptFor('Romania');
   assert.match(p, /never tell a visitor their own airport cannot be searched/);
-  assert.match(p, /connecting flight is a normal result/);
-  assert.match(p, /never say a route is unsearchable/);
+});
+
+test('the origin block says nothing about connections', () => {
+  // The first version of this fix ended with "a connecting flight is a normal
+  // result... if there is no direct service". That framing primed the next
+  // failure: asked about Wizz Air Cluj to Malaga, Luna volunteered that flights
+  // were "possibly with a short connection (not direct)". Wizz fly it direct.
+  // The rule is not "connections are fine", it is "do not guess at all".
+  markets.MARKETS.forEach((m) => {
+    const p = markets.originPromptFor(m.name);
+    assert.doesNotMatch(p, /connect/i, m.name + ' origin block still raises connections');
+    assert.doesNotMatch(p, /direct service/i, m.name);
+  });
 });
 
 test('the home market is for SUGGESTING, only when the visitor has not said', () => {
@@ -177,4 +188,48 @@ test('the dashboard builds its picker from the API list, not a copy', () => {
   const body = fn.slice(0, fn.indexOf('\n  }\n') + 4);
   markets.MARKETS.forEach((m) => assert.equal(body.indexOf("'" + m.name + "'"), -1,
     m.name + ' is hardcoded in the picker'));
+});
+
+
+// ── never guess at what is flying ──
+
+test('Luna is told plainly that it cannot see flight schedules', () => {
+  assert.match(SRC, /You do not have flight schedules/);
+  assert.match(SRC, /cannot see which airlines fly a route/);
+});
+
+test('the three things it guessed wrong are each named', () => {
+  // Every one of these came out of a single reply to a Romanian customer.
+  const at = SRC.indexOf('### Never guess what is flying');
+  assert.notEqual(at, -1, 'the rule must exist');
+  const block = SRC.slice(at, at + 1400);
+  assert.match(block, /probably\s*\n?\s*with a connection|"probably/, 'the connection guess');
+  assert.match(block, /an airline does or does not fly somewhere/, 'the airline guess');
+  assert.match(block, /optimised for any/, 'the "harder to search" excuse');
+});
+
+test('the real example is in the prompt, because a rule with a case sticks', () => {
+  assert.match(SRC, /Wizz Air flies Cluj to M[aá]laga direct/);
+});
+
+test('a visitor who corrects Luna is believed, not argued with', () => {
+  const at = SRC.indexOf('### Never guess what is flying');
+  const block = SRC.slice(at, at + 1400);
+  assert.match(block, /Take their word for it and search/);
+  assert.match(block, /Never argue/);
+});
+
+test('it points at the search instead, which is the honest answer', () => {
+  const at = SRC.indexOf('### Never guess what is flying');
+  const block = SRC.slice(at, at + 1400);
+  assert.match(block, /the number of stops on each/);
+});
+
+test('the rule sits with the search rules, not inside one market', () => {
+  // It is not market-specific: no client's Luna should be guessing at schedules.
+  const rule = SRC.indexOf('### Never guess what is flying');
+  const important = SRC.indexOf('### Important Rules');
+  assert.ok(rule !== -1 && important !== -1 && rule < important);
+  const DM = fs.readFileSync(path.join(__dirname, '..', 'lib', 'departure-markets.js'), 'utf8');
+  assert.doesNotMatch(DM, /flight schedules/, 'the general rule must not live in the markets list');
 });
