@@ -22,7 +22,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-require('./helpers');                       // stubs the SDK before the handler loads
+const h = require('./helpers');             // stubs the SDK before the handler loads
 const LC = require('../api/luna-chat');
 const markets = require('../lib/departure-markets');
 
@@ -174,4 +174,83 @@ test('departureMarket is in scope where it is passed', () => {
   });
   assert.equal(uses.length, 2, 'expected both call sites');
   uses.forEach((at) => assert.ok(at > decl, 'a call site sits before the declaration'));
+});
+
+// ── the order to produce a flight time Luna cannot know ──
+//
+// Found by an adversarial review of the change above, and it is a bug the
+// change above CREATED. The destination_card rule said, twice, "Always include
+// temperature, flightTime, and vibe". The only grounded source of a flight time
+// was the British field this commit just took away from non-UK clients. So the
+// fix removed the data and left the instruction to produce it, which means
+// Luna invents one. The example in the prompt is a bare "4h flight" — four
+// hours from where?
+
+test('the card rule no longer orders a flight time on every card', () => {
+  assert.doesNotMatch(SRC, /Always include temperature, flightTime, and vibe/,
+    'this sentence makes Luna invent a flight time when it has none');
+});
+
+test('a flight time must say where it is from', () => {
+  const at = SRC.indexOf('flightTime is DIFFERENT');
+  assert.notEqual(at, -1, 'the anchoring rule must exist');
+  const block = SRC.slice(at, at + 700);
+  assert.match(block, /about 4h from the UK/, 'an anchored example');
+  assert.match(block, /Never write a bare/);
+  assert.match(block, /omit the field/, 'omitting must be explicitly allowed');
+  // Both copies of the card notes carry it; one was always the danger here.
+  assert.equal(SRC.split('flightTime is DIFFERENT').length - 1, 2,
+    'both destination_card note blocks must carry the rule');
+});
+
+test('a duration and a schedule are told apart, so the two rules do not fight', () => {
+  // "Never guess what is flying" says Luna cannot see schedules and must not
+  // guess "at any of it". Read flatly that bans saying a flight is about four
+  // hours, which is ordinary geography. The boundary has to be explicit or the
+  // model picks one rule and ignores the other.
+  const at = SRC.indexOf('Where the line falls');
+  assert.notEqual(at, -1);
+  const block = SRC.slice(at, at + 600);
+  assert.match(block, /may give it as an approximation/);
+  assert.match(block, /anchored to a named departure point/);
+  assert.match(block, /Wizz fly it on Tuesdays" is not/, 'the banned side needs its own example');
+});
+
+// ── a promise that is false for some clients ──
+
+function stubSearchTypes(types) {
+  h.setAirtableKey('test-key');
+  h.setFetch(async (url) => String(url).indexOf('api.airtable.com') === -1
+    ? { ok: false, status: 404, json: async () => ({}), text: async () => '' }
+    : {
+      ok: true, status: 200,
+      json: async () => ({ records: [{ id: 'recX', fields: {
+        ClientName: 'Booking Vacante', DeepLinkSiteID: '272', SearchTypes: types
+      } }] })
+    });
+  h.setReply('ok');
+}
+const promptOf = (captured) => (captured[captured.length - 1] || {}).system || '';
+
+test('a client who sells flights is told to point at the search', async () => {
+  stubSearchTypes(['DynamicPackaging', 'Flights']);
+  const { captured } = await h.callHandler({ message: 'holiday', clientName: 'Booking Vacante', convId: 'c_ft_1' });
+  const p = promptOf(captured);
+  assert.match(p, /the number of stops on each/);
+  assert.doesNotMatch(p, /books accommodation rather than flights/);
+  h.resetFetch(); h.setAirtableKey(null);
+});
+
+test('an accommodation-only client is not promised a flight search it does not have', async () => {
+  // The honesty rule shipped with "send them to it... it is true". For a client
+  // whose only search type is Accommodation there are no flights in that search,
+  // so it is not true, and a visitor sent there finds hotels and no answer.
+  stubSearchTypes(['Accommodation']);
+  const { captured } = await h.callHandler({ message: 'holiday', clientName: 'Booking Vacante', convId: 'c_ft_2' });
+  const p = promptOf(captured);
+  assert.match(p, /books accommodation rather than flights/);
+  assert.match(p, /Do not send them to the search for it/);
+  assert.doesNotMatch(p, /the number of stops on each/,
+    'an accommodation-only client must not be told the search lists stops');
+  h.resetFetch(); h.setAirtableKey(null);
 });
