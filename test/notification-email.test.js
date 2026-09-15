@@ -306,11 +306,42 @@ test('the dashboard says where alerts are actually going right now', () => {
   // A blank box reads as "nothing is configured", when in fact the account
   // contact address has been receiving everything all along. That sentence is
   // the whole reason a client can find this setting at all.
+  //
+  // The first version of this test asserted three loose patterns against the
+  // whole function body, and an adversarial review proved every one of them
+  // was satisfied by a DIFFERENT branch than the one being described:
+  // /notificationEmailEffective/ matched the variable declaration, /account
+  // contact address/ matched the first branch's copy, and /nobody is being
+  // emailed/ matched the last. Nothing bound to the middle branch at all.
+  // Deleting that branch outright left the whole suite green. It is the branch
+  // every one of the 29 live clients hits today, because none of them has set
+  // a NotificationEmail, so the untested case was the only case in production.
+  //
+  // So each branch is now pinned to the sentence it actually renders.
   const fn = DASH.slice(DASH.indexOf('function renderNotificationEmail'));
   const body = fn.slice(0, fn.indexOf('\n  }\n') + 4);
-  assert.match(body, /notificationEmailEffective/);
-  assert.match(body, /account contact address/);
-  assert.match(body, /nobody is being emailed/, 'the no-address-at-all case must say so plainly');
+
+  // 1. the client has set their own address
+  assert.match(body, /note\.textContent = 'Alerts are going to ' \+ effective \+/,
+    'the custom-address branch must name the address it is going to');
+  assert.match(body, /Clear this box to go back to your account contact address/,
+    'the client must be told how to undo it');
+
+  // 2. nothing set, so it falls back — the branch every live client sees
+  assert.match(
+    body,
+    /note\.textContent = 'Nothing set here, so alerts are going to your account contact address, '\s*\+ effective \+/,
+    'the fallback branch must exist AND name the address alerts are reaching'
+  );
+  assert.match(body, /Type an address above to send them somewhere else instead/);
+
+  // 3. no address anywhere
+  assert.match(body, /note\.textContent = 'No address is set, so nobody is being emailed/,
+    'the no-address-at-all case must say so plainly');
+
+  // and all three are still distinct branches of one chain
+  assert.match(body, /if \(input\.value\) \{[\s\S]*\} else if \(effective\) \{[\s\S]*\} else \{/,
+    'the three cases must stay three branches');
 });
 
 test('the client record is never concatenated into markup', () => {
