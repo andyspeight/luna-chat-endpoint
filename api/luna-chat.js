@@ -535,10 +535,31 @@ function scanForDestinations(message, index) {
 
 // Build a slim, prompt-ready summary of one record. Picks only the most
 // useful fields so the prompt doesn't bloat.
-function summariseDestinationRecord(record, payload) {
+// Three fields in the destination base are written from a BRITISH standpoint:
+// flight time from the UK, visa status on a UK passport, UK health guidance.
+// They were injected for every client, so a visitor in Cluj-Napoca on a
+// Romanian agency's site was being handed the flight time from London and the
+// visa rules for a passport they do not hold. The visa one is not merely
+// irrelevant, it is wrong: Romania is in the EU and the UK is not, so the
+// answer genuinely differs.
+//
+// So they are offered only to a client whose customers actually depart from
+// the United Kingdom. Every client except Booking Vacante has DepartureMarket
+// unset, which resolves to the United Kingdom, so nothing moves for anyone
+// else. For the rest the fields are simply absent, and the block header above
+// already tells Luna to say it can find out rather than invent.
+//
+// If the base ever grows a per-market version of these, this is the one place
+// that has to change.
+function isUkMarket(market) {
+  return !market || departureMarkets.resolve(market).code === 'GB';
+}
+
+function summariseDestinationRecord(record, payload, market) {
   if (!record || !record.fields) return '';
   var f = record.fields;
   var parts = [];
+  var uk = isUkMarket(market);
 
   if (payload.type === 'airport') {
     parts.push('### Airport: ' + (f['Airport Name'] || payload.displayName) + (f['IATA Code'] ? ' (' + f['IATA Code'] + ')' : ''));
@@ -581,7 +602,7 @@ function summariseDestinationRecord(record, payload) {
     if (f['What Makes It Special']) parts.push('What makes it special: ' + f['What Makes It Special']);
     if (f['Best Time to Visit']) parts.push('Best time: ' + f['Best Time to Visit']);
     if (f['Who Is It Best For']) parts.push('Best for: ' + f['Who Is It Best For']);
-    if (f['Flight Time From UK']) parts.push('Flight time from UK: ' + f['Flight Time From UK']);
+    if (uk && f['Flight Time From UK']) parts.push('Flight time from UK: ' + f['Flight Time From UK']);
     if (typeof f['Latitude'] === 'number' && typeof f['Longitude'] === 'number') {
       parts.push('Coordinates: ' + f['Latitude'] + ', ' + f['Longitude']);
     }
@@ -601,14 +622,14 @@ function summariseDestinationRecord(record, payload) {
     if (f['Hero Intro']) parts.push('Intro: ' + f['Hero Intro']);
     if (f['Overview']) parts.push('Overview: ' + f['Overview']);
     if (f['Visa Advisory']) parts.push('Visa advisory: ' + f['Visa Advisory']);
-    if (f['Visa Status UK']) parts.push('Visa status (UK passport): ' + f['Visa Status UK']);
-    if (f['Health Notes UK']) parts.push('Health notes (UK): ' + f['Health Notes UK']);
+    if (uk && f['Visa Status UK']) parts.push('Visa status (UK passport): ' + f['Visa Status UK']);
+    if (uk && f['Health Notes UK']) parts.push('Health notes (UK): ' + f['Health Notes UK']);
     if (f['Practical Info']) parts.push('Practical info: ' + f['Practical Info']);
     if (f['Currency']) parts.push('Currency: ' + f['Currency']);
     if (f['Language']) parts.push('Language: ' + f['Language']);
     if (f['Time Zone']) parts.push('Time zone: ' + f['Time Zone']);
     if (f['Voltage And Plug']) parts.push('Voltage and plug: ' + f['Voltage And Plug']);
-    if (f['Flight Time From UK']) parts.push('Flight time from UK: ' + f['Flight Time From UK']);
+    if (uk && f['Flight Time From UK']) parts.push('Flight time from UK: ' + f['Flight Time From UK']);
     if (f['Best Time to Visit']) parts.push('Best time to visit: ' + f['Best Time to Visit']);
     if (f['Top Things to Do']) parts.push('Top things to do: ' + f['Top Things to Do']);
     if (f['Food and Drink']) parts.push('Food and drink: ' + f['Food and Drink']);
@@ -692,7 +713,7 @@ function summariseLiveWeather(data) {
 
 // Top-level entry: returns a prompt-ready string with matched destination context,
 // or empty string if no matches / no API key.
-async function getDestinationContext(message, atKey) {
+async function getDestinationContext(message, atKey, market) {
   if (!atKey || !message) return '';
   try {
     var index = await ensureDestinationIndex(atKey);
@@ -702,7 +723,7 @@ async function getDestinationContext(message, atKey) {
     var summaries = [];
     for (var i = 0; i < matches.length; i++) {
       var rec = await fetchDestinationRecord(matches[i], atKey);
-      var summary = summariseDestinationRecord(rec, matches[i]);
+      var summary = summariseDestinationRecord(rec, matches[i], market);
       // Append live weather data if the record carries coordinates
       if (rec && rec.fields) {
         var lat = rec.fields['Latitude'];
@@ -3416,7 +3437,7 @@ No problem, drop your email and departure date in below and I'll find it.
     }
     // Destination context (Airports + Theme Parks) — keyword-triggered
     mark('destCtxStart');
-    var destCtx = await getDestinationContext(message, atKey);
+    var destCtx = await getDestinationContext(message, atKey, departureMarket);
     mark('destCtxDone');
     if (destCtx) {
       systemPrompt += destCtx;
@@ -3431,7 +3452,7 @@ No problem, drop your email and departure date in below and I'll find it.
     var atKeyTg = process.env.AIRTABLE_KEY;
     if (atKeyTg) {
       mark('destCtxStart');
-      var destCtxTg = await getDestinationContext(message, atKeyTg);
+      var destCtxTg = await getDestinationContext(message, atKeyTg, departureMarket);
       mark('destCtxDone');
       if (destCtxTg) { systemPrompt += destCtxTg; kbGrounded = true; }
     }
@@ -4257,3 +4278,7 @@ module.exports.leadingMetaComplete = leadingMetaComplete;
 module.exports.extractBriefMarkers = extractBriefMarkers;
 module.exports.sanitizeTripBrief = sanitizeTripBrief;
 module.exports.formatTripBriefForPrompt = formatTripBriefForPrompt;
+// Exposed so the UK-field gate can be tested against the real function rather
+// than a regex over this file. Not part of the handler contract.
+module.exports.summariseDestinationRecord = summariseDestinationRecord;
+module.exports.isUkMarket = isUkMarket;
