@@ -1,6 +1,8 @@
 // Email Chat Transcript API
 // Sends the visitor a copy of their chat transcript via SendGrid.
-// From: client name <noreply@travelgenix.io>  Reply-To: client's ContactEmail.
+// From: client name <noreply@travelgenix.io>  Reply-To: the client's
+// notification address, so a visitor replying to their own transcript lands in
+// the same inbox as every other alert.
 //
 // POST body: {
 //   clientName: string,        // required — looks up client in Airtable
@@ -18,6 +20,9 @@ const { clientNameFormula } = require('../lib/luna-auth');
 
 const ratelimit = require('../lib/ratelimit');
 const { escapeFormulaString } = require('../lib/atescape');
+// Where this client's alerts go — their own NotificationEmail if they have set
+// one in Settings, otherwise ContactEmail, exactly as before.
+const notifyTo = require('../lib/notify-recipient');
 
 const AT_BASE = 'app6Ot3eOb3DangkB';
 const AT_TABLE = 'tbl6CZ7aVzq1wHF2v';
@@ -236,9 +241,9 @@ module.exports = async function handler(req, res) {
       if (sData.records && sData.records.length > 0) {
         clientFound = true;
         var fields = sData.records[0].fields || {};
-        if (fields.ContactEmail && isEmail(fields.ContactEmail)) {
-          clientReplyEmail = fields.ContactEmail;
-        }
+        // One address only — Reply-To takes a single mailbox, and the first
+        // one listed is the client's own first choice.
+        clientReplyEmail = notifyTo.primary(fields) || null;
       }
     } else {
       console.warn('[email-transcript] Airtable lookup returned ' + sRes.status);

@@ -4,7 +4,7 @@
 // so out-of-hours enquiries aren't missed when no agent is watching the
 // dashboard. Today the only notifications are in-dashboard (sound / desktop /
 // title-flash), which require an agent to have the dashboard open; this closes
-// that gap with a direct email to the client's ContactEmail.
+// that gap with a direct email to the client's notification address.
 //
 // Called fire-and-forget by the widget (e.g. from the "leave a message" form).
 // It must NEVER break the visitor's experience, so it always returns 200 and
@@ -18,6 +18,10 @@ const ratelimit = require('../lib/ratelimit');
 // Widgets identify themselves by clientName, so a renamed client must keep
 // resolving under the name already embedded on their site. Shared helper.
 const { clientNameFormula } = require('../lib/luna-auth');
+
+// Where this client's alerts go — their own NotificationEmail if they have set
+// one in Settings, otherwise ContactEmail, exactly as before.
+const notifyTo = require('../lib/notify-recipient');
 
 const AT_BASE = 'app6Ot3eOb3DangkB';
 const AT_CLIENTS = 'tbl6CZ7aVzq1wHF2v';
@@ -68,7 +72,7 @@ module.exports = async function handler(req, res) {
   if (!atKey) return res.status(200).json({ ok: true, sent: false, reason: 'airtable not configured' });
 
   try {
-    // Resolve the client's notification recipient (ContactEmail) by name.
+    // Resolve the client's notification recipients by name.
     var url = 'https://api.airtable.com/v0/' + AT_BASE + '/' + AT_CLIENTS
       + '?filterByFormula=' + encodeURIComponent(clientNameFormula(clientName))
       + '&maxRecords=1';
@@ -77,8 +81,8 @@ module.exports = async function handler(req, res) {
     if (!d.records || !d.records.length) return res.status(200).json({ ok: true, sent: false, reason: 'client not found' });
 
     var f = d.records[0].fields || {};
-    var to = (f.ContactEmail || '').trim();
-    if (!to || !isEmail(to)) return res.status(200).json({ ok: true, sent: false, reason: 'no ContactEmail set for client' });
+    var to = notifyTo.recipients(f);
+    if (!to.length) return res.status(200).json({ ok: true, sent: false, reason: 'no notification address set for client' });
     var dash = safeHttpUrl((f.DashboardURL || '').trim()) || DEFAULT_DASHBOARD;
 
     var sgKey = process.env.SENDGRID_API_KEY;

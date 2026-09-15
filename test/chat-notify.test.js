@@ -134,9 +134,11 @@ test('it is awaited, because Vercel kills unawaited promises', () => {
   assert.match(SRC, /await sendChatNotification\(/);
 });
 
-test('it sends to the client ContactEmail, and no-ops when there is none', () => {
-  assert.match(SRC, /var to = String\(f\.ContactEmail \|\| ''\)\.trim\(\);/);
-  assert.match(SRC, /no ContactEmail for/);
+test('it sends to the client notification address, and no-ops when there is none', () => {
+  // Resolved in one shared place so the chat alert, the enquiry, the
+  // leave-a-message and the transcript Reply-To cannot drift apart.
+  assert.match(SRC, /var to = notifyTo\.recipients\(f\);/);
+  assert.match(SRC, /no notification address for/);
   assert.match(SRC, /if \(!key\) return;/, 'no SendGrid key must be a silent no-op');
 });
 

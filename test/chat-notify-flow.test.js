@@ -78,7 +78,7 @@ test('a new conversation with a visitor message sends exactly one email', async 
   });
   assert.equal(res.statusCode, 200, JSON.stringify(res.body));
   assert.equal(sent.length, 1, 'expected one email, got ' + sent.length);
-  assert.equal(sent[0].to, 'info@travelgenix.io');
+  assert.deepEqual(sent[0].to, ['info@travelgenix.io']);
   assert.match(sent[0].subject, /New chat on Travelgenix — Luke/);
   assert.match(sent[0].html, /Can I see a demo\?/);
 });
@@ -120,7 +120,7 @@ test('a bot greeting nobody answered sends nothing', async () => {
   assert.equal(sent.length, 0);
 });
 
-test('a client with no ContactEmail is a silent no-op, not an error', async () => {
+test('a client with no notification address at all is a silent no-op, not an error', async () => {
   sent.length = 0;
   const saved = CLIENT.fields.ContactEmail;
   delete CLIENT.fields.ContactEmail;
