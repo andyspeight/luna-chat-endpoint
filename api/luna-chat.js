@@ -535,10 +535,31 @@ function scanForDestinations(message, index) {
 
 // Build a slim, prompt-ready summary of one record. Picks only the most
 // useful fields so the prompt doesn't bloat.
-function summariseDestinationRecord(record, payload) {
+// Three fields in the destination base are written from a BRITISH standpoint:
+// flight time from the UK, visa status on a UK passport, UK health guidance.
+// They were injected for every client, so a visitor in Cluj-Napoca on a
+// Romanian agency's site was being handed the flight time from London and the
+// visa rules for a passport they do not hold. The visa one is not merely
+// irrelevant, it is wrong: Romania is in the EU and the UK is not, so the
+// answer genuinely differs.
+//
+// So they are offered only to a client whose customers actually depart from
+// the United Kingdom. Every client except Booking Vacante has DepartureMarket
+// unset, which resolves to the United Kingdom, so nothing moves for anyone
+// else. For the rest the fields are simply absent, and the block header above
+// already tells Luna to say it can find out rather than invent.
+//
+// If the base ever grows a per-market version of these, this is the one place
+// that has to change.
+function isUkMarket(market) {
+  return !market || departureMarkets.resolve(market).code === 'GB';
+}
+
+function summariseDestinationRecord(record, payload, market) {
   if (!record || !record.fields) return '';
   var f = record.fields;
   var parts = [];
+  var uk = isUkMarket(market);
 
   if (payload.type === 'airport') {
     parts.push('### Airport: ' + (f['Airport Name'] || payload.displayName) + (f['IATA Code'] ? ' (' + f['IATA Code'] + ')' : ''));
@@ -581,7 +602,7 @@ function summariseDestinationRecord(record, payload) {
     if (f['What Makes It Special']) parts.push('What makes it special: ' + f['What Makes It Special']);
     if (f['Best Time to Visit']) parts.push('Best time: ' + f['Best Time to Visit']);
     if (f['Who Is It Best For']) parts.push('Best for: ' + f['Who Is It Best For']);
-    if (f['Flight Time From UK']) parts.push('Flight time from UK: ' + f['Flight Time From UK']);
+    if (uk && f['Flight Time From UK']) parts.push('Flight time from UK: ' + f['Flight Time From UK']);
     if (typeof f['Latitude'] === 'number' && typeof f['Longitude'] === 'number') {
       parts.push('Coordinates: ' + f['Latitude'] + ', ' + f['Longitude']);
     }
@@ -601,14 +622,14 @@ function summariseDestinationRecord(record, payload) {
     if (f['Hero Intro']) parts.push('Intro: ' + f['Hero Intro']);
     if (f['Overview']) parts.push('Overview: ' + f['Overview']);
     if (f['Visa Advisory']) parts.push('Visa advisory: ' + f['Visa Advisory']);
-    if (f['Visa Status UK']) parts.push('Visa status (UK passport): ' + f['Visa Status UK']);
-    if (f['Health Notes UK']) parts.push('Health notes (UK): ' + f['Health Notes UK']);
+    if (uk && f['Visa Status UK']) parts.push('Visa status (UK passport): ' + f['Visa Status UK']);
+    if (uk && f['Health Notes UK']) parts.push('Health notes (UK): ' + f['Health Notes UK']);
     if (f['Practical Info']) parts.push('Practical info: ' + f['Practical Info']);
     if (f['Currency']) parts.push('Currency: ' + f['Currency']);
     if (f['Language']) parts.push('Language: ' + f['Language']);
     if (f['Time Zone']) parts.push('Time zone: ' + f['Time Zone']);
     if (f['Voltage And Plug']) parts.push('Voltage and plug: ' + f['Voltage And Plug']);
-    if (f['Flight Time From UK']) parts.push('Flight time from UK: ' + f['Flight Time From UK']);
+    if (uk && f['Flight Time From UK']) parts.push('Flight time from UK: ' + f['Flight Time From UK']);
     if (f['Best Time to Visit']) parts.push('Best time to visit: ' + f['Best Time to Visit']);
     if (f['Top Things to Do']) parts.push('Top things to do: ' + f['Top Things to Do']);
     if (f['Food and Drink']) parts.push('Food and drink: ' + f['Food and Drink']);
@@ -692,7 +713,7 @@ function summariseLiveWeather(data) {
 
 // Top-level entry: returns a prompt-ready string with matched destination context,
 // or empty string if no matches / no API key.
-async function getDestinationContext(message, atKey) {
+async function getDestinationContext(message, atKey, market) {
   if (!atKey || !message) return '';
   try {
     var index = await ensureDestinationIndex(atKey);
@@ -702,7 +723,7 @@ async function getDestinationContext(message, atKey) {
     var summaries = [];
     for (var i = 0; i < matches.length; i++) {
       var rec = await fetchDestinationRecord(matches[i], atKey);
-      var summary = summariseDestinationRecord(rec, matches[i]);
+      var summary = summariseDestinationRecord(rec, matches[i], market);
       // Append live weather data if the record carries coordinates
       if (rec && rec.fields) {
         var lat = rec.fields['Latitude'];
@@ -1422,7 +1443,7 @@ Blocks transform Luna from a chat-only assistant into a visual concierge. When y
 Example:
 [BLOCK]{"type":"destination_card","props":{"name":"Tenerife","temperature":"22°C","flightTime":"4h flight","vibe":"Volcanic landscapes, year-round warmth, brilliant for families.","tags":["Beach","Family","All-inclusive"]}}[/BLOCK]
 
-Notes on destination_card: image is OPTIONAL. If you include it, ONLY use an Unsplash URL you are highly confident exists (it must be a real photo ID, not a guess). If unsure, OMIT the image field entirely — the card renders fine without it. NEVER invent Unsplash photo IDs. The widget gracefully hides broken images, but a card with no image looks better than one with a missing photo placeholder. deepLink is OPTIONAL — only include it if you have ALL search fields (destination, dates, departure airport, party size). For pure inspiration replies where the visitor has not yet given airport/dates/party size, OMIT the deepLink field entirely. The card still works (name, vibe, tags, temperature, flight time) — and the quick_replies chips below will collect the missing fields. Including a deepLink with placeholder values (default dates, default 2 adults, no origin) results in broken searches and bad UX. tags max 5. Always include temperature, flightTime, and vibe — they're what make the card feel useful, not generic.
+Notes on destination_card: image is OPTIONAL. If you include it, ONLY use an Unsplash URL you are highly confident exists (it must be a real photo ID, not a guess). If unsure, OMIT the image field entirely — the card renders fine without it. NEVER invent Unsplash photo IDs. The widget gracefully hides broken images, but a card with no image looks better than one with a missing photo placeholder. deepLink is OPTIONAL — only include it if you have ALL search fields (destination, dates, departure airport, party size). For pure inspiration replies where the visitor has not yet given airport/dates/party size, OMIT the deepLink field entirely. The card still works (name, vibe, tags, temperature, flight time) — and the quick_replies chips below will collect the missing fields. Including a deepLink with placeholder values (default dates, default 2 adults, no origin) results in broken searches and bad UX. tags max 5. Always include temperature and vibe — they're what make the card feel useful, not generic. flightTime is DIFFERENT: only include it when you can say where it is from, e.g. "about 4h from the UK" or "about 3h from Romania", and only for this agency's own home market or an airport the visitor has actually named. Never write a bare "4h flight" — four hours from where? A visitor in Cluj-Napoca reading a flight time from London has been told something about somebody else's holiday. If you cannot anchor it, omit the field: the card renders cleanly without it.
 
 **faq_policy_card — MANDATORY for policy questions.** For any question about cancellation, refunds, insurance, baggage, visa requirements, health/vaccinations, passport requirements, booking changes, dispute handling, or any other policy/terms question, you MUST emit a faq_policy_card block. Do NOT answer the question in prose paragraphs only. The card IS the answer. A brief follow-up offering further help is fine after the card.
 
@@ -1640,7 +1661,7 @@ Blocks transform Luna from a chat-only assistant into a visual concierge. When y
 Example:
 [BLOCK]{"type":"destination_card","props":{"name":"Tenerife","temperature":"22°C","flightTime":"4h flight","vibe":"Volcanic landscapes, year-round warmth, brilliant for families.","tags":["Beach","Family","All-inclusive"]}}[/BLOCK]
 
-Notes on destination_card: image is OPTIONAL. If you include it, ONLY use an Unsplash URL you are highly confident exists (it must be a real photo ID, not a guess). If unsure, OMIT the image field entirely — the card renders fine without it. NEVER invent Unsplash photo IDs. The widget gracefully hides broken images, but a card with no image looks better than one with a missing photo placeholder. deepLink is OPTIONAL — only include it if you have ALL search fields (destination, dates, departure airport, party size). For pure inspiration replies where the visitor has not yet given airport/dates/party size, OMIT the deepLink field entirely. The card still works (name, vibe, tags, temperature, flight time) — and the quick_replies chips below will collect the missing fields. Including a deepLink with placeholder values (default dates, default 2 adults, no origin) results in broken searches and bad UX. tags max 5. Always include temperature, flightTime, and vibe — they're what make the card feel useful, not generic.
+Notes on destination_card: image is OPTIONAL. If you include it, ONLY use an Unsplash URL you are highly confident exists (it must be a real photo ID, not a guess). If unsure, OMIT the image field entirely — the card renders fine without it. NEVER invent Unsplash photo IDs. The widget gracefully hides broken images, but a card with no image looks better than one with a missing photo placeholder. deepLink is OPTIONAL — only include it if you have ALL search fields (destination, dates, departure airport, party size). For pure inspiration replies where the visitor has not yet given airport/dates/party size, OMIT the deepLink field entirely. The card still works (name, vibe, tags, temperature, flight time) — and the quick_replies chips below will collect the missing fields. Including a deepLink with placeholder values (default dates, default 2 adults, no origin) results in broken searches and bad UX. tags max 5. Always include temperature and vibe — they're what make the card feel useful, not generic. flightTime is DIFFERENT: only include it when you can say where it is from, e.g. "about 4h from the UK" or "about 3h from Romania", and only for this agency's own home market or an airport the visitor has actually named. Never write a bare "4h flight" — four hours from where? A visitor in Cluj-Napoca reading a flight time from London has been told something about somebody else's holiday. If you cannot anchor it, omit the field: the card renders cleanly without it.
 
 **faq_policy_card — MANDATORY for policy questions.** For any question about cancellation, refunds, insurance, baggage, visa requirements, health/vaccinations, passport requirements, booking changes, dispute handling, or any other policy/terms question, you MUST emit a faq_policy_card block. Do NOT answer the question in prose paragraphs only. The card IS the answer. A brief follow-up offering further help is fine after the card.
 
@@ -3116,11 +3137,17 @@ often, or whether a service is direct. So do not guess at any of it.
   Wizz Air flies Cluj to Málaga direct; Luna told a customer it likely did not.
 - Never describe a route as harder to search, or the search as optimised for any
   particular kind of route. It is not. The same search runs for every route.
-- If they ask about a specific airline, or about direct flights, say the search
-  lists every option with the times and the number of stops on each, and send
-  them to it. That is a better answer than a guess, and it is true.
+- If they ask about a specific airline, or about direct flights, ${accommOnly
+  ? 'say plainly that this agency books accommodation rather than flights, so you cannot look their flights up. Do not send them to the search for it: it has no flights in it.'
+  : 'say the search lists every option with the times and the number of stops on each, and send them to it. That is a better answer than a guess, and it is true.'}
 - If a visitor tells you a direct flight exists, they have almost certainly just
   looked. Take their word for it and search. Never argue.
+
+Where the line falls. Roughly how LONG a flight takes is ordinary geography and
+you may give it as an approximation, anchored to a named departure point. WHO
+flies a route, WHETHER it is direct, and WHEN it operates are schedule facts you
+cannot see, and you never state them. "About four hours from Manchester" is
+fine. "Wizz fly it on Tuesdays" is not, even if you are confident.
 
 ### Important Rules
 - ALWAYS use your own knowledge for IATA codes and coordinates. You know world geography, use it confidently.
@@ -3416,7 +3443,7 @@ No problem, drop your email and departure date in below and I'll find it.
     }
     // Destination context (Airports + Theme Parks) — keyword-triggered
     mark('destCtxStart');
-    var destCtx = await getDestinationContext(message, atKey);
+    var destCtx = await getDestinationContext(message, atKey, departureMarket);
     mark('destCtxDone');
     if (destCtx) {
       systemPrompt += destCtx;
@@ -3431,7 +3458,7 @@ No problem, drop your email and departure date in below and I'll find it.
     var atKeyTg = process.env.AIRTABLE_KEY;
     if (atKeyTg) {
       mark('destCtxStart');
-      var destCtxTg = await getDestinationContext(message, atKeyTg);
+      var destCtxTg = await getDestinationContext(message, atKeyTg, departureMarket);
       mark('destCtxDone');
       if (destCtxTg) { systemPrompt += destCtxTg; kbGrounded = true; }
     }
@@ -4257,3 +4284,7 @@ module.exports.leadingMetaComplete = leadingMetaComplete;
 module.exports.extractBriefMarkers = extractBriefMarkers;
 module.exports.sanitizeTripBrief = sanitizeTripBrief;
 module.exports.formatTripBriefForPrompt = formatTripBriefForPrompt;
+// Exposed so the UK-field gate can be tested against the real function rather
+// than a regex over this file. Not part of the handler contract.
+module.exports.summariseDestinationRecord = summariseDestinationRecord;
+module.exports.isUkMarket = isUkMarket;
