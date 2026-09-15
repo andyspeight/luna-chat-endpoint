@@ -117,6 +117,75 @@ test('a paste accident is rejected on length', () => {
   assert.equal(notifyTo.isEmail('a'.repeat(300) + '@shop.co.uk'), false);
 });
 
+// ── what we accept, SendGrid must accept ──
+//
+// The first version of this gate was the loose pattern the old notification
+// paths used. It waved through addresses that bounce, and because a stored
+// value is non-empty, a stored bad value SUPPRESSES the ContactEmail fallback.
+// A client pasting "<sales@shop.co.uk>" out of Outlook would have seen "Saved!"
+// and then lost every enquiry, silently. Found by an adversarial review.
+
+test('addresses that would bounce are refused, not saved', () => {
+  const bounces = [
+    'bob@shop.co.uk.',          // trailing full stop, the commonest paste error
+    '<bob@shop.co.uk>',         // angle brackets out of a mail client
+    'bob@shop.co.uk>',          // half of the same
+    '.bob@shop.co.uk',          // leading dot
+    'bob.@shop.co.uk',          // trailing dot on the local part
+    'bob..smith@shop.co.uk',    // doubled dot
+    'bob@shop..co.uk',          // doubled dot in the domain
+    'bob@-shop.co.uk',          // label starting with a hyphen
+    'bob@shop-.co.uk',          // label ending with a hyphen
+    'bob@shop.c',               // one-letter TLD
+    'bob@shop.co.123',          // numeric TLD
+    'bob@localhost',            // no dot at all
+    '"bob"@shop.co.uk',         // quoted local part
+    'bob(hi)@shop.co.uk'        // comment syntax
+  ];
+  for (const b of bounces) {
+    assert.equal(notifyTo.isEmail(b), false, 'accepted a bouncing address: ' + b);
+    assert.equal(notifyTo.validate(b).ok, false, 'saved a bouncing address: ' + b);
+  }
+});
+
+test('a bad stored value falls back instead of going quiet', () => {
+  // This is the point of the whole exercise. Anything the gate now rejects is
+  // dropped by parseList, so recipients() returns ContactEmail rather than an
+  // address nothing can be delivered to.
+  assert.deepEqual(
+    notifyTo.recipients({ NotificationEmail: '<bob@shop.co.uk>', ContactEmail: 'real@shop.co.uk' }),
+    ['real@shop.co.uk']
+  );
+});
+
+test('every address a real client already uses still passes', () => {
+  // Checked against the live Clients table. A stricter rule that rejected one
+  // of these would have silenced that client's alerts, which is the exact
+  // failure being fixed. The Gmail +alias and the hyphenated domain are the
+  // two that a careless tightening breaks.
+  const live = [
+    'luke.livsey@agendas.group', 'andyspeight06+test@gmail.com',
+    'andy.speight@agendas.group', 'admin@travelbookers.co.uk',
+    'rashad.ali@cyphertravelsoftware.com', 'rares.biris@transilvania-soft.ro',
+    'keith@hnholidays.co.uk', 'luis@travelnet.ie', 'jamie@jamiewaketravel.co.uk',
+    'james@exploreescapes.co.uk', 'darren.swan@agendas.group',
+    'hakon@snowdragonskiholidays.com', 'info@travelgenix.io',
+    'stefan@tailorevents.se', 'tracy@yourticketgenie.com',
+    'scott@murraytravel.co.uk', 'director@thatsmydreamholiday.com',
+    'paras@globaltravelsolution.co.uk', 'tania@getzendra.com'
+  ];
+  for (const e of live) {
+    assert.equal(notifyTo.isEmail(e), true, 'rejected a live client address: ' + e);
+  }
+});
+
+test('ordinary shapes people actually type still pass', () => {
+  for (const e of ['a@b.io', 'sales+luna@shop.co.uk', 'first.last@sub.domain.example.com',
+                   'user_name@shop-site.com', "o'brien@shop.ie".replace(/'/g, '')]) {
+    assert.equal(notifyTo.isEmail(e), true, 'rejected a normal address: ' + e);
+  }
+});
+
 // ── validation on the way in from the dashboard ──
 
 test('clearing the box is valid, and means go back to the default', () => {
